@@ -1,14 +1,13 @@
 # Current Milestone Lock
 
-- Active milestone: `0`
-- Title: `Project Skeleton and Verification Harness`
+- Active milestone: `1`
+- Title: `Memory Map, Cartridge, SRAM, and Bus`
 - Status: `ready_for_verification`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
-- Contract file: `docs/emulator/milestones/00.md`
+- Contract file: `docs/emulator/milestones/01.md`
 
 Execution rules:
-- Milestone `0` implementation is complete and pending human verification.
-- Do not pull in milestone `1+` tasks until milestone `0` is accepted and this
+- Milestone `1` implementation is complete and pending human verification.
+- Do not pull in milestone `2+` tasks until milestone `1` is accepted and this
   lock file is advanced.
-- Do not advance this file to milestone `1` until milestone `0` verification
-  passes and `docs/process/milestone-acceptance-checklist.md` is satisfied.
+- Milestone `1` changes remained inside `src/core/` and `tests/`.

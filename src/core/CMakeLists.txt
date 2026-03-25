@@ -1,8 +1,11 @@
 add_library(
     vanguard8_core
+    bus.cpp
     emulator.cpp
     logging.cpp
     config.cpp
+    memory/cartridge.cpp
+    memory/sram.cpp
 )
 
 target_include_directories(vanguard8_core PUBLIC ${PROJECT_SOURCE_DIR}/src)

@@ -1,6 +1,6 @@
 # M01-T02 — Implement Bus Routing and Open-Bus Behavior
 
-Status: `planned`
+Status: `completed`
 Milestone: `1`
 Depends on: `M01-T01`
 
@@ -18,4 +18,9 @@ Done when:
 - Tests cover `0xFF` behavior for unmapped memory and ports.
 
 Completion summary:
-- Pending.
+- Implemented against `docs/spec/00-overview.md` and
+  `docs/emulator/03-cpu-and-bus.md`.
+- Added `Bus` physical memory routing for cartridge ROM, SRAM, and unmapped
+  regions.
+- Unmapped memory and I/O now return `0xFF`, with warnings recorded for
+  unsupported accesses.

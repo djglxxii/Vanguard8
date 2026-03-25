@@ -1,0 +1,33 @@
+{
+  "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
+  "name": "vanguard8",
+  "version-string": "0.1.0",
+  "description": "Scaffold for the Vanguard 8 emulator project.",
+  "dependencies": [
+    "catch2",
+    "imgui",
+    "libsamplerate",
+    "nativefiledialog-extended",
+    "sdl2",
+    "spdlog",
+    "tomlplusplus"
+  ],
+  "features": {
+    "imgui-docking": {
+      "description": "Enable docking support for the debugger shell.",
+      "dependencies": [
+        {
+          "name": "imgui",
+          "features": [
+            "docking-experimental",
+            "opengl3-binding",
+            "sdl2-binding"
+          ]
+        }
+      ]
+    }
+  },
+  "default-features": [
+    "imgui-docking"
+  ]
+}

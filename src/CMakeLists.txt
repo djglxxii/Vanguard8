@@ -1,0 +1,9 @@
+add_subdirectory(core)
+add_subdirectory(frontend)
+add_subdirectory(debugger)
+
+add_executable(vanguard8_frontend main.cpp)
+target_link_libraries(vanguard8_frontend PRIVATE vanguard8_frontend_lib)
+
+add_executable(vanguard8_headless headless_main.cpp)
+target_link_libraries(vanguard8_headless PRIVATE vanguard8_headless_lib)

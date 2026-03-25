@@ -1,0 +1,1 @@
+add_library(vanguard8_third_party INTERFACE)

@@ -1,0 +1,433 @@
+# Vanguard 8 Emulator — Incremental Implementation Plan
+
+## Purpose
+
+This plan breaks emulator development into ordered milestones that can be
+completed, tested, and stabilized incrementally. It is based on the repository
+specification in `docs/spec/` and the emulator design docs in `docs/emulator/`.
+
+Traceability:
+- Hardware contract: `docs/spec/00-overview.md` through `docs/spec/04-io.md`
+- Emulator architecture: `docs/emulator/00-overview.md` through `docs/emulator/06-debugger.md`
+
+## Planning Rules
+
+- The spec remains authoritative. If code and spec disagree, update the spec or
+  stop the implementation.
+- Every milestone must leave the repo in a testable state.
+- Prefer headless verification first, then SDL/OpenGL/ImGui integration.
+- Land the minimum documented behavior before optional features.
+- Do not implement currently unspecified areas without a spec update.
+
+## Explicit Deferrals
+
+These areas should stay out of scope until the spec is expanded or verified:
+
+- Horizontal scroll behavior via V9938 `R#26`/`R#27`
+- Per-line horizontal parallax built on unverified scroll behavior
+- 4-player expansion hardware
+- Battery-backed cartridge SRAM banking details
+- Any behavior that depends on unverified V9938 text-mode compositing details
+
+## Milestone Control Files
+
+Use the following files to keep implementation work locked to a single
+milestone at a time:
+
+- `docs/emulator/current-milestone.md`
+  Declares the only milestone currently allowed to be implemented.
+- `docs/emulator/milestones/NN.md`
+  Per-milestone contract files with allowed scope, explicit non-goals, allowed
+  paths, required tests, exit criteria, forbidden extras, and verification
+  commands.
+- `docs/process/milestone-acceptance-checklist.md`
+  Human review checklist used before a milestone is accepted.
+- Milestone contract `Verification Commands`
+  These are the authoritative verification steps for the active milestone until
+  a shared verifier script is added.
+
+Workflow:
+
+1. Lock work to the milestone named in `docs/emulator/current-milestone.md`.
+2. Implement only the deliverables and tests described by that milestone
+   contract.
+3. Mark the milestone `ready_for_verification` only after the declared scope is
+   implemented and the milestone's verification commands pass.
+4. Mark the milestone `accepted` only after the milestone's verification
+   commands have been rerun and the acceptance checklist is satisfied.
+5. Advance the lock to the next milestone only after acceptance.
+
+## Milestone Summary
+
+| Milestone | Goal |
+|-----------|------|
+| 0 | Freeze project scaffolding and test harness |
+| 1 | Bring up memory, cartridge, and bus routing |
+| 2 | Integrate CPU core and boot-time MMU behavior |
+| 3 | Establish the event scheduler and frame loop |
+| 4 | Render the first visible frame in single-VDP Graphic 4 |
+| 5 | Add dual-VDP compositing, sprites, and VDP interrupt behavior |
+| 6 | Add controller input, ROM loading, and usable frontend flow |
+| 7 | Integrate audio chips and INT1-driven ADPCM timing |
+| 8 | Fill in HD64180 DMA/timers and VDP command execution |
+| 9 | Add debugger foundation and core developer panels |
+| 10 | Add save states, rewind, replay, and headless regression tooling |
+| 11 | Expand format coverage, compatibility audits, and polish to 1.0 |
+
+## Milestones
+
+### Milestone 0 — Project Skeleton and Verification Harness
+
+Objective:
+- Create the CMake/vcpkg layout, target structure, base source tree, and test
+  tree described in `docs/emulator/01-build.md`.
+
+Deliverables:
+- Top-level `CMakeLists.txt`
+- `src/`, `tests/`, `third_party/`, and `shaders/` directory structure
+- `vanguard8_core`, `vanguard8_frontend`, and `vanguard8_headless` targets
+- Catch2 test binary wired into `ctest`
+- Logging, config loading, and a no-op emulator shell
+
+Exit criteria:
+- A clean checkout configures and builds
+- Tests run in CI even if most are still placeholders
+- Headless binary can start, print version/build info, and exit cleanly
+
+### Milestone 1 — Memory Map, Cartridge, SRAM, and Bus
+
+Objective:
+- Implement the fixed hardware memory map and external I/O routing before CPU
+  execution enters the picture.
+
+Deliverables:
+- `Bus` with physical memory routing
+- `CartridgeSlot` for fixed ROM and 59 switchable 16 KB banks
+- 32 KB system SRAM model
+- Open-bus handling and warning logging for unmapped memory/ports
+- Stubbed peripheral endpoints for all documented I/O ports
+
+Tests:
+- Fixed ROM region maps `0x00000–0x03FFF`
+- Banked ROM region maps `0x04000–0xEFFFF`
+- SRAM maps `0xF0000–0xF7FFF`
+- Unmapped memory and I/O return `0xFF`
+
+Exit criteria:
+- Bus routing matches `docs/spec/00-overview.md`
+- Cartridge size validation enforces the 960 KB limit
+
+### Milestone 2 — CPU Core, MMU, Interrupt Lines, and Boot Sequence
+
+Objective:
+- Get the MAME Z180 core integrated through an adapter and prove the emulator
+  can execute boot ROM code against the real Vanguard 8 MMU layout.
+
+Deliverables:
+- Z180 adapter connected to bus memory/I/O callbacks
+- Reset behavior matching documented HD64180 defaults
+- MMU translation through `CBAR`, `CBR`, and `BBR`
+- INT0 and INT1 line plumbing
+- Illegal `BBR >= 0xF0` warning behavior
+
+Tests:
+- MMU boot mapping and bank-window translation
+- `OUT0` writes to internal MMU registers affect memory translation correctly
+- INT0 follows IM1 behavior
+- INT1 uses the HD64180 vectored `I`/`IL` path, independent of IM mode
+- Boot ROM can reconfigure `CBAR=0x48`, `CBR=0xF0`, `BBR=0x04`
+
+Exit criteria:
+- A small test ROM can boot, switch ROM banks, and read/write SRAM correctly
+
+Note:
+- Before calling this milestone complete, audit the required HD64180-specific
+  behaviors called out in `docs/emulator/03-cpu-and-bus.md`: `IN0`, `OUT0`,
+  `MLT`, and INT1/INT2 vector handling.
+
+### Milestone 3 — Master-Cycle Scheduler and Main Emulation Loop
+
+Objective:
+- Establish the event-driven runtime model that all remaining subsystems depend
+  on.
+
+Deliverables:
+- Master-cycle counter
+- Event scheduler for H-blank, V-blank, V-blank end, and MSM5205 `/VCLK`
+- `run_cpu_and_audio_until()` loop shape
+- Frame accounting and scanline accounting
+- Pause, run, and single-frame stepping in headless form
+
+Tests:
+- Scheduled H-blank and V-blank events occur at deterministic cycle positions
+- INT0/INT1 assertion timing is stable across repeated runs
+- CPU cycle accounting remains monotonic through event boundaries
+
+Exit criteria:
+- A headless test can run for N frames deterministically with stable event logs
+
+### Milestone 4 — First Video Bring-Up: Single VDP, Graphic 4, No Compositing Yet
+
+Objective:
+- Get pixels on screen with the simplest documented useful rendering path:
+  one V9938 in Graphic 4, 256x212, palette-based output.
+
+Deliverables:
+- V9938 port interface
+- VRAM and palette storage
+- Graphic 4 scanline renderer
+- Vertical scroll via `R#23`
+- SDL2 window and OpenGL upload path
+- Headless frame dump for regression images
+
+Tests:
+- VRAM writes through VDP ports affect rendered output
+- Palette writes decode to correct RGB values
+- Graphic 4 framebuffer addressing is correct for multiple scanlines
+- `R#23` vertical scroll wraps correctly
+
+Exit criteria:
+- A test ROM or fixture pattern renders the expected 256x212 frame identically
+  in headless and SDL/OpenGL modes
+
+Out of scope:
+- Horizontal scroll via `R#26`/`R#27`
+- Full command engine
+- Mixed-mode support
+
+### Milestone 5 — Dual VDPs, Compositing, Sprites, and VDP-A Interrupt Semantics
+
+Objective:
+- Reach the first Vanguard 8-specific video milestone: two synchronized VDPs
+  composited with VDP-A transparency and correct CPU-visible interrupt behavior.
+
+Deliverables:
+- Second V9938 instance
+- 74LS257-style compositor
+- Sprite Mode 2 path needed by Graphic 4 / Graphic 3 usage
+- VDP-A V-blank and H-blank flag behavior
+- VDP-B interrupt isolation
+- Layer toggles usable by tests and later debugger UI
+
+Tests:
+- VDP-A color index 0 transparency reveals VDP-B
+- Nonzero VDP-A pixels override VDP-B
+- VDP-B never asserts CPU interrupts
+- Reading VDP-A `S#0` clears V-blank
+- Reading VDP-A `S#1` clears H-blank
+- Sprite overflow and collision flags behave for covered cases
+
+Exit criteria:
+- Emulator can display a composited dual-layer frame and service VDP-A IRQs
+  through INT0 without false VDP-B interrupts
+
+### Milestone 6 — Input, ROM Workflow, and Minimal User-Facing Frontend
+
+Objective:
+- Make the emulator practically usable for loading ROMs and interacting with
+  software, while keeping functionality tightly scoped.
+
+Deliverables:
+- SDL2 keyboard and gamepad mapping to controller ports `0x00` and `0x01`
+- Active-low controller decoding
+- Config file creation/loading
+- ROM open flow, drag-and-drop, and recent ROM list
+- Fullscreen toggle, scale modes, and frame pacing
+
+Tests:
+- Controller reads are active low
+- Player 1 and Player 2 ports stay independent
+- ROM loading rejects oversized images and invalid formats cleanly
+
+Exit criteria:
+- A user can load a ROM, get video output, and control software through either
+  keyboard or gamepad
+
+### Milestone 7 — Audio Chips, Mixer, and Dedicated ADPCM Interrupt Flow
+
+Objective:
+- Add the complete documented audio surface with correct timing relationships
+  to the CPU and frame loop.
+
+Deliverables:
+- YM2151 integration via Nuked-OPM
+- AY-3-8910 integration via Ayumi
+- MSM5205 integration and port control
+- Stereo mixer and resampling pipeline
+- YM2151 IRQ contribution to INT0
+- MSM5205 `/VCLK` contribution to INT1
+
+Tests:
+- YM2151 status/busy handling
+- AY register latch/read/write behavior
+- MSM5205 control register changes update `/VCLK` cadence correctly
+- INT1 fires at 4/6/8 kHz-equivalent master-cycle intervals
+- Audio output stays deterministic in headless hash runs
+
+Exit criteria:
+- Audio is audible, synchronized, and does not break determinism in headless
+  regression mode
+
+### Milestone 8 — HD64180 DMA/Timers and VDP Command Engine
+
+Objective:
+- Move from basic software execution to the hardware acceleration and internal
+  peripheral behavior games will depend on.
+
+Deliverables:
+- DMA channel 0 memory-to-memory path
+- DMA channel 1 memory-to-I/O path
+- HD64180 timer/counter exposure and validation
+- V9938 command engine execution with `S#2.CE` timing
+- Implemented command set listed in `docs/emulator/04-video.md`
+
+Tests:
+- DMA copies follow documented source/destination rules
+- DMA to I/O reuses the same port dispatch path as CPU `OUT`
+- Timer behavior is stable enough for interrupt-driven code paths
+- VDP command completion timing clears `CE` at the right cycle boundary
+- CPU polling of `CE` sees in-progress versus complete states correctly
+
+Exit criteria:
+- ROMs can use DMA, timers, and VDP blits without falling back to emulator-only
+  shortcuts
+
+### Milestone 9 — Debugger Foundation
+
+Objective:
+- Add the developer tooling needed to diagnose timing, mapping, and rendering
+  bugs before broader software compatibility work begins.
+
+Deliverables:
+- Dear ImGui shell and docking layout
+- CPU panel with registers, disassembly, and execution controls
+- Memory panel with SRAM/ROM/VRAM views
+- VDP panel with register and palette inspection
+- Interrupt log and bank tracker
+- Basic breakpoints and watchpoints
+
+Tests:
+- Debugger can attach without mutating emulation state unexpectedly
+- Step/run/pause actions stop at correct CPU or scheduler boundaries
+- Breakpoints trigger deterministically
+
+Exit criteria:
+- Core emulator issues can be diagnosed without adding ad hoc logging to the
+  runtime
+
+### Milestone 10 — Save States, Rewind, Replay, and Headless CI
+
+Objective:
+- Lock in reproducibility and regression protection so later compatibility work
+  is safe to iterate on.
+
+Deliverables:
+- Versioned save-state format
+- Quicksave/quickload slots
+- Rewind ring buffer
+- Deterministic input recording/replay
+- `vanguard8_headless` verification mode with frame/audio hashing
+- Replay-based `ctest` integration
+
+Tests:
+- Save/load round-trips preserve CPU, MMU, VRAM, palettes, audio state, and
+  scheduler position
+- Replay runs produce stable frame and audio hashes
+- Rewind restores prior states without desynchronizing audio/video timing
+
+Exit criteria:
+- CI can catch regressions with deterministic replay assets
+
+### Milestone 11 — Coverage Expansion, Audit Closure, and 1.0 Readiness
+
+Objective:
+- Finish the documented emulator surface, close explicit assumptions, and reach
+  a releasable baseline.
+
+Deliverables:
+- Additional V9938 modes beyond initial Graphic 4 bring-up
+- Mixed-mode rendering validation where the spec is already sufficient
+- Remaining debugger panels
+- Performance tuning and correctness fixes from real ROM testing
+- Compatibility audit notes for the Z180/HD64180 assumption
+- Documentation updates for any newly clarified behavior
+
+Tests:
+- Mode-specific rendering tests for each newly implemented VDP mode
+- Cross-subsystem integration tests covering bank switching, interrupts, audio,
+  and compositing together
+- Stress tests for long-running determinism and save/replay compatibility
+
+Exit criteria:
+- The emulator covers the documented Vanguard 8 hardware surface except for
+  explicitly deferred spec gaps
+- Remaining limitations are documented, narrow, and intentional
+
+## Suggested Release Gates
+
+Use these as project-wide checkpoints rather than individual milestone tasks:
+
+### Gate A — First Deterministic Headless Core
+
+Required milestones:
+- 0 through 3
+
+Meaning:
+- The emulator can boot ROM code, schedule hardware events, and run repeatably
+  without frontend dependencies.
+
+### Gate B — First Playable Video Build
+
+Required milestones:
+- 0 through 6
+
+Meaning:
+- A user can load a ROM, see composited output, and provide controller input.
+
+### Gate C — First Full-System Alpha
+
+Required milestones:
+- 0 through 9
+
+Meaning:
+- CPU, video, audio, interrupts, DMA, and debugger support are present.
+
+### Gate D — Regression-Protected Beta
+
+Required milestones:
+- 0 through 10
+
+Meaning:
+- The emulator is safe to evolve because determinism, save states, and replay
+  tooling are in place.
+
+### Gate E — 1.0 Baseline
+
+Required milestones:
+- 0 through 11
+
+Meaning:
+- The documented hardware surface is implemented except for explicit spec
+  deferrals, and those deferrals are clearly called out in docs and tests.
+
+## Recommended Order of Work Inside the Repo
+
+1. Build and test scaffolding
+2. Core memory/cartridge/bus
+3. CPU/MMU/interrupt wiring
+4. Scheduler and deterministic headless execution
+5. Video bring-up
+6. Input/frontend usability
+7. Audio timing and mixing
+8. DMA/timers/command engine
+9. Debugger
+10. Save/replay/headless regression
+11. Expanded mode coverage and release hardening
+
+## Definition of Done for Each Milestone
+
+- Behavior implemented matches current spec docs
+- Tests pin the relevant hardware rules
+- Headless execution remains deterministic
+- Any known limitation is documented in code and docs
+- No milestone silently fills in unspecified hardware behavior

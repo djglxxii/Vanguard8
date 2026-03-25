@@ -118,6 +118,24 @@ auto Bus::port_stub(const std::uint16_t port) const -> const PortStubState* {
     return iterator == port_stubs_.end() ? nullptr : &iterator->second;
 }
 
+auto Bus::int0_state() const -> const Int0State& { return int0_state_; }
+
+auto Bus::int0_asserted() const -> bool {
+    return int0_state_.vdp_a_vblank || int0_state_.vdp_a_hblank || int0_state_.ym2151_timer;
+}
+
+auto Bus::int1_asserted() const -> bool { return int1_asserted_; }
+
+void Bus::set_vdp_a_vblank(const bool asserted) { int0_state_.vdp_a_vblank = asserted; }
+
+void Bus::set_vdp_a_hblank(const bool asserted) { int0_state_.vdp_a_hblank = asserted; }
+
+void Bus::set_ym2151_timer(const bool asserted) { int0_state_.ym2151_timer = asserted; }
+
+void Bus::set_int1(const bool asserted) { int1_asserted_ = asserted; }
+
+void Bus::record_warning(std::string message) { warn(std::move(message)); }
+
 void Bus::register_port(
     const std::uint16_t port,
     std::string name,

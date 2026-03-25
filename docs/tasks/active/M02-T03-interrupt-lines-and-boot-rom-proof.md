@@ -1,6 +1,6 @@
 # M02-T03 — Wire Interrupt Lines and Prove the Boot ROM MMU Sequence
 
-Status: `planned`
+Status: `active`
 Milestone: `2`
 Depends on: `M02-T02`
 

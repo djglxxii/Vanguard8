@@ -1,6 +1,6 @@
 # M02-T02 — Implement MMU Translation and Illegal BBR Guardrails
 
-Status: `planned`
+Status: `active`
 Milestone: `2`
 Depends on: `M02-T01`
 

@@ -1,6 +1,6 @@
 # M02-T01 — Integrate Z180 Adapter and Reset Defaults
 
-Status: `planned`
+Status: `active`
 Milestone: `2`
 Depends on: `M01-T03`
 

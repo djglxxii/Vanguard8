@@ -11,6 +11,12 @@
 
 namespace vanguard8::core {
 
+struct Int0State {
+    bool vdp_a_vblank = false;
+    bool vdp_a_hblank = false;
+    bool ym2151_timer = false;
+};
+
 struct PortStubState {
     std::string name;
     bool readable = false;
@@ -37,12 +43,22 @@ class Bus {
     [[nodiscard]] auto mutable_sram() -> memory::Sram&;
     [[nodiscard]] auto warnings() const -> const std::vector<std::string>&;
     [[nodiscard]] auto port_stub(std::uint16_t port) const -> const PortStubState*;
+    [[nodiscard]] auto int0_state() const -> const Int0State&;
+    [[nodiscard]] auto int0_asserted() const -> bool;
+    [[nodiscard]] auto int1_asserted() const -> bool;
+    void set_vdp_a_vblank(bool asserted);
+    void set_vdp_a_hblank(bool asserted);
+    void set_ym2151_timer(bool asserted);
+    void set_int1(bool asserted);
+    void record_warning(std::string message);
 
   private:
     memory::CartridgeSlot cartridge_;
     memory::Sram sram_;
     std::unordered_map<std::uint16_t, PortStubState> port_stubs_;
     std::vector<std::string> warnings_;
+    Int0State int0_state_{};
+    bool int1_asserted_ = false;
 
     void register_port(
         std::uint16_t port,

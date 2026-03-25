@@ -4,6 +4,7 @@ add_library(
     emulator.cpp
     logging.cpp
     config.cpp
+    cpu/z180_adapter.cpp
     memory/cartridge.cpp
     memory/sram.cpp
 )

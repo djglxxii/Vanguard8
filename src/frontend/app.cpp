@@ -5,6 +5,7 @@
 #include "core/logging.hpp"
 #include "core/memory/cartridge.hpp"
 #include "core/video/compositor.hpp"
+#include "debugger/debugger.hpp"
 #include "frontend/display.hpp"
 #include "frontend/input.hpp"
 #include "frontend/rom_loader.hpp"
@@ -24,6 +25,7 @@ namespace {
 struct RuntimeOptions {
     bool help_requested = false;
     bool render_fixture = false;
+    bool debugger_visible = false;
     bool list_recent = false;
     std::optional<std::filesystem::path> rom_path;
     std::optional<std::size_t> recent_index;
@@ -52,6 +54,10 @@ auto parse_options(int argc, char** argv) -> RuntimeOptions {
         const std::string arg = argv[index];
         if (arg == "--video-fixture") {
             options.render_fixture = true;
+            continue;
+        }
+        if (arg == "--debugger") {
+            options.debugger_visible = true;
             continue;
         }
         if (arg == "--rom" && (index + 1) < argc) {
@@ -127,7 +133,7 @@ auto run_frontend_app(int argc, char** argv) -> int {
     if (options.help_requested) {
         std::cout
             << "Usage: vanguard8_frontend [--rom path] [--drop-rom path] [--recent index] [--list-recent] "
-               "[--video-fixture] [--scale N] [--aspect square|ntsc|stretch] [--fullscreen|--windowed] "
+               "[--video-fixture] [--debugger] [--scale N] [--aspect square|ntsc|stretch] [--fullscreen|--windowed] "
                "[--frame-pacing on|off] [--press-key NAME] [--gamepad1-button NAME] [--gamepad2-button NAME]\n";
         return 0;
     }
@@ -158,6 +164,8 @@ auto run_frontend_app(int argc, char** argv) -> int {
     }
 
     core::Emulator emulator;
+    debugger::DebuggerShell debugger_shell;
+    debugger_shell.set_visible(options.debugger_visible);
     std::optional<LoadedRom> loaded_rom;
 
     try {
@@ -202,6 +210,8 @@ auto run_frontend_app(int argc, char** argv) -> int {
 
         Display display;
         display.upload_frame(core::video::Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b()));
+        debugger_shell.attach(emulator, display);
+        const auto& debugger_snapshot = debugger_shell.render();
 
         if (loaded_rom.has_value()) {
             std::cout << "Frontend status: ROM loaded" << '\n';
@@ -223,14 +233,30 @@ auto run_frontend_app(int argc, char** argv) -> int {
                   << static_cast<int>(p2) << '\n';
         std::cout << std::dec << "Recent ROM count: " << config.recent_roms.size() << '\n';
         std::cout << "Frontend frame digest: " << display.frame_digest() << '\n';
+        if (debugger_snapshot.debugger_visible) {
+            std::cout << "Debugger status: "
+                      << (debugger_snapshot.rendered ? "rendered" : "hidden")
+                      << '\n';
+            std::cout << "Debugger dockspace: " << debugger_shell.layout().dockspace_id << '\n';
+            std::cout << "Debugger visible panels: " << debugger_snapshot.visible_panel_count << '\n';
+        }
         return 0;
     }
 
+    debugger_shell.attach(emulator);
+    const auto& debugger_snapshot = debugger_shell.render();
     std::cout << "Frontend status: ROM workflow and controller mapping available" << '\n';
     std::cout << "Display scale: " << config.display_scale << '\n';
     std::cout << "Display aspect: " << config.display_aspect << '\n';
     std::cout << "Fullscreen: " << std::boolalpha << config.fullscreen << '\n';
     std::cout << "Frame pacing: " << std::boolalpha << config.frame_pacing << '\n';
+    if (debugger_snapshot.debugger_visible) {
+        std::cout << "Debugger status: "
+                  << (debugger_snapshot.rendered ? "rendered" : "hidden")
+                  << '\n';
+        std::cout << "Debugger dockspace: " << debugger_shell.layout().dockspace_id << '\n';
+        std::cout << "Debugger visible panels: " << debugger_snapshot.visible_panel_count << '\n';
+    }
     return 0;
 }
 

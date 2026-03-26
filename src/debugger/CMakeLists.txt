@@ -1,2 +1,3 @@
-add_library(vanguard8_debugger INTERFACE)
-target_include_directories(vanguard8_debugger INTERFACE ${PROJECT_SOURCE_DIR}/src)
+add_library(vanguard8_debugger debugger.cpp)
+target_include_directories(vanguard8_debugger PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_link_libraries(vanguard8_debugger PUBLIC vanguard8_core)

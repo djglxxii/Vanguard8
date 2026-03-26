@@ -14,6 +14,7 @@ add_executable(
     catch_main.cpp
     test_audio.cpp
     test_scaffold.cpp
+    test_debugger.cpp
     test_bus.cpp
     test_cpu.cpp
     test_input.cpp
@@ -24,7 +25,7 @@ add_executable(
     ../src/frontend/rom_loader.cpp
     ../src/frontend/video_fixture.cpp
 )
-target_link_libraries(vanguard8_tests PRIVATE Catch2::Catch2 vanguard8_core)
+target_link_libraries(vanguard8_tests PRIVATE Catch2::Catch2 vanguard8_core vanguard8_debugger)
 target_include_directories(vanguard8_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
 include(Catch)

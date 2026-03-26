@@ -1,6 +1,6 @@
 # M09-T02 — Add CPU, Memory, and VDP Inspection Panels
 
-Status: `planned`
+Status: `active`
 Milestone: `9`
 Depends on: `M09-T01`
 

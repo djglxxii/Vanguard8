@@ -5,9 +5,16 @@ add_library(
     logging.cpp
     scheduler.cpp
     config.cpp
+    audio/audio_mixer.cpp
+    audio/ay8910.cpp
+    audio/ayumi_vendor.cpp
+    audio/msm5205_adapter.cpp
+    audio/opm_vendor.cpp
+    audio/ym2151.cpp
     io/controller.cpp
     video/v9938.cpp
     cpu/z180_adapter.cpp
+    ../../third_party/msm5205/msm5205_core.cpp
     ../../third_party/z180/z180_core.cpp
     memory/cartridge.cpp
     memory/sram.cpp

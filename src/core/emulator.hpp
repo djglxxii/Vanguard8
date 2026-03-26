@@ -52,6 +52,8 @@ class Emulator {
     [[nodiscard]] auto current_scanline() const -> int;
     [[nodiscard]] auto event_log() const -> const std::vector<EventLogEntry>&;
     [[nodiscard]] auto event_log_digest() const -> std::uint64_t;
+    [[nodiscard]] auto audio_output_digest() const -> std::uint64_t;
+    [[nodiscard]] auto audio_output_sample_count() const -> std::uint64_t;
     [[nodiscard]] auto bus() const -> const Bus&;
     [[nodiscard]] auto mutable_bus() -> Bus&;
     [[nodiscard]] auto vdp_a() const -> const video::V9938&;
@@ -76,7 +78,6 @@ class Emulator {
     std::uint64_t next_vclk_tick_ = 0;
     int current_scanline_ = 0;
     bool paused_ = false;
-    VclkRate vclk_rate_ = VclkRate::stopped;
     std::vector<EventLogEntry> event_log_;
     std::size_t loaded_rom_size_ = memory::CartridgeSlot::fixed_region_size;
 

@@ -1,6 +1,6 @@
 # M08-T02 — Implement HD64180 Timers and Counters
 
-Status: `planned`
+Status: `active`
 Milestone: `8`
 Depends on: `M08-T01`
 

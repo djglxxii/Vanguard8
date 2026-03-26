@@ -22,8 +22,8 @@ Emulator::Emulator() : bus_(memory::CartridgeSlot(make_idle_rom())), cpu_(bus_) 
 auto Emulator::build_summary() const -> std::string {
     std::ostringstream summary;
     summary << "Vanguard 8 Emulator " << "0.1.0" << '\n';
-    summary << "Build: milestone 6" << '\n';
-    summary << "Core status: ROM workflow, controller input, and event-scheduled runtime";
+    summary << "Build: milestone 7" << '\n';
+    summary << "Core status: deterministic video scheduler with integrated YM2151, AY-3-8910, and MSM5205 audio";
     return summary.str();
 }
 
@@ -40,7 +40,6 @@ void Emulator::reset() {
     next_vclk_tick_ = 0;
     current_scanline_ = 0;
     event_log_.clear();
-    populate_scheduler_for_frame();
 }
 
 void Emulator::load_rom_image(const std::vector<std::uint8_t>& rom_image) {
@@ -56,7 +55,6 @@ void Emulator::load_rom_image(const std::vector<std::uint8_t>& rom_image) {
     next_vclk_tick_ = 0;
     current_scanline_ = 0;
     event_log_.clear();
-    populate_scheduler_for_frame();
 }
 
 void Emulator::pause() { paused_ = true; }
@@ -66,13 +64,37 @@ void Emulator::resume() { paused_ = false; }
 auto Emulator::paused() const -> bool { return paused_; }
 
 void Emulator::set_vclk_rate(const VclkRate rate) {
-    vclk_rate_ = rate;
+    switch (rate) {
+    case VclkRate::stopped:
+        bus_.write_port(0x60, 0x83);
+        break;
+    case VclkRate::hz_4000:
+        bus_.write_port(0x60, 0x00);
+        break;
+    case VclkRate::hz_6000:
+        bus_.write_port(0x60, 0x01);
+        break;
+    case VclkRate::hz_8000:
+        bus_.write_port(0x60, 0x02);
+        break;
+    }
     next_vclk_tick_ = 0;
     scheduler_.reset();
-    populate_scheduler_for_frame();
 }
 
-auto Emulator::vclk_rate() const -> VclkRate { return vclk_rate_; }
+auto Emulator::vclk_rate() const -> VclkRate {
+    switch (bus_.msm5205().vclk_rate()) {
+    case audio::Msm5205Rate::hz_4000:
+        return VclkRate::hz_4000;
+    case audio::Msm5205Rate::hz_6000:
+        return VclkRate::hz_6000;
+    case audio::Msm5205Rate::hz_8000:
+        return VclkRate::hz_8000;
+    case audio::Msm5205Rate::stopped:
+        return VclkRate::stopped;
+    }
+    return VclkRate::stopped;
+}
 
 void Emulator::run_frames(const std::uint64_t frame_count) {
     if (paused_) {
@@ -122,6 +144,12 @@ auto Emulator::event_log_digest() const -> std::uint64_t {
         }
     }
     return digest;
+}
+
+auto Emulator::audio_output_digest() const -> std::uint64_t { return bus_.audio_mixer().output_digest(); }
+
+auto Emulator::audio_output_sample_count() const -> std::uint64_t {
+    return bus_.audio_mixer().total_output_sample_count();
 }
 
 auto Emulator::bus() const -> const Bus& { return bus_; }
@@ -203,7 +231,7 @@ void Emulator::populate_scheduler_for_frame() {
         static_cast<int>(timing::total_lines)
     );
 
-    if (vclk_rate_ == VclkRate::stopped) {
+    if (vclk_rate() == VclkRate::stopped) {
         return;
     }
 
@@ -215,9 +243,7 @@ void Emulator::populate_scheduler_for_frame() {
 }
 
 void Emulator::run_single_frame() {
-    if (scheduler_.empty()) {
-        populate_scheduler_for_frame();
-    }
+    populate_scheduler_for_frame();
 
     while (const auto next = scheduler_.pop()) {
         run_cpu_until(next->master_cycle_due);
@@ -226,7 +252,6 @@ void Emulator::run_single_frame() {
             ++completed_frames_;
             frame_start_cycle_ = next->master_cycle_due;
             current_scanline_ = 0;
-            populate_scheduler_for_frame();
             break;
         }
     }
@@ -238,6 +263,7 @@ void Emulator::run_cpu_until(const std::uint64_t target_master_cycle) {
     }
 
     const auto delta = target_master_cycle - master_cycle_;
+    bus_.run_audio(delta);
     cpu_master_remainder_ += delta;
     cpu_tstates_ += cpu_master_remainder_ / timing::cpu_divider;
     cpu_master_remainder_ %= timing::cpu_divider;
@@ -260,8 +286,10 @@ void Emulator::fire_event(const Event& event) {
         break;
     case EventType::vblank_end:
         current_scanline_ = 0;
+        bus_.end_audio_frame();
         break;
     case EventType::vclk:
+        bus_.trigger_msm5205_vclk();
         break;
     }
 
@@ -275,7 +303,7 @@ void Emulator::fire_event(const Event& event) {
 }
 
 auto Emulator::vclk_rate_hz() const -> std::uint32_t {
-    switch (vclk_rate_) {
+    switch (vclk_rate()) {
     case VclkRate::stopped:
         return 0;
     case VclkRate::hz_4000:

@@ -80,25 +80,45 @@ TEST_CASE("unmapped memory and I/O return 0xFF", "[bus]") {
     REQUIRE(bus.read_port(0x7F) == 0xFF);
 }
 
-TEST_CASE("documented non-video ports have inert stubs while VDP ports are routed", "[bus]") {
+TEST_CASE("documented audio and video ports are routed through device surfaces", "[bus]") {
     vanguard8::core::Bus bus{};
 
     bus.write_port(0x40, 0x11);
-    bus.write_port(0x51, 0x22);
+    bus.write_port(0x41, 0x22);
+    bus.write_port(0x50, 0x07);
+    bus.write_port(0x51, 0x3E);
+    bus.write_port(0x60, 0x01);
+    bus.write_port(0x61, 0x0B);
     bus.write_port(0x80, 0x33);
 
     const auto* ym2151 = bus.port_stub(0x40);
+    const auto* ym_data = bus.port_stub(0x41);
+    const auto* ay_latch = bus.port_stub(0x50);
     const auto* ay_data = bus.port_stub(0x51);
+    const auto* msm_control = bus.port_stub(0x60);
+    const auto* msm_data = bus.port_stub(0x61);
     const auto* vdp_a_data = bus.port_stub(0x80);
 
     REQUIRE(ym2151 != nullptr);
+    REQUIRE(ym_data != nullptr);
+    REQUIRE(ay_latch != nullptr);
     REQUIRE(ay_data != nullptr);
+    REQUIRE(msm_control != nullptr);
+    REQUIRE(msm_data != nullptr);
     REQUIRE(vdp_a_data != nullptr);
 
     REQUIRE(ym2151->last_written == 0x11);
-    REQUIRE(ay_data->last_written == 0x22);
+    REQUIRE(ym_data->last_written == 0x22);
+    REQUIRE(ay_latch->last_written == 0x07);
+    REQUIRE(ay_data->last_written == 0x3E);
+    REQUIRE(msm_control->last_written == 0x01);
+    REQUIRE(msm_data->last_written == 0x0B);
     REQUIRE(vdp_a_data->last_written == 0x33);
     REQUIRE(bus.read_port(0x00) == 0xFF);
+    REQUIRE(bus.ym2151().latched_address() == 0x11);
+    REQUIRE(bus.read_port(0x51) == 0x3E);
+    REQUIRE(bus.msm5205().control() == 0x01);
+    REQUIRE(bus.msm5205().latched_nibble() == 0x0B);
     REQUIRE(bus.vdp_a().vram()[0x0000] == 0x33);
     REQUIRE(bus.read_port(0x81) == 0x00);
 }

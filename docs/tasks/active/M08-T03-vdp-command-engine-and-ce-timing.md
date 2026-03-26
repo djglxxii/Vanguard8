@@ -1,6 +1,6 @@
 # M08-T03 — Implement VDP Command Engine and CE Timing
 
-Status: `planned`
+Status: `active`
 Milestone: `8`
 Depends on: `M08-T02`
 

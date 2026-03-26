@@ -81,6 +81,13 @@ auto Bus::read_port(const std::uint16_t port) -> std::uint8_t {
     }
 
     switch (port) {
+    case 0x40: {
+        const auto value = ym2151_.read_status();
+        set_ym2151_timer(ym2151_.irq_pending());
+        return value;
+    }
+    case 0x51:
+        return ay8910_.read_data();
     case 0x80:
         return vdp_a_.read_data();
     case 0x81: {
@@ -116,6 +123,28 @@ void Bus::write_port(const std::uint16_t port, const std::uint8_t value) {
     }
 
     switch (port) {
+    case 0x40:
+        ym2151_.write_address(value);
+        return;
+    case 0x41:
+        ym2151_.write_data(value);
+        set_ym2151_timer(ym2151_.irq_pending());
+        return;
+    case 0x50:
+        ay8910_.write_address(value);
+        return;
+    case 0x51:
+        ay8910_.write_data(value);
+        return;
+    case 0x60:
+        msm5205_.write_control(value);
+        if (!msm5205_.vclk_enabled()) {
+            int1_pending_count_ = 0;
+        }
+        return;
+    case 0x61:
+        msm5205_.write_data(value);
+        return;
     case 0x80:
         vdp_a_.write_data(value);
         return;
@@ -179,7 +208,7 @@ auto Bus::int0_asserted() const -> bool {
     return int0_state_.vdp_a_vblank || int0_state_.vdp_a_hblank || int0_state_.ym2151_timer;
 }
 
-auto Bus::int1_asserted() const -> bool { return int1_asserted_; }
+auto Bus::int1_asserted() const -> bool { return int1_pending_count_ > 0U; }
 
 auto Bus::controller_ports() const -> const io::ControllerPorts& { return controller_ports_; }
 
@@ -193,6 +222,51 @@ auto Bus::mutable_vdp_a() -> video::V9938& { return vdp_a_; }
 
 auto Bus::mutable_vdp_b() -> video::V9938& { return vdp_b_; }
 
+auto Bus::ym2151() const -> const audio::Ym2151& { return ym2151_; }
+
+auto Bus::ay8910() const -> const audio::Ay8910& { return ay8910_; }
+
+auto Bus::msm5205() const -> const audio::Msm5205Adapter& { return msm5205_; }
+
+auto Bus::audio_mixer() const -> const audio::AudioMixer& { return audio_mixer_; }
+
+auto Bus::mutable_ym2151() -> audio::Ym2151& { return ym2151_; }
+
+auto Bus::mutable_ay8910() -> audio::Ay8910& { return ay8910_; }
+
+auto Bus::mutable_msm5205() -> audio::Msm5205Adapter& { return msm5205_; }
+
+auto Bus::mutable_audio_mixer() -> audio::AudioMixer& { return audio_mixer_; }
+
+void Bus::run_audio(const std::uint64_t master_cycles) {
+    for (std::uint64_t cycle = 0; cycle < master_cycles; ++cycle) {
+        ym2151_.advance_master_cycle();
+        ay8910_.advance_master_cycle();
+
+        if (audio_mixer_.advance_common_clock()) {
+            const auto ym_sample = ym2151_.current_output();
+            const auto ay_mono = ay8910_.consume_common_rate_sample();
+            const auto msm_mono = msm5205_.current_output();
+            audio_mixer_.set_common_sample(audio::StereoSample{
+                .left = ym_sample.left + ay_mono + msm_mono,
+                .right = ym_sample.right + ay_mono + msm_mono,
+            });
+        }
+
+        audio_mixer_.advance_output_clock();
+    }
+
+    set_ym2151_timer(ym2151_.irq_pending());
+}
+
+void Bus::end_audio_frame() { audio_mixer_.end_frame(); }
+
+void Bus::trigger_msm5205_vclk() {
+    if (msm5205_.trigger_vclk()) {
+        set_int1(true);
+    }
+}
+
 void Bus::sync_vdp_interrupt_lines() {
     int0_state_.vdp_a_vblank = vdp_a_.vblank_irq_pending();
     int0_state_.vdp_a_hblank = vdp_a_.hblank_irq_pending();
@@ -200,7 +274,16 @@ void Bus::sync_vdp_interrupt_lines() {
 
 void Bus::set_ym2151_timer(const bool asserted) { int0_state_.ym2151_timer = asserted; }
 
-void Bus::set_int1(const bool asserted) { int1_asserted_ = asserted; }
+void Bus::set_int1(const bool asserted) {
+    if (asserted) {
+        ++int1_pending_count_;
+        return;
+    }
+
+    if (int1_pending_count_ > 0U) {
+        --int1_pending_count_;
+    }
+}
 
 void Bus::record_warning(std::string message) { warn(std::move(message)); }
 

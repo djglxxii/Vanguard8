@@ -1,6 +1,6 @@
 # M08-T01 — Implement DMA Transfer Paths
 
-Status: `planned`
+Status: `active`
 Milestone: `8`
 Depends on: `M07-T03`
 

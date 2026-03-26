@@ -12,6 +12,7 @@ endif()
 add_executable(
     vanguard8_tests
     catch_main.cpp
+    test_audio.cpp
     test_scaffold.cpp
     test_bus.cpp
     test_cpu.cpp

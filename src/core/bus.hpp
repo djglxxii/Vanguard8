@@ -1,5 +1,9 @@
 #pragma once
 
+#include "core/audio/audio_mixer.hpp"
+#include "core/audio/ay8910.hpp"
+#include "core/audio/msm5205_adapter.hpp"
+#include "core/audio/ym2151.hpp"
 #include "core/video/v9938.hpp"
 #include "core/io/controller.hpp"
 #include "core/memory/cartridge.hpp"
@@ -54,6 +58,17 @@ class Bus {
     [[nodiscard]] auto vdp_b() const -> const video::V9938&;
     [[nodiscard]] auto mutable_vdp_a() -> video::V9938&;
     [[nodiscard]] auto mutable_vdp_b() -> video::V9938&;
+    [[nodiscard]] auto ym2151() const -> const audio::Ym2151&;
+    [[nodiscard]] auto ay8910() const -> const audio::Ay8910&;
+    [[nodiscard]] auto msm5205() const -> const audio::Msm5205Adapter&;
+    [[nodiscard]] auto audio_mixer() const -> const audio::AudioMixer&;
+    [[nodiscard]] auto mutable_ym2151() -> audio::Ym2151&;
+    [[nodiscard]] auto mutable_ay8910() -> audio::Ay8910&;
+    [[nodiscard]] auto mutable_msm5205() -> audio::Msm5205Adapter&;
+    [[nodiscard]] auto mutable_audio_mixer() -> audio::AudioMixer&;
+    void run_audio(std::uint64_t master_cycles);
+    void end_audio_frame();
+    void trigger_msm5205_vclk();
     void sync_vdp_interrupt_lines();
     void set_ym2151_timer(bool asserted);
     void set_int1(bool asserted);
@@ -65,10 +80,14 @@ class Bus {
     std::unordered_map<std::uint16_t, PortStubState> port_stubs_;
     std::vector<std::string> warnings_;
     Int0State int0_state_{};
-    bool int1_asserted_ = false;
+    std::uint32_t int1_pending_count_ = 0;
     io::ControllerPorts controller_ports_{};
     video::V9938 vdp_a_{};
     video::V9938 vdp_b_{};
+    audio::Ym2151 ym2151_{};
+    audio::Ay8910 ay8910_{};
+    audio::Msm5205Adapter msm5205_{};
+    audio::AudioMixer audio_mixer_{};
 
     void register_port(
         std::uint16_t port,

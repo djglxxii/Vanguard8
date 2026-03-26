@@ -1,6 +1,6 @@
 # M06-T02 — Add Config Creation and ROM Open Flow
 
-Status: `planned`
+Status: `active`
 Milestone: `6`
 Depends on: `M06-T01`
 

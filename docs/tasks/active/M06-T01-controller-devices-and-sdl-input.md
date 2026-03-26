@@ -1,6 +1,6 @@
 # M06-T01 — Add Controller Devices and SDL Input Mapping
 
-Status: `planned`
+Status: `active`
 Milestone: `6`
 Depends on: `M05-T03`
 

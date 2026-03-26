@@ -1,6 +1,6 @@
 # M06-T03 — Add Minimal Frontend UX Controls
 
-Status: `planned`
+Status: `active`
 Milestone: `6`
 Depends on: `M06-T02`
 

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/video/v9938.hpp"
+#include "core/io/controller.hpp"
 #include "core/memory/cartridge.hpp"
 #include "core/memory/sram.hpp"
 
@@ -47,6 +48,8 @@ class Bus {
     [[nodiscard]] auto int0_state() const -> const Int0State&;
     [[nodiscard]] auto int0_asserted() const -> bool;
     [[nodiscard]] auto int1_asserted() const -> bool;
+    [[nodiscard]] auto controller_ports() const -> const io::ControllerPorts&;
+    [[nodiscard]] auto mutable_controller_ports() -> io::ControllerPorts&;
     [[nodiscard]] auto vdp_a() const -> const video::V9938&;
     [[nodiscard]] auto vdp_b() const -> const video::V9938&;
     [[nodiscard]] auto mutable_vdp_a() -> video::V9938&;
@@ -63,6 +66,7 @@ class Bus {
     std::vector<std::string> warnings_;
     Int0State int0_state_{};
     bool int1_asserted_ = false;
+    io::ControllerPorts controller_ports_{};
     video::V9938 vdp_a_{};
     video::V9938 vdp_b_{};
 

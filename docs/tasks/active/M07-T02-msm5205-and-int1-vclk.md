@@ -1,6 +1,6 @@
 # M07-T02 — Integrate MSM5205 and INT1-Driven /VCLK Timing
 
-Status: `planned`
+Status: `active`
 Milestone: `7`
 Depends on: `M07-T01`
 

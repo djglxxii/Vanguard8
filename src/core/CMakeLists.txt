@@ -5,6 +5,7 @@ add_library(
     logging.cpp
     scheduler.cpp
     config.cpp
+    io/controller.cpp
     video/v9938.cpp
     cpu/z180_adapter.cpp
     ../../third_party/z180/z180_core.cpp

@@ -1,6 +1,6 @@
 # M07-T01 — Integrate YM2151 and AY-3-8910 Register Surfaces
 
-Status: `planned`
+Status: `active`
 Milestone: `7`
 Depends on: `M06-T03`
 

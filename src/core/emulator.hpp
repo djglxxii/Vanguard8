@@ -2,6 +2,7 @@
 
 #include "core/bus.hpp"
 #include "core/cpu/z180_adapter.hpp"
+#include "core/memory/cartridge.hpp"
 #include "core/scheduler.hpp"
 #include "core/video/v9938.hpp"
 
@@ -33,6 +34,7 @@ class Emulator {
     [[nodiscard]] auto build_summary() const -> std::string;
 
     void reset();
+    void load_rom_image(const std::vector<std::uint8_t>& rom_image);
     void pause();
     void resume();
     [[nodiscard]] auto paused() const -> bool;
@@ -54,6 +56,7 @@ class Emulator {
     [[nodiscard]] auto mutable_bus() -> Bus&;
     [[nodiscard]] auto vdp_a() const -> const video::V9938&;
     [[nodiscard]] auto vdp_b() const -> const video::V9938&;
+    [[nodiscard]] auto loaded_rom_size() const -> std::size_t;
 
     [[nodiscard]] auto scheduler_size() const -> std::size_t;
 
@@ -75,6 +78,7 @@ class Emulator {
     bool paused_ = false;
     VclkRate vclk_rate_ = VclkRate::stopped;
     std::vector<EventLogEntry> event_log_;
+    std::size_t loaded_rom_size_ = memory::CartridgeSlot::fixed_region_size;
 
     void populate_scheduler_for_frame();
     void run_single_frame();

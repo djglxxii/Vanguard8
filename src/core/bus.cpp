@@ -76,6 +76,10 @@ void Bus::write_memory(const std::uint32_t physical_address, const std::uint8_t 
 }
 
 auto Bus::read_port(const std::uint16_t port) -> std::uint8_t {
+    if (port == 0x00 || port == 0x01) {
+        return controller_ports_.read_port(port);
+    }
+
     switch (port) {
     case 0x80:
         return vdp_a_.read_data();
@@ -176,6 +180,10 @@ auto Bus::int0_asserted() const -> bool {
 }
 
 auto Bus::int1_asserted() const -> bool { return int1_asserted_; }
+
+auto Bus::controller_ports() const -> const io::ControllerPorts& { return controller_ports_; }
+
+auto Bus::mutable_controller_ports() -> io::ControllerPorts& { return controller_ports_; }
 
 auto Bus::vdp_a() const -> const video::V9938& { return vdp_a_; }
 

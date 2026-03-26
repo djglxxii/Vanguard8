@@ -1,6 +1,6 @@
 # M07-T03 — Add Mixer, Resampler, and Deterministic Audio Hashing
 
-Status: `planned`
+Status: `active`
 Milestone: `7`
 Depends on: `M07-T02`
 

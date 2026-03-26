@@ -22,13 +22,30 @@ Emulator::Emulator() : bus_(memory::CartridgeSlot(make_idle_rom())), cpu_(bus_) 
 auto Emulator::build_summary() const -> std::string {
     std::ostringstream summary;
     summary << "Vanguard 8 Emulator " << "0.1.0" << '\n';
-    summary << "Build: milestone 5" << '\n';
-    summary << "Core status: dual-VDP video and event-scheduled runtime";
+    summary << "Build: milestone 6" << '\n';
+    summary << "Core status: ROM workflow, controller input, and event-scheduled runtime";
     return summary.str();
 }
 
 void Emulator::reset() {
     bus_ = Bus(memory::CartridgeSlot(make_idle_rom()));
+    loaded_rom_size_ = memory::CartridgeSlot::fixed_region_size;
+    cpu_.reset();
+    scheduler_.reset();
+    master_cycle_ = 0;
+    cpu_tstates_ = 0;
+    cpu_master_remainder_ = 0;
+    completed_frames_ = 0;
+    frame_start_cycle_ = 0;
+    next_vclk_tick_ = 0;
+    current_scanline_ = 0;
+    event_log_.clear();
+    populate_scheduler_for_frame();
+}
+
+void Emulator::load_rom_image(const std::vector<std::uint8_t>& rom_image) {
+    bus_ = Bus(memory::CartridgeSlot(rom_image));
+    loaded_rom_size_ = rom_image.size();
     cpu_.reset();
     scheduler_.reset();
     master_cycle_ = 0;
@@ -114,6 +131,8 @@ auto Emulator::mutable_bus() -> Bus& { return bus_; }
 auto Emulator::vdp_a() const -> const video::V9938& { return bus_.vdp_a(); }
 
 auto Emulator::vdp_b() const -> const video::V9938& { return bus_.vdp_b(); }
+
+auto Emulator::loaded_rom_size() const -> std::size_t { return loaded_rom_size_; }
 
 auto Emulator::scheduler_size() const -> std::size_t { return scheduler_.size(); }
 

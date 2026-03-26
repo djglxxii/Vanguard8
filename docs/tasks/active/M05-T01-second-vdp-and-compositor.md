@@ -1,6 +1,6 @@
 # M05-T01 — Add the Second VDP and the Compositor
 
-Status: `planned`
+Status: `active`
 Milestone: `5`
 Depends on: `M04-T03`
 

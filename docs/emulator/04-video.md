@@ -2,12 +2,16 @@
 
 ## Architecture Summary
 
-The video system is three objects: `VDP-A`, `VDP-B`, and `Compositor`.
-Each V9938 instance is fully independent. The compositor is a thin per-pixel
-mux that models the 74LS257 hardware (see `docs/spec/02-video.md`).
+The full video design is three objects: `VDP-A`, `VDP-B`, and `Compositor`.
+Milestone 4 implements only the single-VDP subset needed for the first
+Graphic 4 frame path.
 
-The display pipeline ends at an OpenGL texture (256×212, RGB888) which is
-scaled to the host window by a GLSL shader.
+In the current repo, the display pipeline ends at a deterministic upload buffer
+in `src/frontend/display.*` rather than a real SDL/OpenGL binding. The shader
+files remain part of the repo asset layout, but the verified milestone-4 path
+is:
+
+`single VDP -> RGB888 framebuffer -> upload buffer -> headless PPM dump`
 
 ---
 
@@ -146,6 +150,9 @@ Both reads de-assert INT if no other source remains pending.
 
 ## Compositor (`src/core/video/compositor.hpp`)
 
+Milestone 4 uses only the single-VDP expansion path. Dual-VDP mux behavior
+remains for milestone 5.
+
 ```cpp
 // Called once per active scanline after both VDPs have been ticked
 void composite(
@@ -199,26 +206,20 @@ When a layer is hidden, the compositor treats those pixels as index 0
 ## Display Pipeline (`src/frontend/display.hpp`)
 
 ```
-V9938 line buffers (x2)
+V9938 line buffer
         │
-  Compositor → 256×212 RGB888 framebuffer (CPU-side array)
+  Single-VDP RGB expansion → 256×212 RGB888 framebuffer
         │
-  glTexSubImage2D → OpenGL texture (256×212)
+  Display upload buffer (`Display::upload_frame`)
         │
-  Fullscreen quad draw → GLSL shader
-        │
-  Host window (scaled output)
+  Headless PPM dump / frontend digest output
 ```
 
-### OpenGL Texture
+### Milestone-4 Upload Surface
 
-```cpp
-// One texture, updated every frame
-GLuint framebuffer_tex;  // GL_RGB8, 256×212, GL_NEAREST filtering
-```
-
-`GL_NEAREST` filtering is mandatory for integer scaling. Linear filtering
-would blur the pixels.
+`Display` stores the most recently uploaded 256×212 RGB888 frame, exposes a
+stable digest for tests, and can emit a binary PPM dump for regression assets.
+This is the current verified stand-in for the eventual SDL/OpenGL upload path.
 
 ### GLSL Shaders
 

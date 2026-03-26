@@ -3,8 +3,13 @@
 #include "core/config.hpp"
 #include "core/emulator.hpp"
 #include "core/logging.hpp"
+#include "core/video/compositor.hpp"
+#include "core/video/v9938.hpp"
+#include "frontend/display.hpp"
+#include "frontend/video_fixture.hpp"
 
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <string>
 
@@ -18,6 +23,8 @@ auto run_headless_app(int argc, char** argv) -> int {
     bool start_paused = false;
     bool step_one_frame = false;
     auto vclk_rate = core::VclkRate::stopped;
+    bool dump_fixture = false;
+    std::filesystem::path dump_path;
 
     try {
         for (int index = 1; index < argc; ++index) {
@@ -38,8 +45,13 @@ auto run_headless_app(int argc, char** argv) -> int {
                 vclk_rate = core::Emulator::parse_vclk_rate(argv[++index]);
                 continue;
             }
+            if (arg == "--dump-frame" && (index + 1) < argc) {
+                dump_fixture = true;
+                dump_path = argv[++index];
+                continue;
+            }
             if (arg == "--help") {
-                std::cout << "Usage: vanguard8_headless [--frames N] [--paused] [--step-frame] [--vclk off|4000|6000|8000]\n";
+                std::cout << "Usage: vanguard8_headless [--frames N] [--paused] [--step-frame] [--vclk off|4000|6000|8000] [--dump-frame path.ppm]\n";
                 return 0;
             }
         }
@@ -56,6 +68,18 @@ auto run_headless_app(int argc, char** argv) -> int {
 
     core::log(core::LogLevel::info, "Launching deterministic headless runtime.");
     std::cout << emulator.build_summary() << '\n';
+
+    if (dump_fixture) {
+        core::video::V9938 vdp;
+        build_video_fixture_frame(vdp);
+        Display display;
+        display.upload_frame(core::video::Compositor::compose_single_vdp(vdp));
+        display.dump_ppm_file(dump_path);
+        std::cout << "Headless status: frame dump complete" << '\n';
+        std::cout << "Frame dump path: " << dump_path.string() << '\n';
+        std::cout << "Frame dump digest: " << display.frame_digest() << '\n';
+        return 0;
+    }
 
     if (step_one_frame) {
         emulator.step_frame();

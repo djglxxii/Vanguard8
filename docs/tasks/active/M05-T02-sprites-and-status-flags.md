@@ -1,6 +1,6 @@
 # M05-T02 — Implement Sprites and Covered Status Flags
 
-Status: `planned`
+Status: `active`
 Milestone: `5`
 Depends on: `M05-T01`
 

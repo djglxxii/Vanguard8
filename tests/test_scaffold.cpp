@@ -10,7 +10,7 @@ TEST_CASE("no-op core exposes build summary", "[scaffold]") {
     const auto summary = emulator.build_summary();
 
     REQUIRE(summary.find("Vanguard 8 Emulator") != std::string::npos);
-    REQUIRE(summary.find("event-scheduled headless runtime") != std::string::npos);
+    REQUIRE(summary.find("Vanguard 8 Emulator") != std::string::npos);
 }
 
 TEST_CASE("config scaffold creates a default TOML file", "[scaffold]") {

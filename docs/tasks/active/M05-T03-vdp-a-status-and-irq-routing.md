@@ -1,6 +1,6 @@
 # M05-T03 — Implement VDP-A Status Semantics and IRQ Routing
 
-Status: `planned`
+Status: `active`
 Milestone: `5`
 Depends on: `M05-T02`
 

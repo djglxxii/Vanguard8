@@ -41,6 +41,25 @@ void write_vdp_register(
     bus.write_port(control_port, static_cast<std::uint8_t>(0x80U | reg));
 }
 
+void write_internal_16(
+    vanguard8::core::cpu::Z180Adapter& cpu,
+    const std::uint8_t low_port,
+    const std::uint16_t value
+) {
+    cpu.out0(low_port, static_cast<std::uint8_t>(value & 0x00FFU));
+    cpu.out0(low_port + 1U, static_cast<std::uint8_t>((value >> 8U) & 0x00FFU));
+}
+
+void write_internal_20(
+    vanguard8::core::cpu::Z180Adapter& cpu,
+    const std::uint8_t low_port,
+    const std::uint32_t value
+) {
+    cpu.out0(low_port, static_cast<std::uint8_t>(value & 0x0000FFU));
+    cpu.out0(low_port + 1U, static_cast<std::uint8_t>((value >> 8U) & 0x0000FFU));
+    cpu.out0(low_port + 2U, static_cast<std::uint8_t>((value >> 16U) & 0x00000FU));
+}
+
 }  // namespace
 
 TEST_CASE("z180 adapter reset matches documented HD64180 defaults", "[cpu]") {
@@ -90,6 +109,62 @@ TEST_CASE("Illegal BBR writes warn and alias the bank window into SRAM space", "
     cpu.out0(0x39, 0xF0);
 
     REQUIRE(cpu.translate_logical_address(0x4000) == 0xF0000);
+    REQUIRE_FALSE(bus.warnings().empty());
+}
+
+TEST_CASE("DMA channel 0 copies between physical memory regions", "[cpu]") {
+    vanguard8::core::Bus bus{};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    bus.write_memory(0xF0000, 0x12);
+    bus.write_memory(0xF0001, 0x34);
+    bus.write_memory(0xF0002, 0x56);
+    bus.write_memory(0xF0003, 0x78);
+
+    write_internal_20(cpu, 0x20, 0xF0000);
+    write_internal_20(cpu, 0x23, 0xF0010);
+    write_internal_16(cpu, 0x26, 4);
+
+    cpu.execute_dma(vanguard8::core::cpu::DmaChannel::channel0);
+
+    REQUIRE(bus.read_memory(0xF0010) == 0x12);
+    REQUIRE(bus.read_memory(0xF0011) == 0x34);
+    REQUIRE(bus.read_memory(0xF0012) == 0x56);
+    REQUIRE(bus.read_memory(0xF0013) == 0x78);
+}
+
+TEST_CASE("DMA channel 1 reuses the bus port dispatch path used by CPU OUT", "[cpu]") {
+    vanguard8::core::Bus bus{};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    bus.write_memory(0xF0000, 0x0A);
+    write_internal_20(cpu, 0x28, 0xF0000);
+    write_internal_16(cpu, 0x2B, 0x0050);
+    write_internal_16(cpu, 0x2E, 1);
+
+    bus.write_port(0x50, 0x03);
+    REQUIRE(bus.ay8910().selected_register() == 0x03);
+
+    cpu.execute_dma(vanguard8::core::cpu::DmaChannel::channel1);
+
+    REQUIRE(bus.ay8910().selected_register() == 0x0A);
+    REQUIRE(cpu.in0(0x2B) == 0x50);
+    REQUIRE(cpu.in0(0x2C) == 0x00);
+}
+
+TEST_CASE("DMA execution refuses unsupported mode and control values", "[cpu]") {
+    vanguard8::core::Bus bus{};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    bus.write_memory(0xF0000, 0x9A);
+    write_internal_20(cpu, 0x20, 0xF0000);
+    write_internal_20(cpu, 0x23, 0xF0010);
+    write_internal_16(cpu, 0x26, 1);
+    cpu.out0(0x31, 0x01);
+
+    cpu.execute_dma(vanguard8::core::cpu::DmaChannel::channel0);
+
+    REQUIRE(bus.read_memory(0xF0010) == 0x00);
     REQUIRE_FALSE(bus.warnings().empty());
 }
 

@@ -1,11 +1,10 @@
 #pragma once
 
 #include "core/bus.hpp"
+#include "third_party/z180/z180_core.hpp"
 
-#include <cstddef>
 #include <cstdint>
 #include <optional>
-#include <string>
 
 namespace vanguard8::core::cpu {
 
@@ -54,24 +53,7 @@ class Z180Adapter {
 
   private:
     core::Bus& bus_;
-    std::uint16_t pc_ = 0x0000;
-    std::uint16_t hl_ = 0x0000;
-    std::uint8_t a_ = 0x00;
-    std::uint8_t i_ = 0x00;
-    std::uint8_t il_ = 0x00;
-    std::uint8_t itc_ = 0x00;
-    std::uint8_t cbar_ = 0xFF;
-    std::uint8_t cbr_ = 0x00;
-    std::uint8_t bbr_ = 0x00;
-    std::uint8_t interrupt_mode_ = 0x00;
-    bool iff1_ = false;
-    bool iff2_ = false;
-    bool halted_ = false;
-
-    [[nodiscard]] auto fetch_byte() -> std::uint8_t;
-    [[nodiscard]] auto fetch_word() -> std::uint16_t;
-    void execute_one();
-    void maybe_warn_illegal_bbr();
+    third_party::z180::Core core_;
 };
 
 }  // namespace vanguard8::core::cpu

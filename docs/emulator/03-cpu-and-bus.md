@@ -2,12 +2,15 @@
 
 ## HD64180 / Z180 Core
 
-The CPU is emulated using the **MAME Z180 core** extracted from
-`src/devices/cpu/z180/`. The Z180 and HD64180 are widely described as the same
-silicon (Zilog distributed the HD64180 design under the Z180 name), but this
-has not been independently audited for this project — see the compatibility
-note below before treating it as settled. The core covers the complete Z80
-instruction set plus HD64180 extensions and internal peripherals.
+The CPU is currently emulated using a **standalone milestone-2 extraction**
+derived from MAME's Z180 core in `src/devices/cpu/z180/`. The extracted code
+is vendored in `third_party/z180/` and is intentionally limited to the reset,
+MMU, interrupt, and boot-test opcode surface needed by milestone 2.
+
+The Z180 and HD64180 are widely described as the same silicon (Zilog
+distributed the HD64180 design under the Z180 name), but this has not been
+independently audited for this project — see the compatibility note below
+before treating it as settled.
 
 ### Z180 / HD64180 Compatibility
 
@@ -24,26 +27,30 @@ the Hitachi HD64180 Product Specification and the Zilog Z180 Product
 Specification. Discrepancies, if any, should be logged as spec conflicts and
 resolved before that feature is tested against real game code.
 
-### What the extracted core provides
+### What the extracted core provides today
 
-- Full Z80 instruction set with correct T-state counts
-- HD64180 additional instructions: `MLT`, `IN0`, `OUT0`, `TST`, `TSTIO`,
-  `OTIM`, `OTDM`, `OTIMR`, `OTDMR`, `SLP`
-- Internal MMU (CBAR, CBR, BBR) with 16→20-bit physical address translation
-- Dual-channel DMA controller (channels 0 and 1)
-- Two 16-bit timer/counters with interrupt output
-- INT0 response (IM1: call 0x0038)
-- INT1 / INT2 mode-independent vectored response (I/IL registers)
-- DRAM refresh counter (R register)
+- Reset behavior pinned to the repo's documented HD64180 boot defaults
+- Internal MMU (`CBAR`, `CBR`, `BBR`) with Vanguard 8 physical-address
+  translation
+- `OUT0`/`IN0` access for the internal registers required by milestone 2
+- INT0 IM1 service and INT1 vectored service via `I` and `IL`
+- The opcode subset needed by the milestone-2 boot/MMU/interrupt tests
+
+### What is still deferred
+
+- Full Z80/Z180 opcode coverage
+- DMA execution
+- Timer/counter execution
+- ASCI/CSIO integration
+- Full MAME device-framework integration
 
 ### Adapter layer
 
-MAME's core uses its own device framework for memory and I/O callbacks.
-`src/core/cpu/z180_adapter.cpp` replaces these with thin wrappers that
-delegate to the emulator's `Bus`:
+`third_party/z180/z180_core.cpp` exposes a standalone callback surface and
+`src/core/cpu/z180_adapter.cpp` binds it to the emulator `Bus`:
 
 ```cpp
-// Memory read/write — called by the Z180 core
+// Memory read/write — called by the extracted Z180 core
 uint8_t z180_read(uint32_t physical_addr);
 void    z180_write(uint32_t physical_addr, uint8_t value);
 
@@ -51,13 +58,14 @@ void    z180_write(uint32_t physical_addr, uint8_t value);
 uint8_t z180_io_read(uint16_t port);
 void    z180_io_write(uint16_t port, uint8_t value);
 
-// Interrupt acknowledge — called when CPU services INT1/INT2
-uint8_t z180_int1_ack();
-uint8_t z180_int2_ack();
+// Warning and interrupt acknowledge hooks
+void    z180_warn(std::string message);
+void    z180_int1_ack();
 ```
 
-The adapter does **not** modify the Z180 core files. The core is included
-unmodified; only the callback bindings change.
+The extraction is **adapted** rather than unmodified. The repository spec
+remains authoritative, so reset-time MMU behavior and the INT1 vector-pointer
+rule follow `docs/spec/01-cpu.md` even where MAME internals differ.
 
 ---
 
@@ -139,8 +147,8 @@ Physical 0xF8000–0xFFFFF → Open bus (unmapped; returns 0xFF, logs warning)
 ```
 
 The `IN0`/`OUT0` instructions access the HD64180 internal register space
-(addresses 0x00–0x3F in the internal space). These are handled entirely by
-the Z180 core and never reach the external bus.
+(addresses `0x00–0x3F` in the internal space). These are handled entirely by
+the extracted Z180 core and never reach the external bus.
 
 ---
 
@@ -190,10 +198,12 @@ inactive unconditionally.
 
 ## DMA Controller
 
-The HD64180 has two internal DMA channels managed by the Z180 core. The two
-channels have different transfer types and use different adapter callbacks.
+The HD64180 has two internal DMA channels in hardware. The current
+milestone-2 extraction does **not** execute DMA transfers yet; DMA remains a
+later milestone. The callback shapes below are the planned integration model
+once the broader extraction is expanded.
 
-### Channel 0 — Memory to Memory
+### Planned channel 0 — Memory to Memory
 
 Channel 0 reads from a 20-bit physical source address and writes to a 20-bit
 physical destination address. Both sides go through the adapter's memory
@@ -207,7 +217,7 @@ void    z180_write(uint32_t physical_addr, uint8_t value);  // dest write
 The bus routes these physical addresses to CartridgeSlot or SRAM exactly as
 it would for CPU-initiated memory accesses.
 
-### Channel 1 — Memory to I/O
+### Planned channel 1 — Memory to I/O
 
 Channel 1 reads from a 20-bit physical memory address and writes to an I/O
 port specified by the `IAR1L`/`IAR1H` registers (`docs/spec/01-cpu.md`,
@@ -235,16 +245,10 @@ not describe any use of DMA for VDP access — the VDP's own command engine
 
 ## Timer/Counters
 
-The HD64180 has two 16-bit programmable reload timers (PRT0 and PRT1), both
-managed entirely inside the Z180 core. Their overflow interrupts are internal
-to the HD64180 interrupt system — they do not surface on the external INT0,
-INT1, or INT2 pins. The Z180 core routes them through its own internal
-interrupt arbitration and the emulator does not need to wire them to the bus
-externally.
-
-From the emulator's perspective: the Z180 core handles timer ticks, overflow
-detection, and interrupt dispatch without any external wiring. The adapter
-does not expose timer state to the bus.
+The HD64180 has two 16-bit programmable reload timers (PRT0 and PRT1), but the
+current milestone-2 extraction does **not** execute timer logic yet. Timer
+state and internal timer interrupts remain deferred until the later CPU/timing
+milestone that expands the extracted core beyond the current boot/MMU surface.
 
 The `docs/spec/01-cpu.md` notes Timer 1 is conventionally used as an audio
 sequencer tick supplementing the YM2151 IRQ. This is a game-level convention,
@@ -270,7 +274,8 @@ in sufficient detail.
 
 ## Boot Sequence Emulation
 
-On reset, the Z180 core initializes registers to hardware reset values:
+On reset, the extracted core initializes registers to the Vanguard 8 documented
+boot values used by the milestone-2 tests:
 
 ```
 PC   = 0x0000

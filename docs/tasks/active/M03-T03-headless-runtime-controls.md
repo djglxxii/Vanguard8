@@ -1,6 +1,6 @@
 # M03-T03 — Add Deterministic Headless Runtime Controls
 
-Status: `planned`
+Status: `active`
 Milestone: `3`
 Depends on: `M03-T02`
 

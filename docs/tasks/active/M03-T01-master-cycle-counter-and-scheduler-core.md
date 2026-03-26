@@ -1,6 +1,6 @@
 # M03-T01 — Implement Master-Cycle Counter and Scheduler Core
 
-Status: `planned`
+Status: `active`
 Milestone: `3`
 Depends on: `M02-T03`
 

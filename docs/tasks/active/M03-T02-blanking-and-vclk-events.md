@@ -1,6 +1,6 @@
 # M03-T02 — Add Blanking and /VCLK Event Timing
 
-Status: `planned`
+Status: `active`
 Milestone: `3`
 Depends on: `M03-T01`
 

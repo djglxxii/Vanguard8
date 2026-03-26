@@ -5,11 +5,12 @@ add_library(
     logging.cpp
     config.cpp
     cpu/z180_adapter.cpp
+    ../../third_party/z180/z180_core.cpp
     memory/cartridge.cpp
     memory/sram.cpp
 )
 
-target_include_directories(vanguard8_core PUBLIC ${PROJECT_SOURCE_DIR}/src)
+target_include_directories(vanguard8_core PUBLIC ${PROJECT_SOURCE_DIR}/src ${PROJECT_SOURCE_DIR})
 
 find_package(spdlog CONFIG QUIET)
 if(spdlog_FOUND)

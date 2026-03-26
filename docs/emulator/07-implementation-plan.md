@@ -144,6 +144,9 @@ Note:
 - Before calling this milestone complete, audit the required HD64180-specific
   behaviors called out in `docs/emulator/03-cpu-and-bus.md`: `IN0`, `OUT0`,
   `MLT`, and INT1/INT2 vector handling.
+- The milestone-2 extraction may be narrower than a full device-framework port
+  as long as the implemented opcode surface is documented and it satisfies the
+  milestone tests and exit criteria.
 
 ### Milestone 3 — Master-Cycle Scheduler and Main Emulation Loop
 

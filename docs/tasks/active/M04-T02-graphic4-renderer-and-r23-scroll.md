@@ -1,6 +1,6 @@
 # M04-T02 — Implement Graphic 4 Rendering and R#23 Vertical Scroll
 
-Status: `planned`
+Status: `active`
 Milestone: `4`
 Depends on: `M04-T01`
 

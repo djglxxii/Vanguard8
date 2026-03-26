@@ -1,6 +1,6 @@
 # M04-T01 — Add V9938 Ports, VRAM, and Palette Storage
 
-Status: `planned`
+Status: `active`
 Milestone: `4`
 Depends on: `M03-T03`
 

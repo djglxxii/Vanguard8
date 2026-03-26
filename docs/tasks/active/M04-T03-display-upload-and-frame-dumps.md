@@ -1,6 +1,6 @@
 # M04-T03 — Add Display Upload and Headless Frame Dumps
 
-Status: `planned`
+Status: `active`
 Milestone: `4`
 Depends on: `M04-T02`
 

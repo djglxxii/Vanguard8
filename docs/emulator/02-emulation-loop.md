@@ -93,8 +93,9 @@ sync_to_59_94_hz()
 
 ### run_cpu_and_audio_until(target_cycle)
 
-Runs the CPU instruction-by-instruction and advances audio chips in lockstep
-until the master cycle counter reaches `target_cycle`.
+The long-term runtime shape runs the CPU instruction-by-instruction and
+advances audio chips in lockstep until the master cycle counter reaches
+`target_cycle`.
 
 ```
 while master_cycle < target_cycle:
@@ -112,6 +113,13 @@ while master_cycle < target_cycle:
     vdp_a.advance_command(elapsed_master)
     vdp_b.advance_command(elapsed_master)
 ```
+
+**Milestone 3 implementation note:** the current headless scheduler uses
+deterministic CPU T-state accounting at `master ÷ 2` and records event timing
+in master cycles, but it does not yet expose full instruction-stepped CPU
+execution or chip advancement through this loop. The milestone-3 verifier
+locks the scheduler timing, frame accounting, and runtime controls; fuller
+per-instruction stepping remains for later integration work.
 
 If an INT0 or INT1 is pending and the CPU's enable conditions are met, the
 CPU core handles the interrupt response inside `cpu.step()` (the core checks
@@ -178,6 +186,12 @@ msm5205.on_vclk():
 The INT1 response is mode-independent and uses the I/IL vector mechanism
 (see `docs/spec/01-cpu.md`). The CPU core handles this on the next `step()`
 call when INT1 is pending and ITE1 is set in the ITC register.
+
+**Milestone 3 implementation note:** the current scheduler records deterministic
+`/VCLK` event timestamps from the nominal 4/6/8 kHz rates in master cycles and
+uses those timestamps as the INT1 timing proof surface. Full MSM5205 device
+advancement and bus-level INT1 assertion are deferred to the later audio
+integration milestone.
 
 ### Step 5 — Compositor
 

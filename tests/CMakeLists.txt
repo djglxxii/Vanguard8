@@ -9,7 +9,14 @@ if(NOT Catch2_FOUND)
     FetchContent_MakeAvailable(Catch2)
 endif()
 
-add_executable(vanguard8_tests catch_main.cpp test_scaffold.cpp test_bus.cpp test_cpu.cpp)
+add_executable(
+    vanguard8_tests
+    catch_main.cpp
+    test_scaffold.cpp
+    test_bus.cpp
+    test_cpu.cpp
+    test_scheduler.cpp
+)
 target_link_libraries(vanguard8_tests PRIVATE Catch2::Catch2 vanguard8_core)
 target_include_directories(vanguard8_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
 

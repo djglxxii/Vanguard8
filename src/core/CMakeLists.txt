@@ -3,6 +3,7 @@ add_library(
     bus.cpp
     emulator.cpp
     logging.cpp
+    scheduler.cpp
     config.cpp
     cpu/z180_adapter.cpp
     ../../third_party/z180/z180_core.cpp

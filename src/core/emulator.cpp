@@ -264,6 +264,8 @@ void Emulator::run_cpu_until(const std::uint64_t target_master_cycle) {
 
     const auto delta = target_master_cycle - master_cycle_;
     bus_.run_audio(delta);
+    bus_.mutable_vdp_a().advance_command(delta);
+    bus_.mutable_vdp_b().advance_command(delta);
     cpu_master_remainder_ += delta;
     const auto advanced_tstates = cpu_master_remainder_ / timing::cpu_divider;
     cpu_tstates_ += advanced_tstates;

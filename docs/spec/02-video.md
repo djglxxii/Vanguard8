@@ -426,6 +426,22 @@ They are not available in Text modes or Graphic 1/2.
 
 Registers R#32–R#46 are written via the register indirect port (0x83 / 0x87).
 
+`R#45` (`ARG`) is laid out as:
+
+```
+Bit 7   0     Unused
+Bit 6   MXC   Color-source expansion-memory select
+Bit 5   MXD   Destination expansion-memory select
+Bit 4   MXS   Source expansion-memory select
+Bit 3   DIY   Y direction (0 = down, 1 = up)
+Bit 2   DIX   X direction (0 = right, 1 = left)
+Bit 1   EQ    SRCH end condition
+Bit 0   MAJ   LINE major-axis selector
+```
+
+Vanguard 8 does not provide V9938 expansion RAM, so `MXC`, `MXD`, and `MXS`
+must be treated as `0` (VRAM) by software.
+
 ### Command Status
 
 The **CE (Command Executing)** flag is bit 0 of status register **S#2**.
@@ -436,6 +452,22 @@ Select S#2:  write R#15 = 2  (OUT port 0x81: value 0x02, then 0x8F)
 Read status: IN A, (0x81)   → bit 0 = CE (1 = busy)
 Restore:     write R#15 = 0  (OUT port 0x81: value 0x00, then 0x8F)
 ```
+
+Relevant `S#2` bits for the command engine are:
+
+```
+Bit 7   TR   Transfer ready (CPU-streamed command handshake)
+Bit 4   BD   Boundary detected (SRCH result)
+Bit 0   CE   Command executing
+```
+
+`POINT` returns its sampled color in `S#7`. `SRCH` returns the boundary
+x-coordinate in `S#8`/`S#9`.
+
+For CPU-streamed commands:
+
+- `HMMC` and `LMMC` accept CPU data through the normal VDP data port
+- software polls `S#2.TR` before writing the next transfer byte
 
 ### Command Opcodes (R#46 bits 7:4)
 
@@ -477,6 +509,19 @@ In Graphic 5 (4 pixels per byte), NX must account for the narrower byte width:
 an 8-pixel-wide tile at 2bpp is 2 bytes wide (NX = 2). In Graphic 6 (2 pixels
 per byte, 256 bytes/line), an 8-pixel-wide tile is 4 bytes wide (NX = 4) but
 coordinates are in the 512-pixel addressing space.
+
+### Vanguard 8 Implementation Boundary
+
+The hardware command engine exists across Graphic 3, 4, 5, 6, and 7, but the
+current repo implementation milestone is still locked to the already-supported
+bitmap surface. For milestone 8:
+
+- the full documented command opcode set is exposed
+- asynchronous `S#2.CE` behavior is required
+- the covered pixel/byte packing model is **Graphic 4 / Screen 5**
+
+Mode-specific command packing for Graphic 5, 6, and 7 remains part of the
+later VDP mode-expansion milestone. Do not invent those layouts here.
 
 ---
 

@@ -19,6 +19,11 @@ void write_register(V9938& vdp, const std::uint8_t reg, const std::uint8_t value
     vdp.write_control(static_cast<std::uint8_t>(0x80U | reg));
 }
 
+void write_command_word(V9938& vdp, const std::uint8_t low_reg, const std::uint16_t value) {
+    write_register(vdp, low_reg, static_cast<std::uint8_t>(value & 0x00FFU));
+    write_register(vdp, static_cast<std::uint8_t>(low_reg + 1U), static_cast<std::uint8_t>((value >> 8U) & 0x0003U));
+}
+
 void seek_vram_write(V9938& vdp, const std::uint16_t address) {
     vdp.write_control(static_cast<std::uint8_t>(address & 0xFFU));
     vdp.write_control(static_cast<std::uint8_t>(0x40U | ((address >> 8) & 0x3FU)));
@@ -151,6 +156,158 @@ TEST_CASE("R#23 vertical scroll wraps within the VRAM page", "[video]") {
     write_register(vdp, 23, 0xFF);
     vdp.tick_scanline(1);
     REQUIRE(vdp.background_line_buffer()[0] == 0x00);
+}
+
+TEST_CASE("HMMM copies bytes and CE clears at the documented cycle boundary", "[video]") {
+    V9938 vdp;
+
+    vdp.poke_vram(0x0000, 0x12);
+    vdp.poke_vram(0x0001, 0x34);
+
+    write_command_word(vdp, 32, 0x0000);
+    write_command_word(vdp, 34, 0x0000);
+    write_command_word(vdp, 36, 0x0000);
+    write_command_word(vdp, 38, 0x0001);
+    write_command_word(vdp, 40, 0x0002);
+    write_command_word(vdp, 42, 0x0001);
+    write_register(vdp, 45, 0x00);
+    write_register(vdp, 46, 0xD0);
+
+    REQUIRE((vdp.status_value(2) & 0x01U) != 0U);
+    REQUIRE(vdp.vram()[V9938::bytes_per_scanline] == 0x12);
+    REQUIRE(vdp.vram()[V9938::bytes_per_scanline + 1] == 0x34);
+
+    vdp.advance_command(69);
+    REQUIRE((vdp.status_value(2) & 0x01U) != 0U);
+
+    vdp.advance_command(1);
+    REQUIRE((vdp.status_value(2) & 0x01U) == 0U);
+}
+
+TEST_CASE("PSET and POINT operate on the Graphic 4 command surface", "[video]") {
+    V9938 vdp;
+
+    write_command_word(vdp, 36, 0x0003);
+    write_command_word(vdp, 38, 0x0004);
+    write_register(vdp, 44, 0x0A);
+    write_register(vdp, 46, 0x50);
+    REQUIRE((vdp.status_value(2) & 0x01U) != 0U);
+    vdp.advance_command(1);
+
+    write_command_word(vdp, 32, 0x0003);
+    write_command_word(vdp, 34, 0x0004);
+    write_register(vdp, 46, 0x40);
+    vdp.advance_command(1);
+
+    REQUIRE((vdp.status_value(7) & 0x0FU) == 0x0AU);
+}
+
+TEST_CASE("HMMV fill and SRCH boundary status follow the documented command registers", "[video]") {
+    V9938 vdp;
+
+    write_command_word(vdp, 36, 0x0000);
+    write_command_word(vdp, 38, 0x0002);
+    write_command_word(vdp, 40, 0x0002);
+    write_command_word(vdp, 42, 0x0002);
+    write_register(vdp, 44, 0xAB);
+    write_register(vdp, 46, 0xC0);
+    vdp.advance_command(1);
+
+    REQUIRE(vdp.vram()[2 * V9938::bytes_per_scanline] == 0xAB);
+    REQUIRE(vdp.vram()[2 * V9938::bytes_per_scanline + 1] == 0xAB);
+    REQUIRE(vdp.vram()[3 * V9938::bytes_per_scanline] == 0xAB);
+    REQUIRE(vdp.vram()[3 * V9938::bytes_per_scanline + 1] == 0xAB);
+
+    write_command_word(vdp, 32, 0x0000);
+    write_command_word(vdp, 34, 0x0002);
+    write_register(vdp, 44, 0x0B);
+    write_register(vdp, 45, 0x02);
+    write_register(vdp, 46, 0x60);
+    vdp.advance_command(1);
+
+    REQUIRE((vdp.status_value(2) & 0x10U) != 0U);
+    REQUIRE(vdp.status_value(8) == 0x01);
+}
+
+TEST_CASE("LINE draws and HMMC streams through the data port while TR is asserted", "[video]") {
+    V9938 vdp;
+
+    write_command_word(vdp, 36, 0x0000);
+    write_command_word(vdp, 38, 0x0000);
+    write_command_word(vdp, 40, 0x0003);
+    write_command_word(vdp, 42, 0x0000);
+    write_register(vdp, 44, 0x05);
+    write_register(vdp, 45, 0x00);
+    write_register(vdp, 46, 0x70);
+    vdp.advance_command(1);
+
+    REQUIRE((vdp.vram()[0x0000] >> 4) == 0x05);
+    REQUIRE((vdp.vram()[0x0000] & 0x0FU) == 0x05);
+    REQUIRE((vdp.vram()[0x0001] >> 4) == 0x05);
+
+    write_command_word(vdp, 36, 0x0000);
+    write_command_word(vdp, 38, 0x0005);
+    write_command_word(vdp, 40, 0x0002);
+    write_command_word(vdp, 42, 0x0001);
+    write_register(vdp, 45, 0x00);
+    write_register(vdp, 46, 0xF0);
+
+    REQUIRE((vdp.status_value(2) & 0x80U) != 0U);
+    vdp.write_data(0xDE);
+    REQUIRE((vdp.status_value(2) & 0x80U) != 0U);
+    vdp.write_data(0xAD);
+    REQUIRE((vdp.status_value(2) & 0x01U) == 0U);
+    REQUIRE(vdp.vram()[5 * V9938::bytes_per_scanline] == 0xDE);
+    REQUIRE(vdp.vram()[5 * V9938::bytes_per_scanline + 1] == 0xAD);
+}
+
+TEST_CASE("LMMV LMMM YMMM and LMMC operate on the covered Graphic 4 command paths", "[video]") {
+    V9938 vdp;
+
+    vdp.poke_vram(10 * V9938::bytes_per_scanline, 0x12);
+    vdp.poke_vram(10 * V9938::bytes_per_scanline + 1, 0x34);
+
+    write_command_word(vdp, 36, 0x0004);
+    write_command_word(vdp, 38, 0x000A);
+    write_command_word(vdp, 40, 0x0002);
+    write_command_word(vdp, 42, 0x0001);
+    write_register(vdp, 44, 0x03);
+    write_register(vdp, 46, 0x80);
+    vdp.advance_command(1);
+    REQUIRE(vdp.background_line_buffer()[0] == 0x00); // keep test using VRAM/state only
+    REQUIRE((vdp.vram()[10 * V9938::bytes_per_scanline + 2] >> 4) == 0x03);
+    REQUIRE((vdp.vram()[10 * V9938::bytes_per_scanline + 2] & 0x0FU) == 0x03);
+
+    write_command_word(vdp, 32, 0x0000);
+    write_command_word(vdp, 34, 0x000A);
+    write_command_word(vdp, 36, 0x0000);
+    write_command_word(vdp, 38, 0x000B);
+    write_command_word(vdp, 40, 0x0004);
+    write_command_word(vdp, 42, 0x0001);
+    write_register(vdp, 46, 0x90);
+    vdp.advance_command(1);
+    REQUIRE(vdp.vram()[11 * V9938::bytes_per_scanline] == 0x12);
+    REQUIRE(vdp.vram()[11 * V9938::bytes_per_scanline + 1] == 0x34);
+
+    write_command_word(vdp, 32, 0x0000);
+    write_command_word(vdp, 34, 0x000B);
+    write_command_word(vdp, 36, 0x0000);
+    write_command_word(vdp, 38, 0x000C);
+    write_command_word(vdp, 42, 0x0001);
+    write_register(vdp, 46, 0xE0);
+    vdp.advance_command(1);
+    REQUIRE(vdp.vram()[12 * V9938::bytes_per_scanline] == 0x12);
+    REQUIRE(vdp.vram()[12 * V9938::bytes_per_scanline + 1] == 0x34);
+
+    write_command_word(vdp, 36, 0x0006);
+    write_command_word(vdp, 38, 0x000D);
+    write_command_word(vdp, 40, 0x0001);
+    write_command_word(vdp, 42, 0x0001);
+    write_register(vdp, 46, 0xB0);
+    REQUIRE((vdp.status_value(2) & 0x80U) != 0U);
+    vdp.write_data(0x0E);
+    REQUIRE((vdp.status_value(2) & 0x01U) == 0U);
+    REQUIRE((vdp.vram()[13 * V9938::bytes_per_scanline + 3] >> 4) == 0x0E);
 }
 
 TEST_CASE("VDP-A color 0 transparency reveals VDP-B while nonzero VDP-A pixels override", "[video]") {

@@ -4,6 +4,18 @@
 
 namespace vanguard8::core::video {
 
+namespace {
+
+constexpr std::uint8_t status_ce = 0x01;
+constexpr std::uint8_t status_bd = 0x10;
+constexpr std::uint8_t status_tr = 0x80;
+constexpr std::uint8_t arg_maj_bit = 0x01;
+constexpr std::uint8_t arg_eq_bit = 0x02;
+constexpr std::uint8_t arg_dix_bit = 0x04;
+constexpr std::uint8_t arg_diy_bit = 0x08;
+
+}  // namespace
+
 V9938::V9938() { reset(); }
 
 void V9938::reset() {
@@ -20,6 +32,7 @@ void V9938::reset() {
     status_reg_select_ = 0;
     palette_index_ = 0;
     palette_phase_ = 0;
+    command_ = {};
     background_line_buffer_.fill(0x00);
     sprite_line_buffer_.fill(transparent_sprite_pixel);
     line_buffer_.fill(0x00);
@@ -33,6 +46,11 @@ auto V9938::read_data() -> std::uint8_t {
 }
 
 void V9938::write_data(const std::uint8_t value) {
+    if (command_.active && command_.transfer_ready) {
+        stream_command_value(value);
+        return;
+    }
+
     vram_[vram_addr_] = value;
     vram_addr_ = static_cast<std::uint16_t>(vram_addr_ + 1U);
 }
@@ -96,6 +114,19 @@ void V9938::write_register(const std::uint8_t value) {
 }
 
 void V9938::poke_vram(const std::uint16_t address, const std::uint8_t value) { vram_[address] = value; }
+
+void V9938::advance_command(const std::uint64_t master_cycles) {
+    if (!command_.active) {
+        return;
+    }
+
+    if (master_cycles >= command_.cycles_remaining) {
+        finish_command();
+        return;
+    }
+
+    command_.cycles_remaining -= master_cycles;
+}
 
 void V9938::tick_scanline(const int line) {
     status_[0] = static_cast<std::uint8_t>(status_[0] & ~0x40U);
@@ -180,6 +211,12 @@ auto V9938::expand3to8(const std::uint8_t value) -> std::uint8_t {
 }
 
 void V9938::write_register_value(const std::uint8_t index, const std::uint8_t value) {
+    if (index == 46) {
+        begin_command(value);
+        update_int_state();
+        return;
+    }
+
     reg_[index] = value;
     if (index == 15) {
         status_reg_select_ = static_cast<std::uint8_t>(value % status_.size());
@@ -194,6 +231,421 @@ auto V9938::graphic4_byte_address(const int line, const int x) const -> std::uin
 }
 
 auto V9938::vertical_scroll() const -> std::uint8_t { return reg_[23]; }
+
+auto V9938::reg16(const std::uint8_t low_index) const -> std::uint16_t {
+    return static_cast<std::uint16_t>(
+        reg_[low_index] | (static_cast<std::uint16_t>(reg_[low_index + 1] & 0x03U) << 8U)
+    );
+}
+
+auto V9938::arg_dix() const -> bool { return (reg_[45] & arg_dix_bit) != 0U; }
+
+auto V9938::arg_diy() const -> bool { return (reg_[45] & arg_diy_bit) != 0U; }
+
+auto V9938::arg_eq() const -> bool { return (reg_[45] & arg_eq_bit) != 0U; }
+
+auto V9938::arg_maj() const -> bool { return (reg_[45] & arg_maj_bit) != 0U; }
+
+auto V9938::command_color_mask() const -> std::uint8_t { return 0x0FU; }
+
+auto V9938::command_color_value() const -> std::uint8_t { return static_cast<std::uint8_t>(reg_[44] & 0x0FU); }
+
+auto V9938::graphic4_command_byte_address(const std::uint16_t x, const std::uint16_t y) const -> std::uint16_t {
+    return static_cast<std::uint16_t>(((y & 0x00FFU) * bytes_per_scanline) + ((x & 0x00FFU) >> 1U));
+}
+
+auto V9938::graphic4_point(const std::uint16_t x, const std::uint16_t y) const -> std::uint8_t {
+    const auto byte = vram_[graphic4_command_byte_address(x, y)];
+    return static_cast<std::uint8_t>((x & 0x0001U) == 0U ? (byte >> 4) & 0x0FU : byte & 0x0FU);
+}
+
+void V9938::graphic4_pset(
+    const std::uint16_t x,
+    const std::uint16_t y,
+    const std::uint8_t source,
+    const std::uint8_t op
+) {
+    const auto address = graphic4_command_byte_address(x, y);
+    const auto even_pixel = (x & 0x0001U) == 0U;
+    const auto dest = graphic4_point(x, y);
+    const auto result = apply_logical_op(source, dest, op);
+    auto byte = vram_[address];
+    if (even_pixel) {
+        byte = static_cast<std::uint8_t>((byte & 0x0FU) | ((result & 0x0FU) << 4U));
+    } else {
+        byte = static_cast<std::uint8_t>((byte & 0xF0U) | (result & 0x0FU));
+    }
+    vram_[address] = byte;
+}
+
+auto V9938::apply_logical_op(const std::uint8_t source, const std::uint8_t dest, const std::uint8_t op) const
+    -> std::uint8_t {
+    const auto sc = static_cast<std::uint8_t>(source & command_color_mask());
+    const auto dc = static_cast<std::uint8_t>(dest & command_color_mask());
+    switch (op & 0x0FU) {
+    case 0x00:
+        return sc;
+    case 0x01:
+        return static_cast<std::uint8_t>(sc & dc);
+    case 0x02:
+        return static_cast<std::uint8_t>(sc | dc);
+    case 0x03:
+        return static_cast<std::uint8_t>(sc ^ dc);
+    case 0x04:
+        return static_cast<std::uint8_t>((~sc) & command_color_mask());
+    case 0x08:
+        return sc == 0U ? dc : sc;
+    case 0x09:
+        return sc == 0U ? dc : static_cast<std::uint8_t>(sc & dc);
+    case 0x0A:
+        return sc == 0U ? dc : static_cast<std::uint8_t>(sc | dc);
+    case 0x0B:
+        return sc == 0U ? dc : static_cast<std::uint8_t>(sc ^ dc);
+    case 0x0C:
+        return sc == 0U ? dc : static_cast<std::uint8_t>((~sc) & command_color_mask());
+    default:
+        return sc;
+    }
+}
+
+void V9938::begin_command(const std::uint8_t value) {
+    reg_[46] = value;
+    status_[2] = static_cast<std::uint8_t>(status_[2] & ~status_bd);
+    command_ = {};
+
+    switch ((value >> 4U) & 0x0FU) {
+    case 0x0:
+        finish_command();
+        return;
+    case 0x4:
+        command_.type = CommandType::point;
+        break;
+    case 0x5:
+        command_.type = CommandType::pset;
+        break;
+    case 0x6:
+        command_.type = CommandType::srch;
+        break;
+    case 0x7:
+        command_.type = CommandType::line;
+        break;
+    case 0x8:
+        command_.type = CommandType::lmmv;
+        break;
+    case 0x9:
+        command_.type = CommandType::lmmm;
+        break;
+    case 0xB:
+        command_.type = CommandType::lmmc;
+        break;
+    case 0xC:
+        command_.type = CommandType::hmmv;
+        break;
+    case 0xD:
+        command_.type = CommandType::hmmm;
+        break;
+    case 0xE:
+        command_.type = CommandType::ymmm;
+        break;
+    case 0xF:
+        command_.type = CommandType::hmmc;
+        break;
+    default:
+        finish_command();
+        return;
+    }
+
+    command_.active = true;
+    status_[2] = static_cast<std::uint8_t>(status_[2] | status_ce);
+    if (command_.type == CommandType::lmmc || command_.type == CommandType::hmmc) {
+        begin_cpu_stream_command(command_.type);
+        return;
+    }
+
+    execute_immediate_command();
+    command_.cycles_remaining = estimate_command_cycles(command_.type);
+}
+
+void V9938::finish_command() {
+    command_ = {};
+    status_[2] = static_cast<std::uint8_t>(status_[2] & static_cast<std::uint8_t>(~(status_ce | status_tr)));
+}
+
+auto V9938::estimate_command_cycles(const CommandType type) const -> std::uint64_t {
+    if (type == CommandType::hmmm) {
+        return 64U + (static_cast<std::uint64_t>(reg16(40)) * static_cast<std::uint64_t>(reg16(42)) * 3U);
+    }
+    return 1U;
+}
+
+void V9938::execute_immediate_command() {
+    switch (command_.type) {
+    case CommandType::point:
+        execute_point();
+        break;
+    case CommandType::pset:
+        execute_pset();
+        break;
+    case CommandType::srch:
+        execute_srch();
+        break;
+    case CommandType::line:
+        execute_line();
+        break;
+    case CommandType::lmmv:
+        execute_lmmv();
+        break;
+    case CommandType::lmmm:
+        execute_lmmm();
+        break;
+    case CommandType::hmmv:
+        execute_hmmv();
+        break;
+    case CommandType::hmmm:
+        execute_hmmm();
+        break;
+    case CommandType::ymmm:
+        execute_ymmm();
+        break;
+    default:
+        break;
+    }
+}
+
+void V9938::execute_point() { status_[7] = graphic4_point(reg16(32), reg16(34)); }
+
+void V9938::execute_pset() { graphic4_pset(reg16(36), reg16(38), command_color_value(), reg_[46] & 0x0FU); }
+
+void V9938::execute_srch() {
+    const auto start_x = reg16(32);
+    const auto y = reg16(34);
+    const auto needle = command_color_value();
+    const auto step = arg_dix() ? -1 : 1;
+    int x = static_cast<int>(start_x & 0x01FFU);
+    int found_x = -1;
+    while (x >= 0 && x < 256) {
+        const auto match = graphic4_point(static_cast<std::uint16_t>(x), y) == needle;
+        if ((arg_eq() && match) || (!arg_eq() && !match)) {
+            found_x = x;
+            break;
+        }
+        x += step;
+    }
+
+    if (found_x >= 0) {
+        status_[2] = static_cast<std::uint8_t>(status_[2] | status_bd);
+        status_[8] = static_cast<std::uint8_t>(found_x & 0xFF);
+        status_[9] = static_cast<std::uint8_t>((status_[9] & ~0x01U) | ((found_x >> 8) & 0x01U));
+    } else {
+        status_[2] = static_cast<std::uint8_t>(status_[2] & ~status_bd);
+        status_[8] = 0x00;
+        status_[9] = static_cast<std::uint8_t>(status_[9] & ~0x01U);
+    }
+}
+
+void V9938::execute_line() {
+    const auto start_x = static_cast<int>(reg16(36));
+    const auto start_y = static_cast<int>(reg16(38));
+    const auto major = static_cast<int>(reg16(40));
+    const auto minor = static_cast<int>(reg16(42));
+    const auto step_x = arg_dix() ? -1 : 1;
+    const auto step_y = arg_diy() ? -1 : 1;
+    const auto dx = arg_maj() ? minor : major;
+    const auto dy = arg_maj() ? major : minor;
+    auto x = start_x;
+    auto y = start_y;
+    auto err = (arg_maj() ? dy : dx) / 2;
+    const auto count = std::max(dx, dy) + 1;
+
+    for (int index = 0; index < count; ++index) {
+        if (x >= 0 && x < 256 && y >= 0 && y < 256) {
+            graphic4_pset(static_cast<std::uint16_t>(x), static_cast<std::uint16_t>(y), command_color_value(), reg_[46] & 0x0FU);
+        }
+
+        if (arg_maj()) {
+            y += step_y;
+            err -= dx;
+            if (err < 0) {
+                x += step_x;
+                err += dy;
+            }
+        } else {
+            x += step_x;
+            err -= dy;
+            if (err < 0) {
+                y += step_y;
+                err += dx;
+            }
+        }
+    }
+}
+
+void V9938::execute_lmmv() {
+    const auto dx = reg16(36);
+    const auto dy = reg16(38);
+    const auto nx = reg16(40);
+    const auto ny = reg16(42);
+    for (std::uint16_t row = 0; row < ny; ++row) {
+        const auto y = static_cast<std::uint16_t>(dy + (arg_diy() ? -static_cast<int>(row) : static_cast<int>(row)));
+        for (std::uint16_t col = 0; col < nx; ++col) {
+            const auto x = static_cast<std::uint16_t>(dx + (arg_dix() ? -static_cast<int>(col) : static_cast<int>(col)));
+            graphic4_pset(x, y, command_color_value(), reg_[46] & 0x0FU);
+        }
+    }
+}
+
+void V9938::execute_lmmm() {
+    const auto sx = reg16(32);
+    const auto sy = reg16(34);
+    const auto dx = reg16(36);
+    const auto dy = reg16(38);
+    const auto nx = reg16(40);
+    const auto ny = reg16(42);
+
+    std::vector<std::uint8_t> source;
+    source.reserve(static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny));
+    for (std::uint16_t row = 0; row < ny; ++row) {
+        const auto src_y = static_cast<std::uint16_t>(sy + (arg_diy() ? -static_cast<int>(row) : static_cast<int>(row)));
+        for (std::uint16_t col = 0; col < nx; ++col) {
+            const auto src_x = static_cast<std::uint16_t>(sx + (arg_dix() ? -static_cast<int>(col) : static_cast<int>(col)));
+            source.push_back(graphic4_point(src_x, src_y));
+        }
+    }
+
+    std::size_t index = 0;
+    for (std::uint16_t row = 0; row < ny; ++row) {
+        const auto dst_y = static_cast<std::uint16_t>(dy + (arg_diy() ? -static_cast<int>(row) : static_cast<int>(row)));
+        for (std::uint16_t col = 0; col < nx; ++col) {
+            const auto dst_x = static_cast<std::uint16_t>(dx + (arg_dix() ? -static_cast<int>(col) : static_cast<int>(col)));
+            graphic4_pset(dst_x, dst_y, source[index++], reg_[46] & 0x0FU);
+        }
+    }
+}
+
+void V9938::execute_hmmv() {
+    const auto dx = reg16(36);
+    const auto dy = reg16(38);
+    const auto nx = reg16(40);
+    const auto ny = reg16(42);
+    for (std::uint16_t row = 0; row < ny; ++row) {
+        const auto y = static_cast<std::uint16_t>(dy + (arg_diy() ? -static_cast<int>(row) : static_cast<int>(row)));
+        for (std::uint16_t col = 0; col < nx; ++col) {
+            const auto x = static_cast<std::uint16_t>((dx & 0x01FEU) + (arg_dix() ? -static_cast<int>(col * 2U) : static_cast<int>(col * 2U)));
+            const auto address = graphic4_command_byte_address(x, y);
+            vram_[address] = reg_[44];
+        }
+    }
+}
+
+void V9938::execute_hmmm() {
+    const auto sx = reg16(32);
+    const auto sy = reg16(34);
+    const auto dx = reg16(36);
+    const auto dy = reg16(38);
+    const auto nx = reg16(40);
+    const auto ny = reg16(42);
+
+    std::vector<std::uint8_t> source;
+    source.reserve(static_cast<std::size_t>(nx) * static_cast<std::size_t>(ny));
+    for (std::uint16_t row = 0; row < ny; ++row) {
+        const auto src_y = static_cast<std::uint16_t>(sy + (arg_diy() ? -static_cast<int>(row) : static_cast<int>(row)));
+        for (std::uint16_t col = 0; col < nx; ++col) {
+            const auto src_x = static_cast<std::uint16_t>((sx & 0x01FEU) + (arg_dix() ? -static_cast<int>(col * 2U) : static_cast<int>(col * 2U)));
+            source.push_back(vram_[graphic4_command_byte_address(src_x, src_y)]);
+        }
+    }
+
+    std::size_t index = 0;
+    for (std::uint16_t row = 0; row < ny; ++row) {
+        const auto dst_y = static_cast<std::uint16_t>(dy + (arg_diy() ? -static_cast<int>(row) : static_cast<int>(row)));
+        for (std::uint16_t col = 0; col < nx; ++col) {
+            const auto dst_x = static_cast<std::uint16_t>((dx & 0x01FEU) + (arg_dix() ? -static_cast<int>(col * 2U) : static_cast<int>(col * 2U)));
+            vram_[graphic4_command_byte_address(dst_x, dst_y)] = source[index++];
+        }
+    }
+}
+
+void V9938::execute_ymmm() {
+    const auto sx = reg16(32);
+    const auto sy = reg16(34);
+    const auto dx = reg16(36);
+    const auto dy = reg16(38);
+    const auto ny = reg16(42);
+    const auto start_x = static_cast<std::uint16_t>(arg_dix() ? 0x00FEU : 0x0000U);
+
+    for (std::uint16_t row = 0; row < ny; ++row) {
+        const auto src_y = static_cast<std::uint16_t>(sy + (arg_diy() ? -static_cast<int>(row) : static_cast<int>(row)));
+        const auto dst_y = static_cast<std::uint16_t>(dy + (arg_diy() ? -static_cast<int>(row) : static_cast<int>(row)));
+        for (std::uint16_t x = 0; x < 256; x += 2) {
+            const auto src_x = static_cast<std::uint16_t>((sx & 0x01FEU) + x);
+            const auto dst_x = static_cast<std::uint16_t>((dx & 0x01FEU) + x);
+            vram_[graphic4_command_byte_address(dst_x, dst_y)] =
+                vram_[graphic4_command_byte_address(src_x, src_y)];
+        }
+        static_cast<void>(start_x);
+    }
+}
+
+void V9938::begin_cpu_stream_command(const CommandType type) {
+    command_.type = type;
+    command_.transfer_ready = true;
+    command_.stream_x = reg16(36);
+    command_.stream_y = reg16(38);
+    command_.remaining_x = reg16(40);
+    command_.remaining_y = reg16(42);
+    command_.cycles_remaining = 1U;
+    status_[2] = static_cast<std::uint8_t>(status_[2] | status_tr);
+}
+
+void V9938::stream_command_value(const std::uint8_t value) {
+    if (!command_.active || !command_.transfer_ready) {
+        return;
+    }
+
+    if (command_.type == CommandType::lmmc) {
+        stream_lmmc_value(value);
+    } else if (command_.type == CommandType::hmmc) {
+        stream_hmmc_value(value);
+    }
+}
+
+void V9938::stream_lmmc_value(const std::uint8_t value) {
+    graphic4_pset(command_.stream_x, command_.stream_y, static_cast<std::uint8_t>(value & 0x0FU), reg_[46] & 0x0FU);
+    advance_stream_position(false);
+}
+
+void V9938::stream_hmmc_value(const std::uint8_t value) {
+    vram_[graphic4_command_byte_address(command_.stream_x & 0x01FEU, command_.stream_y)] = value;
+    advance_stream_position(true);
+}
+
+void V9938::advance_stream_position(const bool byte_mode) {
+    if (command_.remaining_x == 0U || command_.remaining_y == 0U) {
+        finish_command();
+        return;
+    }
+
+    --command_.remaining_x;
+    if (command_.remaining_x == 0U) {
+        command_.remaining_x = reg16(40);
+        if (command_.remaining_y > 0U) {
+            --command_.remaining_y;
+        }
+        if (command_.remaining_y == 0U) {
+            finish_command();
+            return;
+        }
+        command_.stream_x = reg16(36);
+        command_.stream_y = static_cast<std::uint16_t>(
+            command_.stream_y + (arg_diy() ? -1 : 1)
+        );
+        return;
+    }
+
+    command_.stream_x = static_cast<std::uint16_t>(
+        command_.stream_x + (arg_dix() ? -(byte_mode ? 2 : 1) : (byte_mode ? 2 : 1))
+    );
+}
 
 void V9938::update_int_state() {}
 

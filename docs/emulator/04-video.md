@@ -149,8 +149,37 @@ void V9938::advance_command(int master_cycles) {
 The CE flag in S#2 bit 0 reflects whether a command is still in progress.
 Games that poll CE before issuing a new command will see accurate timing.
 
+Current precision boundary:
+
+- `HMMM` uses the documented cycle formula above and is the milestone-8 timing
+  lock for `CE` polling tests.
+- Other covered command opcodes remain asynchronous, but the repo does not yet
+  carry per-opcode cycle formulas for them. Their `CE` lifetime must still
+  cross a real command-advance boundary; do not invent more precise timings
+  until the spec is expanded with source-backed values.
+
 Supported commands: STOP, POINT, PSET, SRCH, LINE, LMMV, LMMM, LMMC, HMMV,
 HMMM, YMMM, HMMC.
+
+Relevant register/status details locked by `docs/spec/02-video.md`:
+
+- `R#45` (`ARG`) bits used here are `DIY`, `DIX`, `EQ`, and `MAJ`
+- `S#2` bit 7 is `TR` (transfer ready for CPU-streamed commands)
+- `S#2` bit 4 is `BD` (SRCH boundary detect)
+- `S#7` carries the sampled color result for `POINT`
+- `S#8`/`S#9` carry the x-coordinate result for `SRCH`
+- `HMMC` and `LMMC` stream CPU data through the normal VDP data port while
+  `TR` is asserted
+
+Milestone-8 boundary:
+
+- execute the documented command opcode set
+- keep `CE` asynchronous on the master-cycle timeline
+- map command coordinates through the already-supported **Graphic 4** packing
+  model only
+
+Graphic 5/6/7 command packing remains deferred to the later mode-expansion
+milestone. If code would need those layouts, stop and extend the spec first.
 
 ### Interrupt Output
 

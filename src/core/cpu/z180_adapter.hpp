@@ -11,6 +11,8 @@ namespace vanguard8::core::cpu {
 enum class InterruptSource {
     int0,
     int1,
+    prt0,
+    prt1,
 };
 
 enum class DmaChannel {
@@ -45,9 +47,10 @@ class Z180Adapter {
     void set_iff1(bool enabled);
     void set_iff2(bool enabled);
 
-    [[nodiscard]] auto in0(std::uint8_t port) const -> std::uint8_t;
+    [[nodiscard]] auto in0(std::uint8_t port) -> std::uint8_t;
     void out0(std::uint8_t port, std::uint8_t value);
     void execute_dma(DmaChannel channel);
+    void advance_tstates(std::uint64_t tstates);
 
     [[nodiscard]] auto translate_logical_address(std::uint16_t logical_address) const
         -> std::uint32_t;

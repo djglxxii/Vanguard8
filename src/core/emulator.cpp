@@ -265,7 +265,9 @@ void Emulator::run_cpu_until(const std::uint64_t target_master_cycle) {
     const auto delta = target_master_cycle - master_cycle_;
     bus_.run_audio(delta);
     cpu_master_remainder_ += delta;
-    cpu_tstates_ += cpu_master_remainder_ / timing::cpu_divider;
+    const auto advanced_tstates = cpu_master_remainder_ / timing::cpu_divider;
+    cpu_tstates_ += advanced_tstates;
+    cpu_.advance_tstates(advanced_tstates);
     cpu_master_remainder_ %= timing::cpu_divider;
     master_cycle_ = target_master_cycle;
 }

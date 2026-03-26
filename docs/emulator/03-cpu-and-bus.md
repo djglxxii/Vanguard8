@@ -245,16 +245,67 @@ not describe any use of DMA for VDP access — the VDP's own command engine
 
 ## Timer/Counters
 
-The HD64180 has two 16-bit programmable reload timers (PRT0 and PRT1), but the
-current milestone-2 extraction does **not** execute timer logic yet. Timer
-state and internal timer interrupts remain deferred until the later CPU/timing
-milestone that expands the extracted core beyond the current boot/MMU surface.
+The HD64180 has two 16-bit programmable reload timers (PRT0 and PRT1). Each
+channel has:
 
-The `docs/spec/01-cpu.md` notes Timer 1 is conventionally used as an audio
-sequencer tick supplementing the YM2151 IRQ. This is a game-level convention,
-not a hardware routing constraint. The timer fires its internal interrupt; the
-game's handler (called at 0x0038 in IM1 like all maskable interrupts) does the
-audio sequencing work.
+- `TMDRn` — 16-bit down counter
+- `RLDRn` — 16-bit reload value
+- `TCR` bits for enable, interrupt enable, and interrupt flag state
+
+Relevant internal I/O addresses:
+
+```text
+TMDR0L 0x0C   TMDR0H 0x0D   RLDR0L 0x0E   RLDR0H 0x0F
+TCR    0x10
+TMDR1L 0x14   TMDR1H 0x15   RLDR1L 0x16   RLDR1H 0x17
+```
+
+The input clock for both channels is the CPU/system clock divided by 20.
+At Vanguard 8's 7.15909 MHz CPU clock, the PRT tick rate is 357,954.5 Hz.
+
+Behavioral rules locked by `docs/spec/01-cpu.md`:
+
+- `TDEn = 1` starts channel `n` down counting
+- `TDEn = 0` stops channel `n`, allowing free `TMDRn` writes
+- `TMDRn` decrements once every 20 CPU clocks
+- when `TMDRn` reaches `0x0000`, `TIFn` is set and `TMDRn` reloads from `RLDRn`
+- `TIFn` is cleared only after reading `TCR` and then reading either byte of
+  the corresponding `TMDRn`
+- coherent live reads use `TMDRnL` followed by `TMDRnH`
+
+### Timer Interrupt Routing
+
+PRT0 and PRT1 are **internal vectored interrupts**, not external `INT0`
+sources. They do not use the VDP-A/YM2151 open-collector wire-OR line.
+
+Their vector table entries use the HD64180 internal interrupt scheme:
+
+```text
+vector_low = (IL & 0xE0) | fixed_code
+
+INT1 = 0x00
+INT2 = 0x02
+PRT0 = 0x04
+PRT1 = 0x06
+```
+
+So with `I = 0x80` and `IL = 0xE0`, the relevant vector words are:
+
+```text
+INT1 -> 0x80E0
+INT2 -> 0x80E2
+PRT0 -> 0x80E4
+PRT1 -> 0x80E6
+```
+
+This matters for the adapter shape: timer interrupt requests are generated
+inside the CPU/peripheral model, not on the `Bus::int0_asserted()` or
+`Bus::int1_asserted()` paths. The bus remains responsible only for external
+interrupt contributors such as VDP-A, YM2151, and MSM5205.
+
+The `docs/spec/01-cpu.md` note that Timer 1 is conventionally used as an audio
+sequencer tick supplementing the YM2151 IRQ is a software convention, not a
+hardware routing constraint.
 
 ---
 
@@ -289,7 +340,7 @@ startup sequence (from `docs/spec/04-io.md`), which reconfigures:
 
 ```
 CBAR = 0x48, CBR = 0xF0, BBR = 0x04
-I    = 0x80, IL = 0xF8, ITC = 0x02
+I    = 0x80, IL = 0xE0, ITC = 0x02
 ```
 
 The emulator does not pre-configure these registers on the CPU's behalf. They

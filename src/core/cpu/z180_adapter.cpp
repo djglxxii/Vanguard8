@@ -52,7 +52,7 @@ void Z180Adapter::set_iff1(const bool enabled) { core_.set_iff1(enabled); }
 
 void Z180Adapter::set_iff2(const bool enabled) { core_.set_iff2(enabled); }
 
-auto Z180Adapter::in0(const std::uint8_t port) const -> std::uint8_t {
+auto Z180Adapter::in0(const std::uint8_t port) -> std::uint8_t {
     if (const auto value = read_dma_register(port); value.has_value()) {
         return *value;
     }
@@ -67,6 +67,8 @@ void Z180Adapter::out0(const std::uint8_t port, const std::uint8_t value) {
 
     core_.out0(port, value);
 }
+
+void Z180Adapter::advance_tstates(const std::uint64_t tstates) { core_.advance_tstates(tstates); }
 
 void Z180Adapter::execute_dma(const DmaChannel channel) {
     if (!dma_mode_supported(channel)) {
@@ -115,8 +117,13 @@ auto Z180Adapter::service_pending_interrupt() -> std::optional<InterruptService>
     }
 
     return InterruptService{
-        .source = service->source == third_party::z180::InterruptSource::int0 ? InterruptSource::int0
-                                                                              : InterruptSource::int1,
+        .source = service->source == third_party::z180::InterruptSource::int0
+                      ? InterruptSource::int0
+                  : service->source == third_party::z180::InterruptSource::int1
+                      ? InterruptSource::int1
+                  : service->source == third_party::z180::InterruptSource::prt0
+                      ? InterruptSource::prt0
+                      : InterruptSource::prt1,
         .handler_address = service->handler_address,
     };
 }

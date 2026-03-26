@@ -171,14 +171,84 @@ main RAM operations and peripheral transfers.
 
 ## Timer/Counters
 
-Two 16-bit timer/counter channels (TCR):
+The HD64180 programmable reload timer (PRT) block contains two independent
+16-bit timer channels, **PRT0** and **PRT1**. Each channel consists of:
+
+- a 16-bit **Timer Data Register** (`TMDRn`) that counts down
+- a 16-bit **Reload Register** (`RLDRn`) that is copied into `TMDRn` on timeout
+
+The timer input clock is the **system clock divided by 20**. On Vanguard 8,
+that is:
+
+```
+CPU clock (phi): 7.15909 MHz
+PRT input clock: 357,954.5 Hz   (phi / 20)
+PRT tick period: ~2.7937 us
+```
+
+### Timer Registers (Internal I/O)
+
+| Register | Addr | Description |
+|----------|------|-------------|
+| TMDR0L   | 0x0C | PRT0 down counter, bits 7:0 |
+| TMDR0H   | 0x0D | PRT0 down counter, bits 15:8 |
+| RLDR0L   | 0x0E | PRT0 reload value, bits 7:0 |
+| RLDR0H   | 0x0F | PRT0 reload value, bits 15:8 |
+| TCR      | 0x10 | Timer control / interrupt status |
+| TMDR1L   | 0x14 | PRT1 down counter, bits 7:0 |
+| TMDR1H   | 0x15 | PRT1 down counter, bits 15:8 |
+| RLDR1L   | 0x16 | PRT1 reload value, bits 7:0 |
+| RLDR1H   | 0x17 | PRT1 reload value, bits 15:8 |
+
+During reset, `TMDR0`, `TMDR1`, `RLDR0`, and `RLDR1` all initialize to
+`0xFFFF`.
+
+### Timer Control Register (TCR)
+
+`TCR` is laid out as:
+
+```
+Bit 7   TIF1   Timer 1 interrupt flag (read only)
+Bit 6   TIF0   Timer 0 interrupt flag (read only)
+Bit 5   TIE1   Timer 1 interrupt enable
+Bit 4   TIE0   Timer 0 interrupt enable
+Bit 3   TOC1   Timer 1 output control
+Bit 2   TOC0   Timer 1 output control
+Bit 1   TDE1   Timer 1 down-count enable
+Bit 0   TDE0   Timer 0 down-count enable
+```
+
+Semantics:
+
+- `TDEn = 1` starts down counting for channel `n`.
+- `TDEn = 0` stops down counting, allowing `TMDRn` to be read or written
+  freely.
+- When `TMDRn` decrements to `0x0000`, `TIFn` becomes `1`.
+- If `TIEn = 1`, `TIFn = 1` requests that channel's internal timer interrupt.
+- After reaching `0x0000`, `TMDRn` automatically reloads from `RLDRn`.
+- `TIFn` is cleared only when `TCR` is read and then either byte of the
+  corresponding `TMDRn` is read.
+
+### Timer Read/Write Rules
+
+- `TMDRn` decrements continuously while `TDEn = 1`.
+- To obtain a coherent 16-bit snapshot without stopping the timer, software
+  must read `TMDRnL` first, then `TMDRnH`.
+- Writing `TMDRn` is only defined while `TDEn = 0`.
+- `RLDRn` may be updated by software, but software must avoid changing it
+  across an active timeout boundary; the safe path is to stop the channel
+  before rewriting timer state.
+
+### Vanguard 8 Usage
 
 | Channel | Function on Vanguard 8                                 |
 |---------|--------------------------------------------------------|
 | Timer 0 | Available for game use (e.g., raster effect timing)    |
 | Timer 1 | Audio sequencer tick (supplements YM2151 IRQ)          |
 
-Timer output can generate an INT interrupt.
+The `A18/TOUT` waveform-output feature of PRT1 is part of the HD64180 itself,
+but no Vanguard 8 subsystem depends on it. The software-visible contract for
+the emulator is the timer register behavior and interrupt generation.
 
 ---
 
@@ -202,22 +272,63 @@ The handler reads VDP-A status registers to distinguish V-blank from H-blank:
 ### INT1/INT2 — Always Vectored, Mode-Independent
 
 **INT1 and INT2 do not follow the IM0/1/2 setting.** The HD64180 uses a dedicated
-vectored response for these lines regardless of the current interrupt mode. The
-vector pointer is formed from two HD64180 internal registers:
+vectored response for these lines regardless of the current interrupt mode.
+The same vectored response mechanism is also used by on-chip peripheral
+interrupts such as the programmable reload timers.
+
+The vector pointer is formed from two HD64180 internal registers:
 
 | Register | Internal Addr | Description                                          |
 |----------|---------------|------------------------------------------------------|
-| IL       | 0x33          | Vector pointer low byte; bits 2:0 forced by hardware |
+| IL       | 0x33          | Interrupt Vector Low register; bits 7:5 select 32-byte subtable |
 | ITC      | 0x34          | Interrupt/Trap Control; bits ITE2/ITE1/ITE0 enable INT2/1/0 |
 
-Hardware forces `IL` bits 2:0 during acknowledge:
-- INT1: bits 2:0 = `000b`
-- INT2: bits 2:0 = `010b`
+The low vector byte is not taken directly from `IL`. Instead:
+
+```
+vector_low = (IL & 0xE0) | fixed_code
+```
+
+Where `fixed_code` is chosen by the interrupt source:
+
+| Source | Fixed low-byte code |
+|--------|---------------------|
+| INT1   | `0x00` |
+| INT2   | `0x02` |
+| PRT0   | `0x04` |
+| PRT1   | `0x06` |
 
 The processor reads a 2-byte handler address (little-endian) from the computed
 vector pointer. Startup code must configure `I`, `IL`, `ITC`, and populate the
-vector table before enabling INT1. See `docs/spec/04-io.md` for the complete
-Vanguard 8 INT1 setup sequence.
+vector table before enabling INT1 or on-chip timer interrupts.
+
+Example:
+
+```
+I  = 0x80
+IL = 0xE0
+
+INT1 vector word = 0x80E0–0x80E1
+INT2 vector word = 0x80E2–0x80E3
+PRT0 vector word = 0x80E4–0x80E5
+PRT1 vector word = 0x80E6–0x80E7
+```
+
+### Internal Timer Interrupts
+
+PRT0 and PRT1 are **internal vectored interrupts**, not external `INT0`
+sources. Their requests:
+
+- are globally masked by the CPU interrupt enable state (`IEF1`)
+- are individually controlled by `TIE0` and `TIE1` in `TCR`
+- use the same `I`/`IL` vector-table mechanism as `INT1` and `INT2`
+- are independent of the VDP-A / YM2151 wire-OR on external `INT0`
+
+On Vanguard 8:
+
+- PRT0 is available as a software timer interrupt source.
+- PRT1 is typically used as an additional audio/game sequencer tick, but this
+  is a software convention rather than a separate hardware wiring path.
 
 ---
 

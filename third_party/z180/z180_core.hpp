@@ -13,6 +13,8 @@ namespace vanguard8::third_party::z180 {
 enum class InterruptSource {
     int0,
     int1,
+    prt0,
+    prt1,
 };
 
 struct InterruptService {
@@ -50,8 +52,9 @@ class Core {
     void set_interrupt_mode(std::uint8_t mode);
     void set_iff1(bool enabled);
     void set_iff2(bool enabled);
+    void advance_tstates(std::uint64_t tstates);
 
-    [[nodiscard]] auto in0(std::uint8_t port) const -> std::uint8_t;
+    [[nodiscard]] auto in0(std::uint8_t port) -> std::uint8_t;
     void out0(std::uint8_t port, std::uint8_t value);
 
     [[nodiscard]] auto translate_logical_address(std::uint16_t logical_address) const
@@ -101,6 +104,16 @@ class Core {
     bool iff1_ = false;
     bool iff2_ = false;
     bool halted_ = false;
+    struct TimerChannel {
+        Pair tmdr{};
+        Pair rldr{};
+        std::uint8_t high_read_latch = 0xFF;
+        bool tif_clear_armed = false;
+    };
+    TimerChannel prt0_{};
+    TimerChannel prt1_{};
+    std::uint8_t tcr_ = 0x00;
+    std::uint8_t prt_prescaler_ = 0x00;
     std::vector<Handler> opcodes_;
     std::vector<Handler> ed_opcodes_;
 
@@ -115,6 +128,12 @@ class Core {
     void execute_one();
     void maybe_warn_illegal_bbr();
     void acknowledge_reti();
+    [[nodiscard]] auto timer_channel(int index) -> TimerChannel&;
+    [[nodiscard]] auto timer_channel(int index) const -> const TimerChannel&;
+    [[nodiscard]] auto timer_interrupt_pending(int index) const -> bool;
+    void clear_timer_flag_on_tmdr_read(int index);
+    [[nodiscard]] auto vectored_handler_address(std::uint8_t fixed_code) -> std::uint16_t;
+    void service_vectored_interrupt(InterruptSource source, std::uint8_t fixed_code);
     [[noreturn]] void unsupported_opcode(std::uint8_t opcode);
     [[noreturn]] void unsupported_ed_opcode(std::uint8_t opcode);
     void op_unimplemented();

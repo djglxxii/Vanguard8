@@ -134,36 +134,56 @@ connected to the CPU.
 | VDP-A H-blank     | INT0 | 0x0038 (IM1)    | Per-line scroll update (H-scroll: see note)      |
 | YM2151 Timer IRQ  | INT0 | 0x0038 (IM1)    | Audio sequencer tick                             |
 | MSM5205 /VCLK     | INT1 | Vectored (I/IL) | Feed next ADPCM nibble (see INT1 note)           |
+| HD64180 PRT0      | Internal | Vectored (I/IL + PRT0 code) | General software timer                     |
+| HD64180 PRT1      | Internal | Vectored (I/IL + PRT1 code) | Optional audio / game sequencer tick       |
 
 **INT0:** INT0 follows the CPU interrupt mode. Vanguard 8 firmware runs in **IM1**;
 INT0 always calls **0x0038**.
 
-**INT1/INT2 — always vectored, mode-independent:** The HD64180 handles INT1 and
-INT2 using a dedicated vectored response that is **independent of the IM0/1/2
-setting**. This is not IM2 — it is a separate mechanism specific to INT1 and INT2.
-The processor forms the vector pointer as:
+**INT1/INT2/internal HD64180 peripheral interrupts — always vectored,
+mode-independent:** The HD64180 handles INT1, INT2, and on-chip peripheral
+interrupts such as `PRT0` and `PRT1` using a dedicated vectored response that
+is **independent of the IM0/1/2 setting**. This is not IM2 — it is a separate
+mechanism specific to these sources. The processor forms the vector pointer as:
 
 ```
 Vector pointer high byte = I register
-Vector pointer low byte  = IL register (internal addr 0x33), bits 2:0 forced by hardware:
-                             INT1 → bits 2:0 = 000b
-                             INT2 → bits 2:0 = 010b
+Vector pointer low byte  = (IL & 0xE0) | fixed_code
+```
+
+Fixed low-byte codes used by Vanguard 8-visible sources:
+
+```
+INT1  = 0x00
+INT2  = 0x02
+PRT0  = 0x04
+PRT1  = 0x06
 ```
 
 The processor reads 2 bytes (little-endian) from that pointer address to get the
 actual handler address. INT1 must also be enabled via the **ITC** register
-(internal addr `0x34`), bit 1 (`ITE1`).
+(internal addr `0x34`), bit 1 (`ITE1`). `PRT0` and `PRT1` are enabled
+independently through `TCR.TIE0` and `TCR.TIE1`.
 
 Vanguard 8 startup configures INT1 as follows (see `docs/spec/04-io.md` for
 register setup code):
 
 ```
 I   = 0x80   → vector table in SRAM
-IL  = 0xF8   → INT1 vector pointer = 0x80F8 (bits 2:0 forced to 000 by hardware)
+IL  = 0xE0   → INT1/INT2/internal vectors occupy SRAM 0x80E0–0x80FF
 ITC = 0x02   → ITE1 = 1 (INT1 enabled)
 ```
 
-The 2-byte ADPCM handler address is stored at SRAM 0x80F8–0x80F9.
+With that setup:
+
+```
+INT1 vector word = 0x80E0–0x80E1
+INT2 vector word = 0x80E2–0x80E3
+PRT0 vector word = 0x80E4–0x80E5
+PRT1 vector word = 0x80E6–0x80E7
+```
+
+The 2-byte ADPCM handler address is stored at SRAM `0x80E0–0x80E1`.
 
 **H-blank scroll note:** The H-blank interrupt mechanism (VDP-A S#1 FH flag) is
 well-specified. However, R#26/R#27 horizontal scroll register behavior in Graphic 4
@@ -173,7 +193,8 @@ per-line horizontal parallax. Vertical scroll via R#23 is fully specified and re
 The INT0 handler identifies its source by reading VDP-A status registers (S#0
 for V-blank, S#1 for H-blank) and the YM2151 status port. The MSM5205 /VCLK
 signal connects to the CPU /INT1 line, giving ADPCM sample feeding a dedicated
-interrupt with no sharing.
+interrupt with no sharing. The HD64180 PRT timers are separate internal
+vectored interrupt sources and do not share the external `INT0` wire-OR line.
 
 ---
 

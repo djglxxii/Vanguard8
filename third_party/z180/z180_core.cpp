@@ -9,6 +9,15 @@ namespace {
 
 constexpr std::uint8_t flag_zero = 0x40;
 constexpr std::uint8_t itc_ite1 = 0x02;
+constexpr std::uint8_t vector_code_int1 = 0x00;
+constexpr std::uint8_t vector_code_prt0 = 0x04;
+constexpr std::uint8_t vector_code_prt1 = 0x06;
+constexpr std::uint8_t tcr_tif1 = 0x80;
+constexpr std::uint8_t tcr_tif0 = 0x40;
+constexpr std::uint8_t tcr_tie1 = 0x20;
+constexpr std::uint8_t tcr_tie0 = 0x10;
+constexpr std::uint8_t tcr_tde1 = 0x02;
+constexpr std::uint8_t tcr_tde0 = 0x01;
 
 [[nodiscard]] auto hex_string(const std::uint32_t value, const int width) -> std::string {
     std::ostringstream stream;
@@ -45,6 +54,16 @@ void Core::reset() {
     iff1_ = false;
     iff2_ = false;
     halted_ = false;
+    prt0_ = {};
+    prt1_ = {};
+    prt0_.tmdr.value = 0xFFFF;
+    prt0_.rldr.value = 0xFFFF;
+    prt1_.tmdr.value = 0xFFFF;
+    prt1_.rldr.value = 0xFFFF;
+    prt0_.high_read_latch = 0xFF;
+    prt1_.high_read_latch = 0xFF;
+    prt_prescaler_ = 0x00;
+    tcr_ = 0x00;
     af_.bytes.lo = flag_zero;
 }
 
@@ -76,8 +95,63 @@ void Core::set_iff1(const bool enabled) { iff1_ = enabled; }
 
 void Core::set_iff2(const bool enabled) { iff2_ = enabled; }
 
-auto Core::in0(const std::uint8_t port) const -> std::uint8_t {
+void Core::advance_tstates(const std::uint64_t tstates) {
+    for (std::uint64_t count = 0; count < tstates; ++count) {
+        ++prt_prescaler_;
+        if (prt_prescaler_ < 20U) {
+            continue;
+        }
+
+        prt_prescaler_ = 0U;
+        for (int channel = 0; channel < 2; ++channel) {
+            const auto tde_mask = channel == 0 ? tcr_tde0 : tcr_tde1;
+            const auto tif_mask = channel == 0 ? tcr_tif0 : tcr_tif1;
+            if ((tcr_ & tde_mask) == 0U) {
+                continue;
+            }
+
+            auto& prt = timer_channel(channel);
+            if (prt.tmdr.value > 0U) {
+                --prt.tmdr.value;
+            }
+
+            if (prt.tmdr.value == 0U) {
+                tcr_ = static_cast<std::uint8_t>(tcr_ | tif_mask);
+                prt.tif_clear_armed = false;
+                prt.tmdr.value = prt.rldr.value;
+            }
+        }
+    }
+}
+
+auto Core::in0(const std::uint8_t port) -> std::uint8_t {
     switch (port) {
+    case 0x0C:
+        prt0_.high_read_latch = prt0_.tmdr.bytes.hi;
+        clear_timer_flag_on_tmdr_read(0);
+        return prt0_.tmdr.bytes.lo;
+    case 0x0D:
+        clear_timer_flag_on_tmdr_read(0);
+        return prt0_.high_read_latch;
+    case 0x0E:
+        return prt0_.rldr.bytes.lo;
+    case 0x0F:
+        return prt0_.rldr.bytes.hi;
+    case 0x10:
+        prt0_.tif_clear_armed = (tcr_ & tcr_tif0) != 0U;
+        prt1_.tif_clear_armed = (tcr_ & tcr_tif1) != 0U;
+        return tcr_;
+    case 0x14:
+        prt1_.high_read_latch = prt1_.tmdr.bytes.hi;
+        clear_timer_flag_on_tmdr_read(1);
+        return prt1_.tmdr.bytes.lo;
+    case 0x15:
+        clear_timer_flag_on_tmdr_read(1);
+        return prt1_.high_read_latch;
+    case 0x16:
+        return prt1_.rldr.bytes.lo;
+    case 0x17:
+        return prt1_.rldr.bytes.hi;
     case 0x33:
         return il_;
     case 0x34:
@@ -95,6 +169,33 @@ auto Core::in0(const std::uint8_t port) const -> std::uint8_t {
 
 void Core::out0(const std::uint8_t port, const std::uint8_t value) {
     switch (port) {
+    case 0x0C:
+        prt0_.tmdr.bytes.lo = value;
+        break;
+    case 0x0D:
+        prt0_.tmdr.bytes.hi = value;
+        break;
+    case 0x0E:
+        prt0_.rldr.bytes.lo = value;
+        break;
+    case 0x0F:
+        prt0_.rldr.bytes.hi = value;
+        break;
+    case 0x10:
+        tcr_ = static_cast<std::uint8_t>((tcr_ & (tcr_tif1 | tcr_tif0)) | (value & 0x3FU));
+        break;
+    case 0x14:
+        prt1_.tmdr.bytes.lo = value;
+        break;
+    case 0x15:
+        prt1_.tmdr.bytes.hi = value;
+        break;
+    case 0x16:
+        prt1_.rldr.bytes.lo = value;
+        break;
+    case 0x17:
+        prt1_.rldr.bytes.hi = value;
+        break;
     case 0x33:
         il_ = value;
         break;
@@ -156,19 +257,22 @@ auto Core::service_pending_interrupt(const bool int0_asserted, const bool int1_a
         return InterruptService{.source = InterruptSource::int0, .handler_address = pc_.value};
     }
 
-    if (int1_asserted && (itc_ & itc_ite1) != 0U) {
-        halted_ = false;
-        iff1_ = false;
-        iff2_ = false;
-        const auto vector_pointer =
-            static_cast<std::uint16_t>((static_cast<std::uint16_t>(i_) << 8) | (il_ & 0xF8));
-        const auto handler_address = read_word(vector_pointer);
-        push_word(pc_.value);
-        pc_.value = handler_address;
+    if (int1_asserted && iff1_ && (itc_ & itc_ite1) != 0U) {
+        service_vectored_interrupt(InterruptSource::int1, vector_code_int1);
         if (callbacks_.acknowledge_int1) {
             callbacks_.acknowledge_int1();
         }
         return InterruptService{.source = InterruptSource::int1, .handler_address = pc_.value};
+    }
+
+    if (timer_interrupt_pending(0)) {
+        service_vectored_interrupt(InterruptSource::prt0, vector_code_prt0);
+        return InterruptService{.source = InterruptSource::prt0, .handler_address = pc_.value};
+    }
+
+    if (timer_interrupt_pending(1)) {
+        service_vectored_interrupt(InterruptSource::prt1, vector_code_prt1);
+        return InterruptService{.source = InterruptSource::prt1, .handler_address = pc_.value};
     }
 
     return std::nullopt;
@@ -262,6 +366,47 @@ void Core::maybe_warn_illegal_bbr() {
 }
 
 void Core::acknowledge_reti() {}
+
+auto Core::timer_channel(const int index) -> TimerChannel& { return index == 0 ? prt0_ : prt1_; }
+
+auto Core::timer_channel(const int index) const -> const TimerChannel& { return index == 0 ? prt0_ : prt1_; }
+
+auto Core::timer_interrupt_pending(const int index) const -> bool {
+    if (!iff1_) {
+        return false;
+    }
+
+    const auto tie_mask = index == 0 ? tcr_tie0 : tcr_tie1;
+    const auto tif_mask = index == 0 ? tcr_tif0 : tcr_tif1;
+    return (tcr_ & tie_mask) != 0U && (tcr_ & tif_mask) != 0U;
+}
+
+void Core::clear_timer_flag_on_tmdr_read(const int index) {
+    auto& prt = timer_channel(index);
+    if (!prt.tif_clear_armed) {
+        return;
+    }
+
+    const auto tif_mask = index == 0 ? tcr_tif0 : tcr_tif1;
+    tcr_ = static_cast<std::uint8_t>(tcr_ & ~tif_mask);
+    prt.tif_clear_armed = false;
+}
+
+auto Core::vectored_handler_address(const std::uint8_t fixed_code) -> std::uint16_t {
+    const auto vector_pointer =
+        static_cast<std::uint16_t>((static_cast<std::uint16_t>(i_) << 8) | ((il_ & 0xE0U) | fixed_code));
+    return read_word(vector_pointer);
+}
+
+void Core::service_vectored_interrupt(const InterruptSource source, const std::uint8_t fixed_code) {
+    static_cast<void>(source);
+    halted_ = false;
+    iff1_ = false;
+    iff2_ = false;
+    const auto handler_address = vectored_handler_address(fixed_code);
+    push_word(pc_.value);
+    pc_.value = handler_address;
+}
 
 [[noreturn]] void Core::unsupported_opcode(const std::uint8_t opcode) {
     throw std::runtime_error("Unsupported extracted Z180 opcode " + hex_string(opcode, 2));

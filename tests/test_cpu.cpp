@@ -70,6 +70,15 @@ TEST_CASE("z180 adapter reset matches documented HD64180 defaults", "[cpu]") {
     REQUIRE(cpu.cbar() == 0xFF);
     REQUIRE(cpu.cbr() == 0x00);
     REQUIRE(cpu.bbr() == 0x00);
+    REQUIRE(cpu.in0(0x0C) == 0xFF);
+    REQUIRE(cpu.in0(0x0D) == 0xFF);
+    REQUIRE(cpu.in0(0x0E) == 0xFF);
+    REQUIRE(cpu.in0(0x0F) == 0xFF);
+    REQUIRE(cpu.in0(0x10) == 0x00);
+    REQUIRE(cpu.in0(0x14) == 0xFF);
+    REQUIRE(cpu.in0(0x15) == 0xFF);
+    REQUIRE(cpu.in0(0x16) == 0xFF);
+    REQUIRE(cpu.in0(0x17) == 0xFF);
 }
 
 TEST_CASE("MMU boot mapping and bank-window translation follow CBAR CBR BBR", "[cpu]") {
@@ -199,7 +208,7 @@ TEST_CASE("VDP-B interrupt state never reaches CPU INT0", "[cpu]") {
     REQUIRE_FALSE(cpu.service_pending_interrupt().has_value());
 }
 
-TEST_CASE("INT1 uses the I IL vectored path independent of IM mode", "[cpu]") {
+TEST_CASE("INT1 uses the HD64180 I IL vectored path independent of IM mode", "[cpu]") {
     vanguard8::core::Bus bus{};
     vanguard8::core::cpu::Z180Adapter cpu{bus};
 
@@ -209,15 +218,95 @@ TEST_CASE("INT1 uses the I IL vectored path independent of IM mode", "[cpu]") {
     cpu.out0(0x34, 0x02);
     cpu.set_register_i(0x80);
     cpu.set_interrupt_mode(0);
+    cpu.set_iff1(true);
 
-    bus.write_memory(0xF00F8, 0x34);
-    bus.write_memory(0xF00F9, 0x12);
+    bus.write_memory(0xF00E0, 0x34);
+    bus.write_memory(0xF00E1, 0x12);
     bus.set_int1(true);
 
     const auto service = cpu.service_pending_interrupt();
     REQUIRE(service.has_value());
     REQUIRE(service->source == vanguard8::core::cpu::InterruptSource::int1);
     REQUIRE(service->handler_address == 0x1234);
+}
+
+TEST_CASE("PRT0 decrements every 20 CPU clocks and sets TIF0 on timeout", "[cpu]") {
+    vanguard8::core::Bus bus{};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    write_internal_16(cpu, 0x0C, 3);
+    write_internal_16(cpu, 0x0E, 2);
+    cpu.out0(0x10, 0x01);
+
+    cpu.advance_tstates(19);
+    REQUIRE(cpu.in0(0x0C) == 0x03);
+    REQUIRE((cpu.in0(0x10) & 0x40) == 0x00);
+
+    cpu.advance_tstates(1);
+    REQUIRE(cpu.in0(0x0C) == 0x02);
+
+    cpu.advance_tstates(20);
+    REQUIRE(cpu.in0(0x0C) == 0x01);
+
+    cpu.advance_tstates(20);
+    REQUIRE((cpu.in0(0x10) & 0x40) == 0x40);
+}
+
+TEST_CASE("Reading TCR then TMDR0 clears TIF0", "[cpu]") {
+    vanguard8::core::Bus bus{};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    write_internal_16(cpu, 0x0C, 1);
+    write_internal_16(cpu, 0x0E, 1);
+    cpu.out0(0x10, 0x01);
+    cpu.advance_tstates(20);
+
+    REQUIRE((cpu.in0(0x10) & 0x40) == 0x40);
+    REQUIRE((cpu.in0(0x10) & 0x40) == 0x40);
+
+    REQUIRE(cpu.in0(0x0C) == 0x01);
+    REQUIRE((cpu.in0(0x10) & 0x40) == 0x00);
+}
+
+TEST_CASE("PRT0 and PRT1 use their documented vectored interrupt table entries", "[cpu]") {
+    vanguard8::core::Bus bus{};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    cpu.out0(0x3A, 0x48);
+    cpu.out0(0x38, 0xF0);
+    cpu.out0(0x33, 0xE0);
+    cpu.set_register_i(0x80);
+    cpu.set_interrupt_mode(1);
+    cpu.set_iff1(true);
+
+    bus.write_memory(0xF00E4, 0x78);
+    bus.write_memory(0xF00E5, 0x56);
+    bus.write_memory(0xF00E6, 0xBC);
+    bus.write_memory(0xF00E7, 0x9A);
+
+    write_internal_16(cpu, 0x0C, 1);
+    write_internal_16(cpu, 0x0E, 1);
+    cpu.out0(0x10, 0x11);
+    cpu.advance_tstates(20);
+
+    const auto prt0_service = cpu.service_pending_interrupt();
+    REQUIRE(prt0_service.has_value());
+    REQUIRE(prt0_service->source == vanguard8::core::cpu::InterruptSource::prt0);
+    REQUIRE(prt0_service->handler_address == 0x5678);
+
+    cpu.set_iff1(true);
+    REQUIRE((cpu.in0(0x10) & 0x40) == 0x40);
+    REQUIRE(cpu.in0(0x0C) == 0x01);
+
+    write_internal_16(cpu, 0x14, 1);
+    write_internal_16(cpu, 0x16, 1);
+    cpu.out0(0x10, 0x22);
+    cpu.advance_tstates(20);
+
+    const auto prt1_service = cpu.service_pending_interrupt();
+    REQUIRE(prt1_service.has_value());
+    REQUIRE(prt1_service->source == vanguard8::core::cpu::InterruptSource::prt1);
+    REQUIRE(prt1_service->handler_address == 0x9ABC);
 }
 
 TEST_CASE("Test ROM can boot switch banks and read write SRAM correctly", "[cpu]") {

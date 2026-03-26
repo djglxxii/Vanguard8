@@ -80,7 +80,7 @@ TEST_CASE("unmapped memory and I/O return 0xFF", "[bus]") {
     REQUIRE(bus.read_port(0x7F) == 0xFF);
 }
 
-TEST_CASE("documented ports have inert stub endpoints", "[bus]") {
+TEST_CASE("documented non-video ports have inert stubs while VDP ports are routed", "[bus]") {
     vanguard8::core::Bus bus{};
 
     bus.write_port(0x40, 0x11);
@@ -99,5 +99,6 @@ TEST_CASE("documented ports have inert stub endpoints", "[bus]") {
     REQUIRE(ay_data->last_written == 0x22);
     REQUIRE(vdp_a_data->last_written == 0x33);
     REQUIRE(bus.read_port(0x00) == 0xFF);
-    REQUIRE(bus.read_port(0x81) == 0xFF);
+    REQUIRE(bus.vdp_a().vram()[0x0000] == 0x33);
+    REQUIRE(bus.read_port(0x81) == 0x00);
 }

@@ -3,15 +3,22 @@
 ## Architecture Summary
 
 The full video design is three objects: `VDP-A`, `VDP-B`, and `Compositor`.
-Milestone 4 implements only the single-VDP subset needed for the first
-Graphic 4 frame path.
+Milestone 4 implemented only the single-VDP subset needed for the first
+Graphic 4 frame path. Milestone 5 adds the first Vanguard 8-specific video
+behavior: dual-VDP compositing, covered Mode-2 sprite rendering, VDP-A-only
+interrupt semantics, and layer toggles.
+
+For the current implementation, `Bus` owns both VDP instances and routes ports
+`0x80-0x87` directly to them. `Emulator` drives scanline and V-blank timing
+into those VDPs from the scheduler and mirrors only VDP-A's enabled interrupt
+sources onto CPU `INT0`.
 
 In the current repo, the display pipeline ends at a deterministic upload buffer
 in `src/frontend/display.*` rather than a real SDL/OpenGL binding. The shader
-files remain part of the repo asset layout, but the verified milestone-4 path
+files remain part of the repo asset layout, but the verified milestone-5 path
 is:
 
-`single VDP -> RGB888 framebuffer -> upload buffer -> headless PPM dump`
+`VDP-A + VDP-B -> compositor -> RGB888 framebuffer -> upload buffer -> headless PPM dump`
 
 ---
 
@@ -34,6 +41,8 @@ struct V9938 {
     bool     addr_latch_full;      // True after first address byte written
     uint8_t  reg_latch;            // Register indirect write latch
     uint8_t  status_reg_select;    // R#15 value (selects which S# to read)
+    uint8_t  bg_line_buffer[256];  // Background color indices for current scanline
+    uint8_t  sprite_line_buffer[256]; // Sprite color indices; 0xFF = no sprite pixel
 
     // Command engine
     CommandState cmd;              // Active VDP command state machine
@@ -69,7 +78,8 @@ Reading status (0x81) also resets the address latch (clears `addr_latch_full`).
 ### Scanline Rendering
 
 `tick_scanline(int line)` is called once per scanline from the main loop.
-It renders the line into `line_buffer` using the current VRAM and register state.
+It renders the line into background and sprite buffers, then combines them into
+`line_buffer` using the current VRAM and register state.
 
 #### Graphic 4 rendering (primary/default mode; other V9938 modes are planned)
 
@@ -83,9 +93,11 @@ Background:
     line_buffer[x] = pixel
 
 Sprites:
-  Evaluate up to 8 sprites for this scanline (Sprite Mode 2).
-  For each visible sprite pixel, overwrite line_buffer[x] with sprite color.
-  Track 5th-sprite overflow (S#0 bit 6) and collision (S#0 bit 5).
+  Evaluate up to 8 visible sprites for this scanline (Sprite Mode 2).
+  For each visible opaque sprite pixel, overwrite line_buffer[x] with the
+  sprite color and leave lower-priority sprites behind it.
+  Track 5th-sprite overflow (S#0 bit 6) and same-chip collision (S#0 bit 5,
+  S#3-S#6 coordinates) for the covered milestone-5 cases.
 ```
 
 Vertical scroll (R#23) wraps within the 256-line VRAM page.
@@ -93,6 +105,14 @@ Vertical scroll (R#23) wraps within the 256-line VRAM page.
 Horizontal scroll (R#26/R#27): **not implemented**. Marked as unspecified in
 `docs/spec/02-video.md` pending V9938 Technical Data Book verification.
 A `TODO(spec)` stub exists in the renderer.
+
+Sprite layout note:
+- The covered milestone-5 sprite path uses the recommended Graphic 4 sprite
+  layout from `docs/spec/02-video.md`:
+  pattern generator at `0x6A00`, color table at `0x7A00`, and SAT at `0x7C00`.
+- General register-relocated sprite table addressing is intentionally deferred
+  until the repo docs carry the exact alignment detail needed to implement it
+  without guessing.
 
 ### VDP Command Engine
 
@@ -135,23 +155,30 @@ HMMM, YMMM, HMMC.
 ### Interrupt Output
 
 ```cpp
-bool int_pending() const;   // VDP-A: called by bus to check INT0 state
-                            // VDP-B: always returns false (unconnected)
+bool int_pending() const;
+bool vblank_irq_pending() const;
+bool hblank_irq_pending() const;
 ```
 
-VDP-A `/INT` asserts when:
+Per-chip `/INT` asserts when:
 - V-blank flag set AND R#1 bit 5 (V-blank IRQ enable) is set
 - H-blank flag set AND R#0 bit 4 (H-blank IRQ enable) is set
 
 Reading S#0 clears the V-blank flag. Reading S#1 clears the H-blank flag.
 Both reads de-assert INT if no other source remains pending.
 
+System wiring note:
+- `Bus` mirrors `VDP-A::vblank_irq_pending()` and
+  `VDP-A::hblank_irq_pending()` onto CPU `INT0`.
+- `VDP-B` keeps the same internal status/IRQ behavior, but its `/INT` output is
+  intentionally not forwarded to the CPU.
+
 ---
 
 ## Compositor (`src/core/video/compositor.hpp`)
 
-Milestone 4 uses only the single-VDP expansion path. Dual-VDP mux behavior
-remains for milestone 5.
+Milestone 5 uses the dual-VDP compositor directly and keeps the single-VDP
+path only as a convenience for narrow tests.
 
 ```cpp
 // Called once per active scanline after both VDPs have been ticked
@@ -198,17 +225,19 @@ struct LayerMask {
 };
 ```
 
-When a layer is hidden, the compositor treats those pixels as index 0
-(transparent for VDP-A) or replaces them with the border color (for VDP-B).
+When a layer is hidden, the compositor drops that layer from the per-pixel
+selection. Hiding `VDP-A` background makes those pixels transparent to
+`VDP-B`; hiding sprite layers removes only sprite contribution while leaving
+the background layer intact.
 
 ---
 
 ## Display Pipeline (`src/frontend/display.hpp`)
 
 ```
-V9938 line buffer
+VDP-A background/sprites + VDP-B background/sprites
         │
-  Single-VDP RGB expansion → 256×212 RGB888 framebuffer
+  Dual-VDP compositor → 256×212 RGB888 framebuffer
         │
   Display upload buffer (`Display::upload_frame`)
         │

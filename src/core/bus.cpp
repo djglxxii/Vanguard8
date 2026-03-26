@@ -76,6 +76,22 @@ void Bus::write_memory(const std::uint32_t physical_address, const std::uint8_t 
 }
 
 auto Bus::read_port(const std::uint16_t port) -> std::uint8_t {
+    switch (port) {
+    case 0x80:
+        return vdp_a_.read_data();
+    case 0x81: {
+        const auto value = vdp_a_.read_status();
+        sync_vdp_interrupt_lines();
+        return value;
+    }
+    case 0x84:
+        return vdp_b_.read_data();
+    case 0x85:
+        return vdp_b_.read_status();
+    default:
+        break;
+    }
+
     const auto stub = port_stubs_.find(port);
     if (stub == port_stubs_.end()) {
         warn("Open-bus port read at " + hex_string(port, 2));
@@ -91,6 +107,41 @@ auto Bus::read_port(const std::uint16_t port) -> std::uint8_t {
 }
 
 void Bus::write_port(const std::uint16_t port, const std::uint8_t value) {
+    if (const auto stub = port_stubs_.find(port); stub != port_stubs_.end()) {
+        stub->second.last_written = value;
+    }
+
+    switch (port) {
+    case 0x80:
+        vdp_a_.write_data(value);
+        return;
+    case 0x81:
+        vdp_a_.write_control(value);
+        sync_vdp_interrupt_lines();
+        return;
+    case 0x82:
+        vdp_a_.write_palette(value);
+        return;
+    case 0x83:
+        vdp_a_.write_register(value);
+        sync_vdp_interrupt_lines();
+        return;
+    case 0x84:
+        vdp_b_.write_data(value);
+        return;
+    case 0x85:
+        vdp_b_.write_control(value);
+        return;
+    case 0x86:
+        vdp_b_.write_palette(value);
+        return;
+    case 0x87:
+        vdp_b_.write_register(value);
+        return;
+    default:
+        break;
+    }
+
     const auto stub = port_stubs_.find(port);
     if (stub == port_stubs_.end()) {
         warn("Open-bus port write at " + hex_string(port, 2) + " value " + hex_string(value, 2));
@@ -126,9 +177,18 @@ auto Bus::int0_asserted() const -> bool {
 
 auto Bus::int1_asserted() const -> bool { return int1_asserted_; }
 
-void Bus::set_vdp_a_vblank(const bool asserted) { int0_state_.vdp_a_vblank = asserted; }
+auto Bus::vdp_a() const -> const video::V9938& { return vdp_a_; }
 
-void Bus::set_vdp_a_hblank(const bool asserted) { int0_state_.vdp_a_hblank = asserted; }
+auto Bus::vdp_b() const -> const video::V9938& { return vdp_b_; }
+
+auto Bus::mutable_vdp_a() -> video::V9938& { return vdp_a_; }
+
+auto Bus::mutable_vdp_b() -> video::V9938& { return vdp_b_; }
+
+void Bus::sync_vdp_interrupt_lines() {
+    int0_state_.vdp_a_vblank = vdp_a_.vblank_irq_pending();
+    int0_state_.vdp_a_hblank = vdp_a_.hblank_irq_pending();
+}
 
 void Bus::set_ym2151_timer(const bool asserted) { int0_state_.ym2151_timer = asserted; }
 

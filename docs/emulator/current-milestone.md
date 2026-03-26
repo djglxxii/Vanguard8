@@ -2,7 +2,7 @@
 
 - Active milestone: `5`
 - Title: `Dual VDPs, Compositing, Sprites, and VDP-A Interrupt Semantics`
-- Status: `active`
+- Status: `ready_for_verification`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
 - Contract file: `docs/emulator/milestones/05.md`
 
@@ -11,5 +11,6 @@ Execution rules:
   executed.
 - Do not pull in milestone `6+` tasks until milestone `5` is accepted and this
   lock file is advanced.
-- Keep milestone `5` work inside `src/core/video/`, `src/frontend/`, and
-  `tests/` unless the milestone contract changes in the same edit.
+- Keep milestone `5` work inside `src/core/video/`, `src/core/bus.*`,
+  `src/core/emulator.*`, `src/frontend/`, and `tests/` unless the milestone
+  contract changes in the same edit.

@@ -19,6 +19,16 @@ auto collect_type(
     return filtered;
 }
 
+void write_vdp_register(
+    vanguard8::core::Bus& bus,
+    const std::uint16_t control_port,
+    const std::uint8_t reg,
+    const std::uint8_t value
+) {
+    bus.write_port(control_port, value);
+    bus.write_port(control_port, static_cast<std::uint8_t>(0x80U | reg));
+}
+
 }  // namespace
 
 TEST_CASE("scheduler executes queued events in deterministic cycle order", "[scheduler]") {
@@ -136,4 +146,21 @@ TEST_CASE("headless runtime controls pause run and single-frame step at frame bo
     emulator.resume();
     emulator.run_frames(2);
     REQUIRE(emulator.completed_frames() == 3);
+}
+
+TEST_CASE("scheduler-driven VDP-A interrupts reach INT0 while VDP-B stays isolated", "[scheduler]") {
+    vanguard8::core::Emulator emulator;
+
+    write_vdp_register(emulator.mutable_bus(), 0x81, 1, 0x20);
+    emulator.run_frames(1);
+
+    REQUIRE(emulator.bus().int0_asserted());
+    REQUIRE((emulator.vdp_a().status_value(0) & 0x80U) != 0U);
+
+    vanguard8::core::Emulator isolated;
+    write_vdp_register(isolated.mutable_bus(), 0x85, 1, 0x20);
+    isolated.run_frames(1);
+
+    REQUIRE_FALSE(isolated.bus().int0_asserted());
+    REQUIRE((isolated.vdp_b().status_value(0) & 0x80U) != 0U);
 }

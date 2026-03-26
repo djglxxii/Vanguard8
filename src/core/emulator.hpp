@@ -3,6 +3,7 @@
 #include "core/bus.hpp"
 #include "core/cpu/z180_adapter.hpp"
 #include "core/scheduler.hpp"
+#include "core/video/v9938.hpp"
 
 #include <cstdint>
 #include <string>
@@ -49,6 +50,10 @@ class Emulator {
     [[nodiscard]] auto current_scanline() const -> int;
     [[nodiscard]] auto event_log() const -> const std::vector<EventLogEntry>&;
     [[nodiscard]] auto event_log_digest() const -> std::uint64_t;
+    [[nodiscard]] auto bus() const -> const Bus&;
+    [[nodiscard]] auto mutable_bus() -> Bus&;
+    [[nodiscard]] auto vdp_a() const -> const video::V9938&;
+    [[nodiscard]] auto vdp_b() const -> const video::V9938&;
 
     [[nodiscard]] auto scheduler_size() const -> std::size_t;
 

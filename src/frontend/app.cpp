@@ -29,16 +29,17 @@ auto run_frontend_app(int argc, char** argv) -> int {
     std::cout << emulator.build_summary() << '\n';
 
     if (!render_fixture) {
-        std::cout << "Frontend status: single-VDP upload path available" << '\n';
+        std::cout << "Frontend status: dual-VDP upload path available" << '\n';
         return 0;
     }
 
-    core::video::V9938 vdp;
-    build_video_fixture_frame(vdp);
+    core::video::V9938 vdp_a;
+    core::video::V9938 vdp_b;
+    build_dual_vdp_fixture_frame(vdp_a, vdp_b);
     Display display;
-    display.upload_frame(core::video::Compositor::compose_single_vdp(vdp));
+    display.upload_frame(core::video::Compositor::compose_dual_vdp(vdp_a, vdp_b));
 
-    std::cout << "Frontend status: single-VDP upload path" << '\n';
+    std::cout << "Frontend status: dual-VDP compositing path" << '\n';
     std::cout << "Frontend frame digest: " << display.frame_digest() << '\n';
     return 0;
 }

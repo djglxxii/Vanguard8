@@ -22,8 +22,8 @@ Emulator::Emulator() : bus_(memory::CartridgeSlot(make_idle_rom())), cpu_(bus_) 
 auto Emulator::build_summary() const -> std::string {
     std::ostringstream summary;
     summary << "Vanguard 8 Emulator " << "0.1.0" << '\n';
-    summary << "Build: milestone 3" << '\n';
-    summary << "Core status: event-scheduled headless runtime";
+    summary << "Build: milestone 5" << '\n';
+    summary << "Core status: dual-VDP video and event-scheduled runtime";
     return summary.str();
 }
 
@@ -106,6 +106,14 @@ auto Emulator::event_log_digest() const -> std::uint64_t {
     }
     return digest;
 }
+
+auto Emulator::bus() const -> const Bus& { return bus_; }
+
+auto Emulator::mutable_bus() -> Bus& { return bus_; }
+
+auto Emulator::vdp_a() const -> const video::V9938& { return bus_.vdp_a(); }
+
+auto Emulator::vdp_b() const -> const video::V9938& { return bus_.vdp_b(); }
 
 auto Emulator::scheduler_size() const -> std::size_t { return scheduler_.size(); }
 
@@ -221,9 +229,15 @@ void Emulator::fire_event(const Event& event) {
     switch (event.type) {
     case EventType::hblank:
         current_scanline_ = event.scanline;
+        bus_.mutable_vdp_a().tick_scanline(event.scanline);
+        bus_.mutable_vdp_b().tick_scanline(event.scanline);
+        bus_.sync_vdp_interrupt_lines();
         break;
     case EventType::vblank:
         current_scanline_ = event.scanline;
+        bus_.mutable_vdp_a().set_vblank_flag(true);
+        bus_.mutable_vdp_b().set_vblank_flag(true);
+        bus_.sync_vdp_interrupt_lines();
         break;
     case EventType::vblank_end:
         current_scanline_ = 0;

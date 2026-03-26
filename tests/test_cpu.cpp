@@ -31,6 +31,16 @@ auto make_boot_test_rom() -> std::vector<std::uint8_t> {
     return rom;
 }
 
+void write_vdp_register(
+    vanguard8::core::Bus& bus,
+    const std::uint16_t control_port,
+    const std::uint8_t reg,
+    const std::uint8_t value
+) {
+    bus.write_port(control_port, value);
+    bus.write_port(control_port, static_cast<std::uint8_t>(0x80U | reg));
+}
+
 }  // namespace
 
 TEST_CASE("z180 adapter reset matches documented HD64180 defaults", "[cpu]") {
@@ -89,12 +99,29 @@ TEST_CASE("INT0 follows IM1 behavior", "[cpu]") {
 
     cpu.set_interrupt_mode(1);
     cpu.set_iff1(true);
-    bus.set_vdp_a_vblank(true);
+    write_vdp_register(bus, 0x81, 1, 0x20);
+    bus.mutable_vdp_a().set_vblank_flag(true);
+    bus.sync_vdp_interrupt_lines();
 
     const auto service = cpu.service_pending_interrupt();
     REQUIRE(service.has_value());
     REQUIRE(service->source == vanguard8::core::cpu::InterruptSource::int0);
     REQUIRE(service->handler_address == 0x0038);
+}
+
+TEST_CASE("VDP-B interrupt state never reaches CPU INT0", "[cpu]") {
+    vanguard8::core::Bus bus{};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    cpu.set_interrupt_mode(1);
+    cpu.set_iff1(true);
+
+    write_vdp_register(bus, 0x85, 1, 0x20);
+    bus.mutable_vdp_b().set_vblank_flag(true);
+    bus.sync_vdp_interrupt_lines();
+
+    REQUIRE_FALSE(bus.int0_asserted());
+    REQUIRE_FALSE(cpu.service_pending_interrupt().has_value());
 }
 
 TEST_CASE("INT1 uses the I IL vectored path independent of IM mode", "[cpu]") {

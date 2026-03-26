@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/video/v9938.hpp"
 #include "core/memory/cartridge.hpp"
 #include "core/memory/sram.hpp"
 
@@ -46,8 +47,11 @@ class Bus {
     [[nodiscard]] auto int0_state() const -> const Int0State&;
     [[nodiscard]] auto int0_asserted() const -> bool;
     [[nodiscard]] auto int1_asserted() const -> bool;
-    void set_vdp_a_vblank(bool asserted);
-    void set_vdp_a_hblank(bool asserted);
+    [[nodiscard]] auto vdp_a() const -> const video::V9938&;
+    [[nodiscard]] auto vdp_b() const -> const video::V9938&;
+    [[nodiscard]] auto mutable_vdp_a() -> video::V9938&;
+    [[nodiscard]] auto mutable_vdp_b() -> video::V9938&;
+    void sync_vdp_interrupt_lines();
     void set_ym2151_timer(bool asserted);
     void set_int1(bool asserted);
     void record_warning(std::string message);
@@ -59,6 +63,8 @@ class Bus {
     std::vector<std::string> warnings_;
     Int0State int0_state_{};
     bool int1_asserted_ = false;
+    video::V9938 vdp_a_{};
+    video::V9938 vdp_b_{};
 
     void register_port(
         std::uint16_t port,

@@ -70,10 +70,11 @@ auto run_headless_app(int argc, char** argv) -> int {
     std::cout << emulator.build_summary() << '\n';
 
     if (dump_fixture) {
-        core::video::V9938 vdp;
-        build_video_fixture_frame(vdp);
+        core::video::V9938 vdp_a;
+        core::video::V9938 vdp_b;
+        build_dual_vdp_fixture_frame(vdp_a, vdp_b);
         Display display;
-        display.upload_frame(core::video::Compositor::compose_single_vdp(vdp));
+        display.upload_frame(core::video::Compositor::compose_dual_vdp(vdp_a, vdp_b));
         display.dump_ppm_file(dump_path);
         std::cout << "Headless status: frame dump complete" << '\n';
         std::cout << "Frame dump path: " << dump_path.string() << '\n';

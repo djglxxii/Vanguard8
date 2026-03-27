@@ -1,6 +1,6 @@
 # M10-T03 — Add Headless Regression CI
 
-Status: `planned`
+Status: `in_progress`
 Milestone: `10`
 Depends on: `M10-T02`
 

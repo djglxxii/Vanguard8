@@ -2,7 +2,9 @@ add_library(
     vanguard8_core
     bus.cpp
     emulator.cpp
+    hash.cpp
     logging.cpp
+    rewind.cpp
     save_state.cpp
     scheduler.cpp
     config.cpp
@@ -13,6 +15,8 @@ add_library(
     audio/opm_vendor.cpp
     audio/ym2151.cpp
     io/controller.cpp
+    replay/recorder.cpp
+    replay/replayer.cpp
     video/v9938.cpp
     cpu/z180_adapter.cpp
     ../../third_party/msm5205/msm5205_core.cpp

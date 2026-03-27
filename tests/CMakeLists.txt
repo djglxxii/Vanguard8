@@ -13,6 +13,7 @@ add_executable(
     vanguard8_tests
     catch_main.cpp
     test_audio.cpp
+    test_rewind_replay.cpp
     test_scaffold.cpp
     test_save_state.cpp
     test_debugger.cpp

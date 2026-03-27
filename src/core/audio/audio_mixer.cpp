@@ -1,5 +1,6 @@
 #include "core/audio/audio_mixer.hpp"
 
+#include <algorithm>
 #include <cmath>
 
 namespace vanguard8::core::audio {
@@ -22,6 +23,7 @@ void AudioMixer::reset() {
     output_digest_ = fnv_offset_basis;
     total_output_sample_count_ = 0;
     frame_output_sample_count_ = 0;
+    output_bytes_.clear();
 }
 
 auto AudioMixer::advance_common_clock() -> bool {
@@ -54,6 +56,8 @@ auto AudioMixer::total_output_sample_count() const -> std::uint64_t { return tot
 
 auto AudioMixer::current_common_sample() const -> StereoSample { return current_common_sample_; }
 
+auto AudioMixer::output_bytes() const -> const std::vector<std::uint8_t>& { return output_bytes_; }
+
 auto AudioMixer::state_snapshot() const -> AudioMixerState {
     return AudioMixerState{
         .current_common_sample = current_common_sample_,
@@ -82,6 +86,9 @@ void AudioMixer::append_output_sample(const StereoSample& sample) {
     for (const auto channel : channels) {
         output_digest_ ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(channel));
         output_digest_ *= fnv_prime;
+        const auto sample16 = static_cast<std::int16_t>(std::clamp(channel, -32768, 32767));
+        output_bytes_.push_back(static_cast<std::uint8_t>(sample16 & 0x00FF));
+        output_bytes_.push_back(static_cast<std::uint8_t>((sample16 >> 8U) & 0x00FF));
     }
     ++total_output_sample_count_;
     ++frame_output_sample_count_;

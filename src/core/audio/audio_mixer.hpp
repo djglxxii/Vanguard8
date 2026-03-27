@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <vector>
 
 namespace vanguard8::core::audio {
 
@@ -33,6 +34,7 @@ class AudioMixer {
     [[nodiscard]] auto frame_output_sample_count() const -> std::size_t;
     [[nodiscard]] auto total_output_sample_count() const -> std::uint64_t;
     [[nodiscard]] auto current_common_sample() const -> StereoSample;
+    [[nodiscard]] auto output_bytes() const -> const std::vector<std::uint8_t>&;
     [[nodiscard]] auto state_snapshot() const -> AudioMixerState;
     void load_state(const AudioMixerState& state);
 
@@ -43,6 +45,7 @@ class AudioMixer {
     std::uint64_t output_digest_ = 0;
     std::uint64_t total_output_sample_count_ = 0;
     std::size_t frame_output_sample_count_ = 0;
+    std::vector<std::uint8_t> output_bytes_{};
 
     void append_output_sample(const StereoSample& sample);
 };

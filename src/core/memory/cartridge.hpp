@@ -28,6 +28,7 @@ class CartridgeSlot {
         -> std::uint8_t;
     [[nodiscard]] auto rom_size() const -> std::size_t;
     [[nodiscard]] auto switchable_bank_count() const -> std::size_t;
+    [[nodiscard]] auto rom_image() const -> const std::vector<std::uint8_t>&;
 
   private:
     std::vector<std::uint8_t> rom_image_;

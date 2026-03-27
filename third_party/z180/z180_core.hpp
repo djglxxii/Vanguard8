@@ -83,6 +83,7 @@ class Core {
     [[nodiscard]] auto interrupt_mode() const -> std::uint8_t;
     [[nodiscard]] auto halted() const -> bool;
     [[nodiscard]] auto register_snapshot() const -> RegisterSnapshot;
+    void load_register_snapshot(const RegisterSnapshot& state);
 
     void set_register_i(std::uint8_t value);
     void set_interrupt_mode(std::uint8_t mode);

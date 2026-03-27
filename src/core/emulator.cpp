@@ -166,6 +166,41 @@ auto Emulator::vdp_b() const -> const video::V9938& { return bus_.vdp_b(); }
 
 auto Emulator::loaded_rom_size() const -> std::size_t { return loaded_rom_size_; }
 
+auto Emulator::state_snapshot(const std::uint32_t format_version) const -> EmulatorState {
+    return EmulatorState{
+        .format_version = format_version,
+        .bus = bus_.state_snapshot(),
+        .cpu = cpu_.state_snapshot(),
+        .scheduler = scheduler_.state_snapshot(),
+        .master_cycle = master_cycle_,
+        .cpu_tstates = cpu_tstates_,
+        .cpu_master_remainder = cpu_master_remainder_,
+        .completed_frames = completed_frames_,
+        .frame_start_cycle = frame_start_cycle_,
+        .next_vclk_tick = next_vclk_tick_,
+        .current_scanline = current_scanline_,
+        .paused = paused_,
+        .event_log = event_log_,
+        .loaded_rom_size = loaded_rom_size_,
+    };
+}
+
+void Emulator::load_state(const EmulatorState& state) {
+    bus_.load_state(state.bus);
+    cpu_.load_state_snapshot(state.cpu);
+    scheduler_.load_state(state.scheduler);
+    master_cycle_ = state.master_cycle;
+    cpu_tstates_ = state.cpu_tstates;
+    cpu_master_remainder_ = state.cpu_master_remainder;
+    completed_frames_ = state.completed_frames;
+    frame_start_cycle_ = state.frame_start_cycle;
+    next_vclk_tick_ = state.next_vclk_tick;
+    current_scanline_ = state.current_scanline;
+    paused_ = state.paused;
+    event_log_ = state.event_log;
+    loaded_rom_size_ = state.loaded_rom_size;
+}
+
 auto Emulator::scheduler_size() const -> std::size_t { return scheduler_.size(); }
 
 auto Emulator::event_type_name(const EventType type) -> const char* {

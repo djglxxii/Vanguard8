@@ -54,6 +54,26 @@ auto AudioMixer::total_output_sample_count() const -> std::uint64_t { return tot
 
 auto AudioMixer::current_common_sample() const -> StereoSample { return current_common_sample_; }
 
+auto AudioMixer::state_snapshot() const -> AudioMixerState {
+    return AudioMixerState{
+        .current_common_sample = current_common_sample_,
+        .common_cycle_divider = common_cycle_divider_,
+        .output_phase = output_phase_,
+        .output_digest = output_digest_,
+        .total_output_sample_count = total_output_sample_count_,
+        .frame_output_sample_count = frame_output_sample_count_,
+    };
+}
+
+void AudioMixer::load_state(const AudioMixerState& state) {
+    current_common_sample_ = state.current_common_sample;
+    common_cycle_divider_ = state.common_cycle_divider;
+    output_phase_ = state.output_phase;
+    output_digest_ = state.output_digest;
+    total_output_sample_count_ = state.total_output_sample_count;
+    frame_output_sample_count_ = state.frame_output_sample_count;
+}
+
 void AudioMixer::append_output_sample(const StereoSample& sample) {
     const std::array<std::int32_t, 2> channels = {
         quantize(sample.left),

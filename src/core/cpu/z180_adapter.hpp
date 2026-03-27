@@ -101,6 +101,7 @@ class Z180Adapter {
     [[nodiscard]] auto interrupt_mode() const -> std::uint8_t;
     [[nodiscard]] auto halted() const -> bool;
     [[nodiscard]] auto state_snapshot() const -> CpuStateSnapshot;
+    void load_state_snapshot(const CpuStateSnapshot& state);
     [[nodiscard]] auto breakpoints() const -> const std::vector<Breakpoint>&;
     [[nodiscard]] auto breakpoint_hits() const -> const std::vector<BreakpointHit>&;
     [[nodiscard]] auto bank_switch_log() const -> const std::vector<BankSwitchEvent>&;

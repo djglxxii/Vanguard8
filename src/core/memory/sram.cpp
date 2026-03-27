@@ -14,6 +14,8 @@ auto Sram::read(const std::uint32_t physical_address) const -> std::uint8_t {
     return bytes_[physical_address - physical_base];
 }
 
+auto Sram::bytes() const -> const std::array<std::uint8_t, size>& { return bytes_; }
+
 void Sram::write(const std::uint32_t physical_address, const std::uint8_t value) {
     if (!contains_physical_address(physical_address)) {
         return;
@@ -23,5 +25,7 @@ void Sram::write(const std::uint32_t physical_address, const std::uint8_t value)
 }
 
 void Sram::clear(const std::uint8_t fill) { bytes_.fill(fill); }
+
+void Sram::load_bytes(const std::array<std::uint8_t, size>& bytes) { bytes_ = bytes; }
 
 }  // namespace vanguard8::core::memory

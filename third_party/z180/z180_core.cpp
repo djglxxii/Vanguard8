@@ -120,6 +120,37 @@ auto Core::register_snapshot() const -> RegisterSnapshot {
     };
 }
 
+void Core::load_register_snapshot(const RegisterSnapshot& state) {
+    af_.value = state.af;
+    bc_.value = state.bc;
+    de_.value = state.de;
+    hl_.value = state.hl;
+    sp_.value = state.sp;
+    pc_.value = state.pc;
+    af2_.value = state.af_alt;
+    bc2_.value = state.bc_alt;
+    de2_.value = state.de_alt;
+    hl2_.value = state.hl_alt;
+    ix_.value = state.ix;
+    iy_.value = state.iy;
+    r_ = state.r;
+    i_ = state.i;
+    il_ = state.il;
+    itc_ = state.itc;
+    cbar_ = state.cbar;
+    cbr_ = state.cbr;
+    bbr_ = state.bbr;
+    interrupt_mode_ = state.interrupt_mode;
+    iff1_ = state.iff1;
+    iff2_ = state.iff2;
+    halted_ = state.halted;
+    tcr_ = state.tcr;
+    prt0_.tmdr.value = state.tmdr0;
+    prt0_.rldr.value = state.rldr0;
+    prt1_.tmdr.value = state.tmdr1;
+    prt1_.rldr.value = state.rldr1;
+}
+
 void Core::set_register_i(const std::uint8_t value) { i_ = value; }
 
 void Core::set_interrupt_mode(const std::uint8_t mode) { interrupt_mode_ = static_cast<std::uint8_t>(mode & 0x03U); }

@@ -62,4 +62,22 @@ auto Ym2151::current_output() const -> StereoSample { return current_output_; }
 
 auto Ym2151::latched_address() const -> std::uint8_t { return latched_address_; }
 
+auto Ym2151::state_snapshot() const -> Ym2151State {
+    return Ym2151State{
+        .chip = chip_,
+        .current_output = current_output_,
+        .master_cycle_divider = master_cycle_divider_,
+        .sample_clock_divider = sample_clock_divider_,
+        .latched_address = latched_address_,
+    };
+}
+
+void Ym2151::load_state(const Ym2151State& state) {
+    chip_ = state.chip;
+    current_output_ = state.current_output;
+    master_cycle_divider_ = state.master_cycle_divider;
+    sample_clock_divider_ = state.sample_clock_divider;
+    latched_address_ = state.latched_address;
+}
+
 }  // namespace vanguard8::core::audio

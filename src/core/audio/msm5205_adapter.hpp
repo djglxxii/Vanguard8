@@ -13,6 +13,13 @@ enum class Msm5205Rate {
     hz_8000,
 };
 
+struct Msm5205State {
+    vanguard8::third_party::msm5205::Core::State core;
+    std::uint8_t control = 0x83;
+    std::uint8_t latched_nibble = 0;
+    std::uint64_t vclk_count = 0;
+};
+
 class Msm5205Adapter {
   public:
     Msm5205Adapter() { reset(); }
@@ -27,6 +34,8 @@ class Msm5205Adapter {
     [[nodiscard]] auto vclk_rate() const -> Msm5205Rate;
     [[nodiscard]] auto vclk_enabled() const -> bool;
     [[nodiscard]] auto vclk_count() const -> std::uint64_t;
+    [[nodiscard]] auto state_snapshot() const -> Msm5205State;
+    void load_state(const Msm5205State& state);
 
   private:
     vanguard8::third_party::msm5205::Core core_{};

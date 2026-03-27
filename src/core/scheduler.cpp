@@ -46,4 +46,16 @@ auto Scheduler::empty() const -> bool { return events_.empty(); }
 
 auto Scheduler::size() const -> std::size_t { return events_.size(); }
 
+auto Scheduler::state_snapshot() const -> SchedulerState {
+    return SchedulerState{
+        .events = events_,
+        .next_sequence = next_sequence_,
+    };
+}
+
+void Scheduler::load_state(const SchedulerState& state) {
+    events_ = state.events;
+    next_sequence_ = state.next_sequence;
+}
+
 }  // namespace vanguard8::core

@@ -1,6 +1,6 @@
 # M10-T02 — Add Rewind and Deterministic Input Replay
 
-Status: `planned`
+Status: `in_progress`
 Milestone: `10`
 Depends on: `M10-T01`
 

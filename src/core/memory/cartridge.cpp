@@ -69,4 +69,6 @@ auto CartridgeSlot::switchable_bank_count() const -> std::size_t {
     return (rom_image_.size() - fixed_region_size) / bank_size;
 }
 
+auto CartridgeSlot::rom_image() const -> const std::vector<std::uint8_t>& { return rom_image_; }
+
 }  // namespace vanguard8::core::memory

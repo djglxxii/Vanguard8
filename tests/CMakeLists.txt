@@ -14,6 +14,7 @@ add_executable(
     catch_main.cpp
     test_audio.cpp
     test_scaffold.cpp
+    test_save_state.cpp
     test_debugger.cpp
     test_debugger_logs.cpp
     test_debugger_panels.cpp

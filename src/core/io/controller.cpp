@@ -29,6 +29,12 @@ auto ControllerPorts::read_port(const std::uint16_t port) const -> std::uint8_t 
     }
 }
 
+auto ControllerPorts::state_snapshot() const -> ControllerPortsState {
+    return ControllerPortsState{.port_state = port_state_};
+}
+
+void ControllerPorts::load_state(const ControllerPortsState& state) { port_state_ = state.port_state; }
+
 auto ControllerPorts::player_name(const Player player) -> std::string_view {
     switch (player) {
     case Player::one:

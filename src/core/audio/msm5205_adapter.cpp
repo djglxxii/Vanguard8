@@ -59,4 +59,20 @@ auto Msm5205Adapter::vclk_enabled() const -> bool { return vclk_rate() != Msm520
 
 auto Msm5205Adapter::vclk_count() const -> std::uint64_t { return vclk_count_; }
 
+auto Msm5205Adapter::state_snapshot() const -> Msm5205State {
+    return Msm5205State{
+        .core = core_.state_snapshot(),
+        .control = control_,
+        .latched_nibble = latched_nibble_,
+        .vclk_count = vclk_count_,
+    };
+}
+
+void Msm5205Adapter::load_state(const Msm5205State& state) {
+    core_.load_state(state.core);
+    control_ = state.control;
+    latched_nibble_ = state.latched_nibble;
+    vclk_count_ = state.vclk_count;
+}
+
 }  // namespace vanguard8::core::audio

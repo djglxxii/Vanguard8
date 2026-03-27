@@ -205,6 +205,63 @@ auto V9938::vram() const -> const std::array<std::uint8_t, vram_size>& { return 
 
 auto V9938::color_zero_transparent() const -> bool { return (reg_[8] & 0x20U) != 0U; }
 
+auto V9938::state_snapshot() const -> State {
+    return State{
+        .vram = vram_,
+        .reg = reg_,
+        .status = status_,
+        .palette = palette_,
+        .vram_addr = vram_addr_,
+        .control_latch = control_latch_,
+        .addr_latch_full = addr_latch_full_,
+        .indirect_register = indirect_register_,
+        .status_reg_select = status_reg_select_,
+        .palette_index = palette_index_,
+        .palette_phase = palette_phase_,
+        .command =
+            CommandStateSnapshot{
+                .type = static_cast<std::uint8_t>(command_.type),
+                .active = command_.active,
+                .transfer_ready = command_.transfer_ready,
+                .cycles_remaining = command_.cycles_remaining,
+                .stream_x = command_.stream_x,
+                .stream_y = command_.stream_y,
+                .remaining_x = command_.remaining_x,
+                .remaining_y = command_.remaining_y,
+            },
+        .background_line_buffer = background_line_buffer_,
+        .sprite_line_buffer = sprite_line_buffer_,
+        .line_buffer = line_buffer_,
+    };
+}
+
+void V9938::load_state(const State& state) {
+    vram_ = state.vram;
+    reg_ = state.reg;
+    status_ = state.status;
+    palette_ = state.palette;
+    vram_addr_ = state.vram_addr;
+    control_latch_ = state.control_latch;
+    addr_latch_full_ = state.addr_latch_full;
+    indirect_register_ = state.indirect_register;
+    status_reg_select_ = state.status_reg_select;
+    palette_index_ = state.palette_index;
+    palette_phase_ = state.palette_phase;
+    command_ = CommandState{
+        .type = static_cast<CommandType>(state.command.type),
+        .active = state.command.active,
+        .transfer_ready = state.command.transfer_ready,
+        .cycles_remaining = state.command.cycles_remaining,
+        .stream_x = state.command.stream_x,
+        .stream_y = state.command.stream_y,
+        .remaining_x = state.command.remaining_x,
+        .remaining_y = state.command.remaining_y,
+    };
+    background_line_buffer_ = state.background_line_buffer;
+    sprite_line_buffer_ = state.sprite_line_buffer;
+    line_buffer_ = state.line_buffer;
+}
+
 auto V9938::expand3to8(const std::uint8_t value) -> std::uint8_t {
     const auto clipped = static_cast<std::uint8_t>(value & 0x07U);
     return static_cast<std::uint8_t>((clipped << 5) | (clipped << 2) | (clipped >> 1));

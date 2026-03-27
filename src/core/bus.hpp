@@ -31,6 +31,20 @@ struct PortStubState {
     std::optional<std::uint8_t> last_written;
 };
 
+struct BusState {
+    std::vector<std::uint8_t> cartridge_image;
+    std::array<std::uint8_t, memory::Sram::size> sram_bytes{};
+    Int0State int0_state{};
+    std::uint32_t int1_pending_count = 0;
+    io::ControllerPortsState controller_ports{};
+    video::V9938::State vdp_a{};
+    video::V9938::State vdp_b{};
+    audio::Ym2151State ym2151{};
+    audio::Ay8910State ay8910{};
+    audio::Msm5205State msm5205{};
+    audio::AudioMixerState audio_mixer{};
+};
+
 class Bus {
   public:
     static constexpr std::uint8_t open_bus_value = 0xFF;
@@ -66,6 +80,8 @@ class Bus {
     [[nodiscard]] auto mutable_ay8910() -> audio::Ay8910&;
     [[nodiscard]] auto mutable_msm5205() -> audio::Msm5205Adapter&;
     [[nodiscard]] auto mutable_audio_mixer() -> audio::AudioMixer&;
+    [[nodiscard]] auto state_snapshot() const -> BusState;
+    void load_state(const BusState& state);
     void run_audio(std::uint64_t master_cycles);
     void end_audio_frame();
     void trigger_msm5205_vclk();

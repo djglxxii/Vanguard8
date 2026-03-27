@@ -21,6 +21,35 @@ class V9938 {
     using LineBuffer = std::array<std::uint8_t, visible_width>;
     using Framebuffer = std::vector<std::uint8_t>;
 
+    struct CommandStateSnapshot {
+        std::uint8_t type = 0;
+        bool active = false;
+        bool transfer_ready = false;
+        std::uint64_t cycles_remaining = 0;
+        std::uint16_t stream_x = 0;
+        std::uint16_t stream_y = 0;
+        std::uint16_t remaining_x = 0;
+        std::uint16_t remaining_y = 0;
+    };
+
+    struct State {
+        std::array<std::uint8_t, vram_size> vram{};
+        std::array<std::uint8_t, 64> reg{};
+        std::array<std::uint8_t, 10> status{};
+        std::array<std::array<std::uint8_t, 2>, 16> palette{};
+        std::uint16_t vram_addr = 0;
+        std::uint8_t control_latch = 0;
+        bool addr_latch_full = false;
+        std::uint8_t indirect_register = 0x20;
+        std::uint8_t status_reg_select = 0;
+        std::uint8_t palette_index = 0;
+        std::uint8_t palette_phase = 0;
+        CommandStateSnapshot command{};
+        LineBuffer background_line_buffer{};
+        LineBuffer sprite_line_buffer{};
+        LineBuffer line_buffer{};
+    };
+
     V9938();
 
     void reset();
@@ -52,6 +81,8 @@ class V9938 {
     [[nodiscard]] auto sprite_line_buffer() const -> const LineBuffer&;
     [[nodiscard]] auto vram() const -> const std::array<std::uint8_t, vram_size>&;
     [[nodiscard]] auto color_zero_transparent() const -> bool;
+    [[nodiscard]] auto state_snapshot() const -> State;
+    void load_state(const State& state);
 
     [[nodiscard]] static auto expand3to8(std::uint8_t value) -> std::uint8_t;
 

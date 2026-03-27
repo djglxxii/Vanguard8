@@ -8,6 +8,15 @@
 
 namespace vanguard8::core::audio {
 
+struct AudioMixerState {
+    StereoSample current_common_sample{};
+    std::uint32_t common_cycle_divider = 0;
+    std::uint64_t output_phase = 0;
+    std::uint64_t output_digest = 0;
+    std::uint64_t total_output_sample_count = 0;
+    std::size_t frame_output_sample_count = 0;
+};
+
 class AudioMixer {
   public:
     static constexpr std::uint32_t common_sample_divider = 256;
@@ -24,6 +33,8 @@ class AudioMixer {
     [[nodiscard]] auto frame_output_sample_count() const -> std::size_t;
     [[nodiscard]] auto total_output_sample_count() const -> std::uint64_t;
     [[nodiscard]] auto current_common_sample() const -> StereoSample;
+    [[nodiscard]] auto state_snapshot() const -> AudioMixerState;
+    void load_state(const AudioMixerState& state);
 
   private:
     StereoSample current_common_sample_{};

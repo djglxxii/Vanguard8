@@ -238,6 +238,36 @@ auto Bus::mutable_msm5205() -> audio::Msm5205Adapter& { return msm5205_; }
 
 auto Bus::mutable_audio_mixer() -> audio::AudioMixer& { return audio_mixer_; }
 
+auto Bus::state_snapshot() const -> BusState {
+    return BusState{
+        .cartridge_image = cartridge_.rom_image(),
+        .sram_bytes = sram_.bytes(),
+        .int0_state = int0_state_,
+        .int1_pending_count = int1_pending_count_,
+        .controller_ports = controller_ports_.state_snapshot(),
+        .vdp_a = vdp_a_.state_snapshot(),
+        .vdp_b = vdp_b_.state_snapshot(),
+        .ym2151 = ym2151_.state_snapshot(),
+        .ay8910 = ay8910_.state_snapshot(),
+        .msm5205 = msm5205_.state_snapshot(),
+        .audio_mixer = audio_mixer_.state_snapshot(),
+    };
+}
+
+void Bus::load_state(const BusState& state) {
+    cartridge_.load(state.cartridge_image);
+    sram_.load_bytes(state.sram_bytes);
+    int0_state_ = state.int0_state;
+    int1_pending_count_ = state.int1_pending_count;
+    controller_ports_.load_state(state.controller_ports);
+    vdp_a_.load_state(state.vdp_a);
+    vdp_b_.load_state(state.vdp_b);
+    ym2151_.load_state(state.ym2151);
+    ay8910_.load_state(state.ay8910);
+    msm5205_.load_state(state.msm5205);
+    audio_mixer_.load_state(state.audio_mixer);
+}
+
 void Bus::run_audio(const std::uint64_t master_cycles) {
     for (std::uint64_t cycle = 0; cycle < master_cycles; ++cycle) {
         ym2151_.advance_master_cycle();

@@ -33,6 +33,11 @@ struct Event {
     std::uint64_t sequence = 0;
 };
 
+struct SchedulerState {
+    std::vector<Event> events;
+    std::uint64_t next_sequence = 0;
+};
+
 class Scheduler {
   public:
     void reset();
@@ -41,6 +46,8 @@ class Scheduler {
     [[nodiscard]] auto pop() -> std::optional<Event>;
     [[nodiscard]] auto empty() const -> bool;
     [[nodiscard]] auto size() const -> std::size_t;
+    [[nodiscard]] auto state_snapshot() const -> SchedulerState;
+    void load_state(const SchedulerState& state);
 
   private:
     std::vector<Event> events_;

@@ -88,6 +88,28 @@ auto Z180Adapter::state_snapshot() const -> CpuStateSnapshot {
     };
 }
 
+void Z180Adapter::load_state_snapshot(const CpuStateSnapshot& state) {
+    core_.load_register_snapshot(state.registers);
+    dma_.sar0l = static_cast<std::uint8_t>(state.dma0.source & 0xFFU);
+    dma_.sar0h = static_cast<std::uint8_t>((state.dma0.source >> 8U) & 0xFFU);
+    dma_.sar0b = static_cast<std::uint8_t>((state.dma0.source >> 16U) & 0x0FU);
+    dma_.dar0l = static_cast<std::uint8_t>(state.dma0.destination & 0xFFU);
+    dma_.dar0h = static_cast<std::uint8_t>((state.dma0.destination >> 8U) & 0xFFU);
+    dma_.dar0b = static_cast<std::uint8_t>((state.dma0.destination >> 16U) & 0x0FU);
+    dma_.bcr0l = static_cast<std::uint8_t>(state.dma0.length & 0xFFU);
+    dma_.bcr0h = static_cast<std::uint8_t>((state.dma0.length >> 8U) & 0xFFU);
+    dma_.mar1l = static_cast<std::uint8_t>(state.dma1.memory_address & 0xFFU);
+    dma_.mar1h = static_cast<std::uint8_t>((state.dma1.memory_address >> 8U) & 0xFFU);
+    dma_.mar1b = static_cast<std::uint8_t>((state.dma1.memory_address >> 16U) & 0x0FU);
+    dma_.iar1l = static_cast<std::uint8_t>(state.dma1.port & 0xFFU);
+    dma_.iar1h = static_cast<std::uint8_t>((state.dma1.port >> 8U) & 0xFFU);
+    dma_.bcr1l = static_cast<std::uint8_t>(state.dma1.length & 0xFFU);
+    dma_.bcr1h = static_cast<std::uint8_t>((state.dma1.length >> 8U) & 0xFFU);
+    dma_.dstat = state.dstat;
+    dma_.dmode = state.dmode;
+    dma_.dcntl = state.dcntl;
+}
+
 auto Z180Adapter::breakpoints() const -> const std::vector<Breakpoint>& { return breakpoints_; }
 
 auto Z180Adapter::breakpoint_hits() const -> const std::vector<BreakpointHit>& { return breakpoint_hits_; }

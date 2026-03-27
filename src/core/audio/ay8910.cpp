@@ -90,6 +90,34 @@ auto Ay8910::current_output() const -> StereoSample { return make_centered_sampl
 
 auto Ay8910::selected_register() const -> std::uint8_t { return selected_register_; }
 
+auto Ay8910::state_snapshot() const -> Ay8910State {
+    return Ay8910State{
+        .chip = chip_,
+        .registers = registers_,
+        .selected_register = selected_register_,
+        .master_cycle_divider = master_cycle_divider_,
+        .latest_mono_sample = latest_mono_sample_,
+        .common_window_sum = common_window_sum_,
+        .common_window_samples = common_window_samples_,
+    };
+}
+
+void Ay8910::load_state(const Ay8910State& state) {
+    ayumi configured{};
+    const auto clock_rate = static_cast<double>(timing::master_hz) / 8.0;
+    const auto sample_rate = static_cast<int>(std::llround(static_cast<double>(timing::master_hz) / 128.0));
+    ayumi_configure(&configured, 0, clock_rate, sample_rate);
+
+    chip_ = state.chip;
+    chip_.dac_table = configured.dac_table;
+    registers_ = state.registers;
+    selected_register_ = state.selected_register;
+    master_cycle_divider_ = state.master_cycle_divider;
+    latest_mono_sample_ = state.latest_mono_sample;
+    common_window_sum_ = state.common_window_sum;
+    common_window_samples_ = state.common_window_samples;
+}
+
 auto Ay8910::mask_register(const std::uint8_t reg, const std::uint8_t value) -> std::uint8_t {
     switch (reg) {
     case 1:

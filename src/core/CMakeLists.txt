@@ -3,6 +3,7 @@ add_library(
     bus.cpp
     emulator.cpp
     logging.cpp
+    save_state.cpp
     scheduler.cpp
     config.cpp
     audio/audio_mixer.cpp

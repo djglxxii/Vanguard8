@@ -10,6 +10,14 @@ extern "C" {
 
 namespace vanguard8::core::audio {
 
+struct Ym2151State {
+    opm_t chip{};
+    StereoSample current_output{};
+    std::uint32_t master_cycle_divider = 0;
+    std::uint32_t sample_clock_divider = 0;
+    std::uint8_t latched_address = 0;
+};
+
 class Ym2151 {
   public:
     static constexpr std::uint32_t master_cycles_per_ym_clock = 4;
@@ -25,6 +33,8 @@ class Ym2151 {
     [[nodiscard]] auto irq_pending() const -> bool;
     [[nodiscard]] auto current_output() const -> StereoSample;
     [[nodiscard]] auto latched_address() const -> std::uint8_t;
+    [[nodiscard]] auto state_snapshot() const -> Ym2151State;
+    void load_state(const Ym2151State& state);
 
   private:
     opm_t chip_{};

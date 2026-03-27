@@ -27,6 +27,23 @@ struct EventLogEntry {
     int scanline = -1;
 };
 
+struct EmulatorState {
+    std::uint32_t format_version = 0;
+    BusState bus;
+    cpu::CpuStateSnapshot cpu;
+    SchedulerState scheduler;
+    std::uint64_t master_cycle = 0;
+    std::uint64_t cpu_tstates = 0;
+    std::uint64_t cpu_master_remainder = 0;
+    std::uint64_t completed_frames = 0;
+    std::uint64_t frame_start_cycle = 0;
+    std::uint64_t next_vclk_tick = 0;
+    int current_scanline = 0;
+    bool paused = false;
+    std::vector<EventLogEntry> event_log;
+    std::size_t loaded_rom_size = memory::CartridgeSlot::fixed_region_size;
+};
+
 class Emulator {
   public:
     Emulator();
@@ -61,6 +78,8 @@ class Emulator {
     [[nodiscard]] auto vdp_a() const -> const video::V9938&;
     [[nodiscard]] auto vdp_b() const -> const video::V9938&;
     [[nodiscard]] auto loaded_rom_size() const -> std::size_t;
+    [[nodiscard]] auto state_snapshot(std::uint32_t format_version = 1) const -> EmulatorState;
+    void load_state(const EmulatorState& state);
 
     [[nodiscard]] auto scheduler_size() const -> std::size_t;
 

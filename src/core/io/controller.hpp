@@ -22,6 +22,10 @@ enum class Button : std::uint8_t {
     start = 0,
 };
 
+struct ControllerPortsState {
+    std::array<std::uint8_t, 2> port_state = {0xFF, 0xFF};
+};
+
 class ControllerPorts {
   public:
     static constexpr std::uint8_t released_state = 0xFF;
@@ -30,6 +34,8 @@ class ControllerPorts {
     void set_button(Player player, Button button, bool pressed);
     [[nodiscard]] auto read(Player player) const -> std::uint8_t;
     [[nodiscard]] auto read_port(std::uint16_t port) const -> std::uint8_t;
+    [[nodiscard]] auto state_snapshot() const -> ControllerPortsState;
+    void load_state(const ControllerPortsState& state);
     [[nodiscard]] static auto player_name(Player player) -> std::string_view;
     [[nodiscard]] static auto button_name(Button button) -> std::string_view;
 

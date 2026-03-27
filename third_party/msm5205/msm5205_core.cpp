@@ -50,6 +50,18 @@ void Core::clock(const std::uint8_t nibble) {
 
 auto Core::sample() const -> std::int16_t { return static_cast<std::int16_t>(signal_); }
 
+auto Core::state_snapshot() const -> State {
+    return State{
+        .signal = signal_,
+        .step = step_,
+    };
+}
+
+void Core::load_state(const State& state) {
+    signal_ = state.signal;
+    step_ = state.step;
+}
+
 void Core::compute_tables() {
     for (int step = 0; step <= 48; ++step) {
         const auto step_value = static_cast<int>(std::floor(16.0 * std::pow(11.0 / 10.0, step)));

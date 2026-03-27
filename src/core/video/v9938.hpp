@@ -14,9 +14,24 @@ class V9938 {
     static constexpr int vram_size = 65'536;
     static constexpr int bytes_per_scanline = 128;
     static constexpr std::uint8_t transparent_sprite_pixel = 0xFF;
+    static constexpr std::uint8_t register0_mode_m3 = 0x02;
+    static constexpr std::uint8_t register0_mode_m4 = 0x04;
+    static constexpr std::uint8_t register0_mode_m5 = 0x08;
+    static constexpr std::uint8_t register1_mode_m2 = 0x08;
+    static constexpr std::uint8_t register1_mode_m1 = 0x10;
+    static constexpr std::uint8_t graphic4_mode_r0 =
+        static_cast<std::uint8_t>(register0_mode_m4 | register0_mode_m3);
+    static constexpr std::uint8_t graphic3_mode_r0 = register0_mode_m4;
+    static constexpr std::uint8_t graphic_mode_r1 = 0x00;
     static constexpr std::uint16_t graphic4_sprite_pattern_base = 0x6A00;
     static constexpr std::uint16_t graphic4_sprite_color_base = 0x7A00;
     static constexpr std::uint16_t graphic4_sprite_attribute_base = 0x7C00;
+    static constexpr std::uint16_t graphic3_name_table_base = 0x0000;
+    static constexpr std::uint16_t graphic3_pattern_base = 0x0300;
+    static constexpr std::uint16_t graphic3_color_base = 0x1800;
+    static constexpr std::uint16_t graphic3_sprite_pattern_base = 0x3000;
+    static constexpr std::uint16_t graphic3_sprite_color_base = 0x4000;
+    static constexpr std::uint16_t graphic3_sprite_attribute_base = 0x4200;
 
     using LineBuffer = std::array<std::uint8_t, visible_width>;
     using Framebuffer = std::vector<std::uint8_t>;
@@ -87,6 +102,12 @@ class V9938 {
     [[nodiscard]] static auto expand3to8(std::uint8_t value) -> std::uint8_t;
 
   private:
+    enum class DisplayMode {
+        unsupported,
+        graphic3,
+        graphic4,
+    };
+
     enum class CommandType {
         none,
         point,
@@ -163,8 +184,14 @@ class V9938 {
     void stream_hmmc_value(std::uint8_t value);
     void advance_stream_position(bool byte_mode);
     void update_int_state();
+    [[nodiscard]] auto current_display_mode() const -> DisplayMode;
+    [[nodiscard]] auto backdrop_color() const -> std::uint8_t;
     void render_graphic4_background_scanline(int line);
+    void render_graphic3_background_scanline(int line);
     void render_mode2_sprites_for_scanline(int line);
+    [[nodiscard]] auto sprite_pattern_base() const -> std::uint16_t;
+    [[nodiscard]] auto sprite_color_base() const -> std::uint16_t;
+    [[nodiscard]] auto sprite_attribute_base() const -> std::uint16_t;
     [[nodiscard]] auto sprite_color_for_line(std::uint8_t sprite_index, int row) const
         -> std::optional<std::uint8_t>;
     [[nodiscard]] auto sprite_pattern_byte(std::uint8_t pattern_number, int row) const

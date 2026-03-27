@@ -19,6 +19,16 @@ void write_register(V9938& vdp, const std::uint8_t reg, const std::uint8_t value
     vdp.write_control(static_cast<std::uint8_t>(0x80U | reg));
 }
 
+void set_graphic4_mode(V9938& vdp) {
+    write_register(vdp, 0, V9938::graphic4_mode_r0);
+    write_register(vdp, 1, V9938::graphic_mode_r1);
+}
+
+void set_graphic3_mode(V9938& vdp) {
+    write_register(vdp, 0, V9938::graphic3_mode_r0);
+    write_register(vdp, 1, V9938::graphic_mode_r1);
+}
+
 void write_command_word(V9938& vdp, const std::uint8_t low_reg, const std::uint16_t value) {
     write_register(vdp, low_reg, static_cast<std::uint8_t>(value & 0x00FFU));
     write_register(vdp, static_cast<std::uint8_t>(low_reg + 1U), static_cast<std::uint8_t>((value >> 8U) & 0x0003U));
@@ -115,6 +125,7 @@ TEST_CASE("Palette decoding expands 3 bit RGB channels correctly", "[video]") {
 TEST_CASE("Graphic 4 rendering follows VRAM addressing across scanlines", "[video]") {
     V9938 vdp;
 
+    set_graphic4_mode(vdp);
     write_register(vdp, 23, 0x00);
     vdp.write_palette(0x01);
     vdp.write_palette(0x70);
@@ -141,6 +152,7 @@ TEST_CASE("Graphic 4 rendering follows VRAM addressing across scanlines", "[vide
 TEST_CASE("R#23 vertical scroll wraps within the VRAM page", "[video]") {
     V9938 vdp;
 
+    set_graphic4_mode(vdp);
     seek_vram_write(vdp, 0x0000);
     for (int y = 0; y < 256; ++y) {
         for (int x = 0; x < V9938::visible_width; x += 2) {
@@ -314,6 +326,8 @@ TEST_CASE("VDP-A color 0 transparency reveals VDP-B while nonzero VDP-A pixels o
     V9938 vdp_a;
     V9938 vdp_b;
 
+    set_graphic4_mode(vdp_a);
+    set_graphic4_mode(vdp_b);
     vdp_a.write_palette(0x00);
     vdp_a.write_palette(0x00);
     vdp_a.write_palette(0x00);
@@ -351,6 +365,8 @@ TEST_CASE("Layer toggles can hide VDP-A background while leaving VDP-A sprites v
     V9938 vdp_a;
     V9938 vdp_b;
 
+    set_graphic4_mode(vdp_a);
+    set_graphic4_mode(vdp_b);
     vdp_a.write_palette(0x00);
     vdp_a.write_palette(0x00);
     vdp_a.write_palette(0x00);
@@ -395,6 +411,7 @@ TEST_CASE("Layer toggles can hide VDP-A background while leaving VDP-A sprites v
 TEST_CASE("Sprite overflow and collision flags behave for covered mode-2 cases", "[video]") {
     V9938 vdp;
 
+    set_graphic4_mode(vdp);
     for (std::uint8_t sprite_index = 0; sprite_index < 9; ++sprite_index) {
         write_mode2_sprite(vdp, sprite_index, 10, static_cast<std::uint8_t>(sprite_index * 4), sprite_index, 0x03);
         write_sprite_pattern_rows(vdp, sprite_index, 0xC0);
@@ -405,6 +422,7 @@ TEST_CASE("Sprite overflow and collision flags behave for covered mode-2 cases",
     REQUIRE((vdp.status_value(0) & 0x40U) != 0U);
 
     V9938 collision_vdp;
+    set_graphic4_mode(collision_vdp);
     write_mode2_sprite(collision_vdp, 0, 20, 32, 0, 0x05);
     write_mode2_sprite(collision_vdp, 1, 20, 32, 1, 0x06);
     write_sprite_pattern_rows(collision_vdp, 0, 0x80);
@@ -421,13 +439,15 @@ TEST_CASE("Reading S#0 and S#1 clears the documented VDP-A interrupt flags", "[v
     V9938 vdp_a;
     V9938 vdp_b;
 
-    write_register(vdp_a, 1, 0x20);
+    set_graphic4_mode(vdp_a);
+    set_graphic4_mode(vdp_b);
+    write_register(vdp_a, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x20U));
     vdp_a.set_vblank_flag(true);
     REQUIRE(vdp_a.int_pending());
     REQUIRE((vdp_a.read_status() & 0x80U) != 0U);
     REQUIRE(!vdp_a.int_pending());
 
-    write_register(vdp_a, 0, 0x10);
+    write_register(vdp_a, 0, static_cast<std::uint8_t>(V9938::graphic4_mode_r0 | 0x10U));
     write_register(vdp_a, 19, 12);
     write_register(vdp_a, 15, 1);
     vdp_a.tick_scanline(12);
@@ -435,9 +455,77 @@ TEST_CASE("Reading S#0 and S#1 clears the documented VDP-A interrupt flags", "[v
     REQUIRE((vdp_a.read_status() & 0x01U) != 0U);
     REQUIRE(!vdp_a.int_pending());
 
-    write_register(vdp_b, 1, 0x20);
+    write_register(vdp_b, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x20U));
     vdp_b.set_vblank_flag(true);
     REQUIRE(vdp_b.int_pending());
+}
+
+TEST_CASE("Graphic 3 rendering follows the documented tile and color table layout", "[video]") {
+    V9938 vdp;
+    set_graphic3_mode(vdp);
+
+    vdp.write_palette(0x01);
+    vdp.write_palette(0x70);
+    vdp.write_palette(0x00);
+    vdp.write_palette(0x02);
+    vdp.write_palette(0x07);
+    vdp.write_palette(0x00);
+    vdp.write_palette(0x03);
+    vdp.write_palette(0x00);
+    vdp.write_palette(0x07);
+    write_register(vdp, 7, 0x03);
+
+    vdp.poke_vram(0x0000, 0x01);
+    vdp.poke_vram(static_cast<std::uint16_t>(V9938::graphic3_pattern_base + 0x0008), 0x80);
+    vdp.poke_vram(static_cast<std::uint16_t>(V9938::graphic3_color_base + 0x0008), 0x12);
+    vdp.poke_vram(0x0100, 0x01);
+    vdp.poke_vram(static_cast<std::uint16_t>(V9938::graphic3_pattern_base + 0x0808), 0x80);
+    vdp.poke_vram(static_cast<std::uint16_t>(V9938::graphic3_color_base + 0x0808), 0x23);
+
+    vdp.tick_scanline(0);
+    REQUIRE(vdp.background_line_buffer()[0] == 0x01);
+    REQUIRE(vdp.background_line_buffer()[1] == 0x02);
+
+    vdp.tick_scanline(64);
+    REQUIRE(vdp.background_line_buffer()[0] == 0x02);
+    REQUIRE(vdp.background_line_buffer()[1] == 0x03);
+
+    vdp.tick_scanline(192);
+    REQUIRE(vdp.background_line_buffer()[0] == 0x03);
+    REQUIRE(vdp.background_line_buffer()[255] == 0x03);
+}
+
+TEST_CASE("Graphic 3 on VDP-A composes over Graphic 4 on VDP-B through color zero transparency", "[video]") {
+    V9938 vdp_a;
+    V9938 vdp_b;
+    set_graphic3_mode(vdp_a);
+    set_graphic4_mode(vdp_b);
+
+    vdp_a.write_palette(0x00);
+    vdp_a.write_palette(0x00);
+    vdp_a.write_palette(0x00);
+    vdp_a.write_palette(0x04);
+    vdp_a.write_palette(0x70);
+    vdp_a.write_palette(0x00);
+    write_register(vdp_a, 8, 0x20);
+    vdp_a.poke_vram(0x0000, 0x01);
+    vdp_a.poke_vram(static_cast<std::uint16_t>(V9938::graphic3_pattern_base + 0x0008), 0x80);
+    vdp_a.poke_vram(static_cast<std::uint16_t>(V9938::graphic3_color_base + 0x0008), 0x40);
+
+    vdp_b.write_palette(0x00);
+    vdp_b.write_palette(0x00);
+    vdp_b.write_palette(0x00);
+    vdp_b.write_palette(0x02);
+    vdp_b.write_palette(0x07);
+    vdp_b.write_palette(0x00);
+    write_graphic4_byte(vdp_b, 0, 0, 0x22);
+
+    const auto frame = Compositor::compose_dual_vdp(vdp_a, vdp_b);
+    const auto pixel0 = std::array<std::uint8_t, 3>{frame[0], frame[1], frame[2]};
+    const auto pixel1 = std::array<std::uint8_t, 3>{frame[3], frame[4], frame[5]};
+
+    REQUIRE(pixel0 == vdp_a.palette_entry_rgb(4));
+    REQUIRE(pixel1 == vdp_b.palette_entry_rgb(2));
 }
 
 TEST_CASE("Headless and display upload paths match for a known dual-VDP frame", "[video]") {

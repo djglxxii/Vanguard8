@@ -115,6 +115,16 @@ across R#0 and R#1. Both VDP chips support all nine modes equally. Exact mode
 bit encoding is in the V9938 Technical Data Book; the table below uses the
 mode names and MSX screen number as reference identifiers.
 
+For Vanguard 8 implementation work, the mode bits are treated as:
+
+```
+R#0 bit 3 = M5
+R#0 bit 2 = M4
+R#0 bit 1 = M3
+R#1 bit 4 = M1
+R#1 bit 3 = M2
+```
+
 | Mode       | MSX Screen | Type   | Active Pixels   | bpp  | Sprite Mode | 212-line | VRAM (active area) |
 |------------|------------|--------|-----------------|------|-------------|----------|--------------------|
 | Text 1     | Screen 0   | Text   | 240×192 visible | 2    | None        | No       | ~1.2 KB            |
@@ -222,9 +232,18 @@ VRAM tables:
 ### Graphic 3 (Screen 4)
 
 Identical to Graphic 2 in background tile layout, but:
-- Supports **212 active lines** (LN bit effective)
 - Uses **Sprite Mode 2** (per-row sprite color, 8 sprites per scanline)
 - VDP hardware commands are available
+
+The repo's fixed Graphic 3 VRAM layout below defines a **32x24 tile map**
+(192 visible pixel lines). Until the V9938 Technical Data Book is reflected
+into this spec with an explicit LN=1 fetch rule for the extra 20 lines, the
+locked Vanguard 8 behavior is:
+
+- Graphic 3 background fetch uses the documented 32x24 tile map for lines
+  `0-191`
+- Lines `192-211` output the backdrop color from `R#7`
+- Do not implement `R#23` vertical scroll for Graphic 3 yet
 
 Graphic 3 is the natural choice when a tile-mode VDP layer needs Sprite Mode 2
 for rich multi-color sprites. It is directly compatible with Graphic 4 as a

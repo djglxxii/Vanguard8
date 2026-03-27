@@ -20,6 +20,9 @@ the Z180 name), but it has not been independently audited against the MAME
 core's implementation for this project. This is an **implementation assumption,
 not a verified claim**.
 
+Milestone-11 compatibility notes are tracked in
+`docs/emulator/08-compatibility-audit.md`.
+
 Before relying on any HD64180-specific behavior (especially `IN0`/`OUT0`
 internal register access, the INT1/INT2 vectored mechanism, and `MLT`), the
 MAME Z180 core's behavior for those features should be cross-checked against

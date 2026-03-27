@@ -188,7 +188,9 @@ The 2-byte ADPCM handler address is stored at SRAM `0x80E0–0x80E1`.
 **H-blank scroll note:** The H-blank interrupt mechanism (VDP-A S#1 FH flag) is
 well-specified. However, R#26/R#27 horizontal scroll register behavior in Graphic 4
 mode requires verification against the V9938 Technical Data Book before relying on
-per-line horizontal parallax. Vertical scroll via R#23 is fully specified and reliable.
+per-line horizontal parallax. Vertical scroll via R#23 is fully specified and reliable
+for the covered Graphic 4 / bitmap path; Graphic 3 LN=1 fetch behavior remains a
+separate video-spec item and must not be invented in code.
 
 The INT0 handler identifies its source by reading VDP-A status registers (S#0
 for V-blank, S#1 for H-blank) and the YM2151 status port. The MSM5205 /VCLK

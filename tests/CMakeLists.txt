@@ -22,6 +22,7 @@ add_executable(
     test_bus.cpp
     test_cpu.cpp
     test_input.cpp
+    test_integration.cpp
     test_scheduler.cpp
     test_video.cpp
     ../src/frontend/display.cpp

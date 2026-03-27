@@ -17,6 +17,25 @@ auto make_idle_rom() -> std::vector<std::uint8_t> {
     return rom;
 }
 
+auto controller_state_for_frame(const std::uint32_t frame) -> vanguard8::core::io::ControllerPortsState {
+    auto controller1 = static_cast<std::uint8_t>(0xFFU);
+    auto controller2 = static_cast<std::uint8_t>(0xFFU);
+
+    controller1 = static_cast<std::uint8_t>(controller1 & ~(1U << (frame % 8U)));
+    controller2 = static_cast<std::uint8_t>(controller2 & ~(1U << ((frame * 3U) % 8U)));
+
+    if ((frame % 5U) == 0U) {
+        controller1 = static_cast<std::uint8_t>(controller1 & 0xFEU);
+    }
+    if ((frame % 7U) == 0U) {
+        controller2 = static_cast<std::uint8_t>(controller2 & 0xFDU);
+    }
+
+    return vanguard8::core::io::ControllerPortsState{
+        .port_state = {controller1, controller2},
+    };
+}
+
 void expect_same_runtime_state(
     const vanguard8::core::Emulator& lhs,
     const vanguard8::core::Emulator& rhs
@@ -137,4 +156,58 @@ TEST_CASE("embedded-save-state replays preserve deterministic frame progression"
     }
 
     expect_same_runtime_state(replayed, recorded);
+}
+
+TEST_CASE("long-running save-state anchored replay stays deterministic across restore boundaries", "[replay][integration]") {
+    const auto rom = make_idle_rom();
+    constexpr std::uint32_t frame_count = 180;
+    constexpr std::uint32_t split_frame = 96;
+
+    vanguard8::core::Emulator recorded;
+    recorded.load_rom_image(rom);
+    recorded.set_vclk_rate(vanguard8::core::VclkRate::hz_8000);
+    recorded.run_frames(3);
+    const auto anchor = vanguard8::core::SaveState::serialize(recorded);
+
+    vanguard8::core::replay::Recorder recorder;
+    recorder.begin_from_save_state(rom, anchor);
+
+    for (std::uint32_t frame = 0; frame < frame_count; ++frame) {
+        const auto input = controller_state_for_frame(frame);
+        recorded.mutable_bus().mutable_controller_ports().load_state(input);
+        recorder.record_frame(frame, input);
+        recorded.run_frames(1);
+    }
+
+    const auto replay_bytes = recorder.serialize();
+
+    vanguard8::core::replay::Replayer replayer;
+    replayer.load(replay_bytes);
+    REQUIRE(replayer.frame_count() == frame_count);
+    REQUIRE(replayer.rom_matches(rom));
+
+    vanguard8::core::Emulator replayed;
+    vanguard8::core::SaveState::load(replayed, replayer.recording().anchor_save_state);
+
+    for (std::uint32_t frame = 0; frame < split_frame; ++frame) {
+        replayer.apply_frame(replayed.mutable_bus().mutable_controller_ports(), frame);
+        replayed.run_frames(1);
+    }
+
+    auto resumed = vanguard8::core::Emulator{};
+    vanguard8::core::SaveState::load(resumed, vanguard8::core::SaveState::serialize(replayed));
+
+    for (std::uint32_t frame = split_frame; frame < frame_count; ++frame) {
+        replayer.apply_frame(replayed.mutable_bus().mutable_controller_ports(), frame);
+        replayer.apply_frame(resumed.mutable_bus().mutable_controller_ports(), frame);
+        INFO("frame=" << frame);
+        INFO("replayed master=" << replayed.master_cycle() << " completed=" << replayed.completed_frames());
+        INFO("resumed master=" << resumed.master_cycle() << " completed=" << resumed.completed_frames());
+        REQUIRE_NOTHROW(replayed.run_frames(1));
+        REQUIRE_NOTHROW(resumed.run_frames(1));
+    }
+
+    expect_same_runtime_state(replayed, resumed);
+    expect_same_runtime_state(replayed, recorded);
+    REQUIRE(replayed.audio_output_sample_count() == recorded.audio_output_sample_count());
 }

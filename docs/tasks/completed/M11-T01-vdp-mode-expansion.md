@@ -1,6 +1,6 @@
 # M11-T01 — Expand Documented VDP Mode Coverage
 
-Status: `in_progress`
+Status: `completed`
 Milestone: `11`
 Depends on: `M10-T03`
 
@@ -19,4 +19,10 @@ Done when:
 - Mixed-mode support is only added where the written spec supports it.
 
 Completion summary:
-- Pending.
+- Added explicit V9938 mode-bit decoding to the repo docs and renderer so mode
+  selection no longer relies on the old implicit "always Graphic 4" behavior.
+- Implemented the documented fixed-layout Graphic 3 background and Sprite Mode
+  2 path, with dedicated rendering coverage and the explicit mixed-mode case of
+  VDP-A Graphic 3 composited over VDP-B Graphic 4.
+- Locked the remaining Graphic 3 LN=1 ambiguity in the spec instead of
+  inventing the extra 20-line fetch rule or Graphic 3 `R#23` scroll behavior.

@@ -36,6 +36,8 @@ void V9938::reset() {
     background_line_buffer_.fill(0x00);
     sprite_line_buffer_.fill(transparent_sprite_pixel);
     line_buffer_.fill(0x00);
+    reg_[0] = graphic4_mode_r0;
+    reg_[1] = graphic_mode_r1;
     reg_[9] = 0x80;  // 212-line operation recommended by the spec baseline.
 }
 
@@ -130,7 +132,17 @@ void V9938::advance_command(const std::uint64_t master_cycles) {
 
 void V9938::tick_scanline(const int line) {
     status_[0] = static_cast<std::uint8_t>(status_[0] & ~0x40U);
-    render_graphic4_background_scanline(line);
+    switch (current_display_mode()) {
+    case DisplayMode::graphic3:
+        render_graphic3_background_scanline(line);
+        break;
+    case DisplayMode::graphic4:
+        render_graphic4_background_scanline(line);
+        break;
+    case DisplayMode::unsupported:
+        background_line_buffer_.fill(backdrop_color());
+        break;
+    }
     render_mode2_sprites_for_scanline(line);
 
     for (int x = 0; x < visible_width; ++x) {
@@ -706,6 +718,27 @@ void V9938::advance_stream_position(const bool byte_mode) {
 
 void V9938::update_int_state() {}
 
+auto V9938::current_display_mode() const -> DisplayMode {
+    const auto mode_bits = static_cast<std::uint8_t>(
+        ((reg_[0] & register0_mode_m5) != 0U ? 0x10U : 0x00U) |
+        ((reg_[0] & register0_mode_m4) != 0U ? 0x08U : 0x00U) |
+        ((reg_[0] & register0_mode_m3) != 0U ? 0x04U : 0x00U) |
+        ((reg_[1] & register1_mode_m2) != 0U ? 0x02U : 0x00U) |
+        ((reg_[1] & register1_mode_m1) != 0U ? 0x01U : 0x00U)
+    );
+
+    switch (mode_bits) {
+    case 0x08:
+        return DisplayMode::graphic3;
+    case 0x0C:
+        return DisplayMode::graphic4;
+    default:
+        return DisplayMode::unsupported;
+    }
+}
+
+auto V9938::backdrop_color() const -> std::uint8_t { return static_cast<std::uint8_t>(reg_[7] & 0x0FU); }
+
 void V9938::render_graphic4_background_scanline(const int line) {
     for (int x = 0; x < visible_width; ++x) {
         const auto address = graphic4_byte_address(line, x);
@@ -715,8 +748,45 @@ void V9938::render_graphic4_background_scanline(const int line) {
     }
 }
 
+void V9938::render_graphic3_background_scanline(const int line) {
+    if (line < 0 || line >= 192) {
+        background_line_buffer_.fill(backdrop_color());
+        return;
+    }
+
+    const auto tile_row = line / 8;
+    const auto row_in_tile = line % 8;
+    const auto bank = tile_row / 8;
+    const auto bank_offset = static_cast<std::uint16_t>(bank * 0x0800U);
+
+    for (int tile_col = 0; tile_col < 32; ++tile_col) {
+        const auto name_address = static_cast<std::uint16_t>(
+            graphic3_name_table_base + tile_row * 32 + tile_col
+        );
+        const auto pattern_number = vram_[name_address];
+        const auto row_offset = static_cast<std::uint16_t>(pattern_number * 8U + row_in_tile);
+        const auto pattern =
+            vram_[static_cast<std::uint16_t>(graphic3_pattern_base + bank_offset + row_offset)];
+        const auto colors =
+            vram_[static_cast<std::uint16_t>(graphic3_color_base + bank_offset + row_offset)];
+        const auto foreground = static_cast<std::uint8_t>((colors >> 4) & 0x0FU);
+        const auto background = static_cast<std::uint8_t>(colors & 0x0FU);
+
+        for (int pixel = 0; pixel < 8; ++pixel) {
+            const auto x = tile_col * 8 + pixel;
+            background_line_buffer_[x] =
+                (pattern & (0x80U >> pixel)) != 0U ? foreground : background;
+        }
+    }
+}
+
 void V9938::render_mode2_sprites_for_scanline(const int line) {
     sprite_line_buffer_.fill(transparent_sprite_pixel);
+
+    const auto mode = current_display_mode();
+    if (mode != DisplayMode::graphic3 && mode != DisplayMode::graphic4) {
+        return;
+    }
 
     std::array<int, visible_width> first_owner{};
     first_owner.fill(-1);
@@ -725,7 +795,8 @@ void V9938::render_mode2_sprites_for_scanline(const int line) {
     bool collision_recorded = false;
 
     for (std::uint8_t sprite_index = 0; sprite_index < 32; ++sprite_index) {
-        const auto sat_base = static_cast<std::uint16_t>(graphic4_sprite_attribute_base + sprite_index * 8U);
+        const auto sat_base =
+            static_cast<std::uint16_t>(sprite_attribute_base() + sprite_index * 8U);
         const auto y = vram_[sat_base + 0];
         if (y == 0xD0U) {
             break;
@@ -788,7 +859,7 @@ void V9938::render_mode2_sprites_for_scanline(const int line) {
 auto V9938::sprite_color_for_line(const std::uint8_t sprite_index, const int row) const
     -> std::optional<std::uint8_t> {
     const auto color_address =
-        static_cast<std::uint16_t>(graphic4_sprite_color_base + sprite_index * 16U + row);
+        static_cast<std::uint16_t>(sprite_color_base() + sprite_index * 16U + row);
     const auto color_entry = vram_[color_address];
     if ((color_entry & 0x40U) != 0U) {
         return std::nullopt;
@@ -799,12 +870,27 @@ auto V9938::sprite_color_for_line(const std::uint8_t sprite_index, const int row
 auto V9938::sprite_pattern_byte(const std::uint8_t pattern_number, const int row) const
     -> std::uint8_t {
     // TODO(spec): Milestone 5 locks the covered sprite tests to the recommended
-    // Graphic 4 VRAM layout and 8x8 Mode-2 pattern fetch path. General base-register
-    // relocation and larger sprite geometries should follow only after the repo docs
-    // carry the needed alignment and addressing detail.
+    // Graphic 3 / Graphic 4 fixed VRAM layouts and 8x8 Mode-2 pattern fetch path.
+    // General base-register relocation and larger sprite geometries should follow
+    // only after the repo docs carry the needed alignment and addressing detail.
     const auto pattern_address =
-        static_cast<std::uint16_t>(graphic4_sprite_pattern_base + pattern_number * 8U + row);
+        static_cast<std::uint16_t>(sprite_pattern_base() + pattern_number * 8U + row);
     return vram_[pattern_address];
+}
+
+auto V9938::sprite_pattern_base() const -> std::uint16_t {
+    return current_display_mode() == DisplayMode::graphic3 ? graphic3_sprite_pattern_base
+                                                           : graphic4_sprite_pattern_base;
+}
+
+auto V9938::sprite_color_base() const -> std::uint16_t {
+    return current_display_mode() == DisplayMode::graphic3 ? graphic3_sprite_color_base
+                                                           : graphic4_sprite_color_base;
+}
+
+auto V9938::sprite_attribute_base() const -> std::uint16_t {
+    return current_display_mode() == DisplayMode::graphic3 ? graphic3_sprite_attribute_base
+                                                           : graphic4_sprite_attribute_base;
 }
 
 auto V9938::current_palette_rgb(const std::uint8_t index) const -> std::array<std::uint8_t, 3> {

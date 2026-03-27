@@ -1,6 +1,6 @@
 # M11-T03 — Close Documentation Gaps and Finalize 1.0 Readiness
 
-Status: `planned`
+Status: `in_progress`
 Milestone: `11`
 Depends on: `M11-T02`
 

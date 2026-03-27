@@ -81,7 +81,29 @@ Reading status (0x81) also resets the address latch (clears `addr_latch_full`).
 It renders the line into background and sprite buffers, then combines them into
 `line_buffer` using the current VRAM and register state.
 
-#### Graphic 4 rendering (primary/default mode; other V9938 modes are planned)
+#### Mode decode and covered renderers
+
+The milestone-11 renderer now decodes the documented V9938 mode bits directly:
+
+```
+R#0 bit 3 = M5
+R#0 bit 2 = M4
+R#0 bit 1 = M3
+R#1 bit 4 = M1
+R#1 bit 3 = M2
+```
+
+Covered scanline modes:
+
+- **Graphic 4**: default bitmap path
+- **Graphic 3**: fixed-layout tile path using the repo's documented
+  `0x0000-0x42FF` table placement
+
+Unsupported display modes must not silently fall back to a neighboring mode.
+The narrow emulator path fills the background with the backdrop color until the
+mode is implemented from spec.
+
+#### Graphic 4 rendering (primary/default mode)
 
 ```
 Background:
@@ -113,6 +135,38 @@ Sprite layout note:
 - General register-relocated sprite table addressing is intentionally deferred
   until the repo docs carry the exact alignment detail needed to implement it
   without guessing.
+
+#### Graphic 3 rendering (fixed-layout milestone-11 path)
+
+```
+Background:
+  If line is 0..191:
+    tile_row    = line / 8
+    row_in_tile = line % 8
+    bank        = tile_row / 8
+    name        = VRAM[0x0000 + tile_row * 32 + tile_col]
+    pattern     = VRAM[0x0300 + bank * 0x0800 + name * 8 + row_in_tile]
+    colors      = VRAM[0x1800 + bank * 0x0800 + name * 8 + row_in_tile]
+    fg          = colors >> 4
+    bg          = colors & 0x0F
+  Else:
+    output backdrop color from R#7
+```
+
+The Graphic 3 sprite path reuses the covered 8x8 Sprite Mode 2 fetch logic,
+but switches to the documented Graphic 3 fixed layout:
+
+- pattern generator at `0x3000`
+- color table at `0x4000`
+- SAT at `0x4200`
+
+Current precision boundary:
+
+- The documented `32x24` tile map is implemented directly.
+- The repo still does not define the extra LN=1 background fetch rule for
+  lines `192-211`; those lines intentionally render the backdrop color.
+- `R#23` vertical scroll remains locked to the existing Graphic 4 path until
+  Graphic 3 scroll behavior is written into the spec without ambiguity.
 
 ### VDP Command Engine
 

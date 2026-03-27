@@ -5,6 +5,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -51,6 +52,8 @@ struct CpuPanelSnapshot {
     MmuMapSummary mmu;
     bool emulator_paused = false;
     std::vector<DecodedInstruction> disassembly;
+    std::vector<core::cpu::Breakpoint> breakpoints;
+    std::vector<core::cpu::BreakpointHit> breakpoint_hits;
 };
 
 class CpuPanel {
@@ -60,6 +63,13 @@ class CpuPanel {
     void queue_command(ExecutionCommand command);
     void apply_pending(core::Emulator& emulator);
     [[nodiscard]] auto pending_command_count() const -> std::size_t;
+    auto add_breakpoint(core::Emulator& emulator, core::cpu::Breakpoint breakpoint) const -> std::size_t;
+    void clear_breakpoints(core::Emulator& emulator) const;
+    void clear_breakpoint_hits(core::Emulator& emulator) const;
+    [[nodiscard]] auto run_until_breakpoint_or_halt(
+        core::Emulator& emulator,
+        std::size_t max_instructions
+    ) const -> core::cpu::BreakpointRunResult;
 
   private:
     std::vector<ExecutionCommand> pending_commands_;

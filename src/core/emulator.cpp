@@ -158,6 +158,8 @@ auto Emulator::mutable_bus() -> Bus& { return bus_; }
 
 auto Emulator::cpu() const -> const cpu::Z180Adapter& { return cpu_; }
 
+auto Emulator::mutable_cpu() -> cpu::Z180Adapter& { return cpu_; }
+
 auto Emulator::vdp_a() const -> const video::V9938& { return bus_.vdp_a(); }
 
 auto Emulator::vdp_b() const -> const video::V9938& { return bus_.vdp_b(); }

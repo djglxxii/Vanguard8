@@ -1,7 +1,9 @@
 add_library(
     vanguard8_debugger
+    bank_panel.cpp
     debugger.cpp
     cpu_panel.cpp
+    interrupt_panel.cpp
     memory_panel.cpp
     vdp_panel.cpp
 )

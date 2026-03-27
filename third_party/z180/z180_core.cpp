@@ -158,45 +158,52 @@ void Core::advance_tstates(const std::uint64_t tstates) {
 }
 
 auto Core::in0(const std::uint8_t port) -> std::uint8_t {
+    auto observe = [this, port](const std::uint8_t value) {
+        if (callbacks_.observe_internal_io_read) {
+            callbacks_.observe_internal_io_read(port, value);
+        }
+        return value;
+    };
+
     switch (port) {
     case 0x0C:
         prt0_.high_read_latch = prt0_.tmdr.bytes.hi;
         clear_timer_flag_on_tmdr_read(0);
-        return prt0_.tmdr.bytes.lo;
+        return observe(prt0_.tmdr.bytes.lo);
     case 0x0D:
         clear_timer_flag_on_tmdr_read(0);
-        return prt0_.high_read_latch;
+        return observe(prt0_.high_read_latch);
     case 0x0E:
-        return prt0_.rldr.bytes.lo;
+        return observe(prt0_.rldr.bytes.lo);
     case 0x0F:
-        return prt0_.rldr.bytes.hi;
+        return observe(prt0_.rldr.bytes.hi);
     case 0x10:
         prt0_.tif_clear_armed = (tcr_ & tcr_tif0) != 0U;
         prt1_.tif_clear_armed = (tcr_ & tcr_tif1) != 0U;
-        return tcr_;
+        return observe(tcr_);
     case 0x14:
         prt1_.high_read_latch = prt1_.tmdr.bytes.hi;
         clear_timer_flag_on_tmdr_read(1);
-        return prt1_.tmdr.bytes.lo;
+        return observe(prt1_.tmdr.bytes.lo);
     case 0x15:
         clear_timer_flag_on_tmdr_read(1);
-        return prt1_.high_read_latch;
+        return observe(prt1_.high_read_latch);
     case 0x16:
-        return prt1_.rldr.bytes.lo;
+        return observe(prt1_.rldr.bytes.lo);
     case 0x17:
-        return prt1_.rldr.bytes.hi;
+        return observe(prt1_.rldr.bytes.hi);
     case 0x33:
-        return il_;
+        return observe(il_);
     case 0x34:
-        return itc_;
+        return observe(itc_);
     case 0x38:
-        return cbr_;
+        return observe(cbr_);
     case 0x39:
-        return bbr_;
+        return observe(bbr_);
     case 0x3A:
-        return cbar_;
+        return observe(cbar_);
     default:
-        return 0x00;
+        return observe(0x00);
     }
 }
 
@@ -248,6 +255,10 @@ void Core::out0(const std::uint8_t port, const std::uint8_t value) {
     default:
         break;
     }
+
+    if (callbacks_.observe_internal_io_write) {
+        callbacks_.observe_internal_io_write(port, value);
+    }
 }
 
 auto Core::translate_logical_address(const std::uint16_t logical_address) const -> std::uint32_t {
@@ -272,11 +283,18 @@ auto Core::translate_logical_address(const std::uint16_t logical_address) const 
 }
 
 auto Core::read_logical(const std::uint16_t logical_address) -> std::uint8_t {
-    return callbacks_.read_memory(translate_logical_address(logical_address));
+    const auto value = callbacks_.read_memory(translate_logical_address(logical_address));
+    if (callbacks_.observe_logical_memory_read) {
+        callbacks_.observe_logical_memory_read(logical_address, value);
+    }
+    return value;
 }
 
 void Core::write_logical(const std::uint16_t logical_address, const std::uint8_t value) {
     callbacks_.write_memory(translate_logical_address(logical_address), value);
+    if (callbacks_.observe_logical_memory_write) {
+        callbacks_.observe_logical_memory_write(logical_address, value);
+    }
 }
 
 auto Core::service_pending_interrupt(const bool int0_asserted, const bool int1_asserted)
@@ -310,6 +328,8 @@ auto Core::service_pending_interrupt(const bool int0_asserted, const bool int1_a
 
     return std::nullopt;
 }
+
+void Core::step_one() { execute_one(); }
 
 void Core::run_until_halt(const std::size_t max_instructions) {
     std::size_t executed = 0;

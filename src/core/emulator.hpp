@@ -57,6 +57,7 @@ class Emulator {
     [[nodiscard]] auto bus() const -> const Bus&;
     [[nodiscard]] auto mutable_bus() -> Bus&;
     [[nodiscard]] auto cpu() const -> const cpu::Z180Adapter&;
+    [[nodiscard]] auto mutable_cpu() -> cpu::Z180Adapter&;
     [[nodiscard]] auto vdp_a() const -> const video::V9938&;
     [[nodiscard]] auto vdp_b() const -> const video::V9938&;
     [[nodiscard]] auto loaded_rom_size() const -> std::size_t;

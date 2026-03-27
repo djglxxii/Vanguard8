@@ -1,6 +1,8 @@
 #pragma once
 
+#include "debugger/bank_panel.hpp"
 #include "debugger/cpu_panel.hpp"
+#include "debugger/interrupt_panel.hpp"
 #include "debugger/memory_panel.hpp"
 #include "debugger/vdp_panel.hpp"
 
@@ -87,6 +89,10 @@ class DebuggerShell {
     [[nodiscard]] auto memory_panel() const -> const MemoryPanel&;
     [[nodiscard]] auto vdp_panel() -> VdpPanel&;
     [[nodiscard]] auto vdp_panel() const -> const VdpPanel&;
+    [[nodiscard]] auto interrupt_panel() -> InterruptPanel&;
+    [[nodiscard]] auto interrupt_panel() const -> const InterruptPanel&;
+    [[nodiscard]] auto bank_panel() -> BankPanel&;
+    [[nodiscard]] auto bank_panel() const -> const BankPanel&;
 
     [[nodiscard]] auto render() -> const RenderSnapshot&;
 
@@ -102,6 +108,8 @@ class DebuggerShell {
     CpuPanel cpu_panel_{};
     MemoryPanel memory_panel_{};
     VdpPanel vdp_panel_{};
+    InterruptPanel interrupt_panel_{};
+    BankPanel bank_panel_{};
     RenderSnapshot last_render_{};
 };
 

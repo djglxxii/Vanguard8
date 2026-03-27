@@ -20,6 +20,44 @@ enum class DmaChannel {
     channel1,
 };
 
+enum class BreakpointType {
+    pc,
+    memory_read,
+    memory_write,
+    io_read,
+    io_write,
+};
+
+struct Breakpoint {
+    std::size_t id = 0;
+    BreakpointType type = BreakpointType::pc;
+    std::uint16_t address = 0;
+    std::optional<std::uint8_t> value;
+    bool enabled = true;
+};
+
+struct BreakpointHit {
+    Breakpoint breakpoint;
+    std::uint16_t pc = 0;
+    std::uint16_t address = 0;
+    std::optional<std::uint8_t> value;
+};
+
+struct BreakpointRunResult {
+    bool halted = false;
+    bool breakpoint_hit = false;
+    std::size_t executed_instructions = 0;
+    std::optional<BreakpointHit> hit;
+};
+
+struct BankSwitchEvent {
+    std::uint64_t sequence = 0;
+    std::uint16_t pc = 0;
+    std::uint8_t bbr = 0;
+    int bank = -1;
+    bool legal = true;
+};
+
 struct DmaChannel0Snapshot {
     std::uint32_t source = 0;
     std::uint32_t destination = 0;
@@ -63,11 +101,18 @@ class Z180Adapter {
     [[nodiscard]] auto interrupt_mode() const -> std::uint8_t;
     [[nodiscard]] auto halted() const -> bool;
     [[nodiscard]] auto state_snapshot() const -> CpuStateSnapshot;
+    [[nodiscard]] auto breakpoints() const -> const std::vector<Breakpoint>&;
+    [[nodiscard]] auto breakpoint_hits() const -> const std::vector<BreakpointHit>&;
+    [[nodiscard]] auto bank_switch_log() const -> const std::vector<BankSwitchEvent>&;
 
     void set_register_i(std::uint8_t value);
     void set_interrupt_mode(std::uint8_t mode);
     void set_iff1(bool enabled);
     void set_iff2(bool enabled);
+    auto add_breakpoint(Breakpoint breakpoint) -> std::size_t;
+    void clear_breakpoints();
+    void clear_breakpoint_hits();
+    void clear_bank_switch_log();
 
     [[nodiscard]] auto in0(std::uint8_t port) -> std::uint8_t;
     void out0(std::uint8_t port, std::uint8_t value);
@@ -82,6 +127,7 @@ class Z180Adapter {
 
     [[nodiscard]] auto service_pending_interrupt() -> std::optional<InterruptService>;
     void run_until_halt(std::size_t max_instructions);
+    [[nodiscard]] auto run_until_breakpoint_or_halt(std::size_t max_instructions) -> BreakpointRunResult;
 
   private:
     struct DmaRegisters {
@@ -108,6 +154,12 @@ class Z180Adapter {
     core::Bus& bus_;
     third_party::z180::Core core_;
     DmaRegisters dma_{};
+    std::vector<Breakpoint> breakpoints_{};
+    std::vector<BreakpointHit> breakpoint_hits_{};
+    std::vector<BankSwitchEvent> bank_switch_log_{};
+    std::size_t next_breakpoint_id_ = 1;
+    std::uint64_t bank_switch_sequence_ = 0;
+    std::optional<BreakpointHit> pending_breakpoint_hit_{};
 
     [[nodiscard]] auto read_dma_register(std::uint8_t port) const -> std::optional<std::uint8_t>;
     auto write_dma_register(std::uint8_t port, std::uint8_t value) -> bool;
@@ -118,6 +170,12 @@ class Z180Adapter {
     [[nodiscard]] auto dma_channel1_port() const -> std::uint16_t;
     [[nodiscard]] auto dma_channel1_length() const -> std::uint16_t;
     auto dma_mode_supported(DmaChannel channel) -> bool;
+    void record_breakpoint_hit(
+        BreakpointType type,
+        std::uint16_t address,
+        std::optional<std::uint8_t> value = std::nullopt
+    );
+    void record_bank_switch(std::uint8_t value);
 };
 
 }  // namespace vanguard8::core::cpu

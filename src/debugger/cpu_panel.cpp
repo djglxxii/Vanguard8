@@ -154,6 +154,8 @@ auto CpuPanel::snapshot(const core::Emulator& emulator) const -> CpuPanelSnapsho
                 .ca1_physical_base = static_cast<std::uint32_t>(cpu_state.registers.cbr) << 12U,
             },
         .emulator_paused = emulator.paused(),
+        .breakpoints = emulator.cpu().breakpoints(),
+        .breakpoint_hits = emulator.cpu().breakpoint_hits(),
     };
 
     std::uint16_t pc = cpu_state.registers.pc;
@@ -187,5 +189,21 @@ void CpuPanel::apply_pending(core::Emulator& emulator) {
 }
 
 auto CpuPanel::pending_command_count() const -> std::size_t { return pending_commands_.size(); }
+
+auto CpuPanel::add_breakpoint(core::Emulator& emulator, core::cpu::Breakpoint breakpoint) const
+    -> std::size_t {
+    return emulator.mutable_cpu().add_breakpoint(std::move(breakpoint));
+}
+
+void CpuPanel::clear_breakpoints(core::Emulator& emulator) const { emulator.mutable_cpu().clear_breakpoints(); }
+
+void CpuPanel::clear_breakpoint_hits(core::Emulator& emulator) const {
+    emulator.mutable_cpu().clear_breakpoint_hits();
+}
+
+auto CpuPanel::run_until_breakpoint_or_halt(core::Emulator& emulator, const std::size_t max_instructions) const
+    -> core::cpu::BreakpointRunResult {
+    return emulator.mutable_cpu().run_until_breakpoint_or_halt(max_instructions);
+}
 
 }  // namespace vanguard8::debugger

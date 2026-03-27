@@ -74,6 +74,14 @@ auto DebuggerShell::vdp_panel() -> VdpPanel& { return vdp_panel_; }
 
 auto DebuggerShell::vdp_panel() const -> const VdpPanel& { return vdp_panel_; }
 
+auto DebuggerShell::interrupt_panel() -> InterruptPanel& { return interrupt_panel_; }
+
+auto DebuggerShell::interrupt_panel() const -> const InterruptPanel& { return interrupt_panel_; }
+
+auto DebuggerShell::bank_panel() -> BankPanel& { return bank_panel_; }
+
+auto DebuggerShell::bank_panel() const -> const BankPanel& { return bank_panel_; }
+
 auto DebuggerShell::render() -> const RenderSnapshot& {
     last_render_ = RenderSnapshot{
         .rendered = false,

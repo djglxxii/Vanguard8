@@ -13,6 +13,25 @@ Z180Adapter::Z180Adapter(core::Bus& bus)
           .write_port = [this](const std::uint16_t port, const std::uint8_t value) {
               bus_.write_port(port, value);
           },
+          .observe_logical_memory_read =
+              [this](const std::uint16_t address, const std::uint8_t value) {
+                  record_breakpoint_hit(BreakpointType::memory_read, address, value);
+              },
+          .observe_logical_memory_write =
+              [this](const std::uint16_t address, const std::uint8_t value) {
+                  record_breakpoint_hit(BreakpointType::memory_write, address, value);
+              },
+          .observe_internal_io_read =
+              [this](const std::uint16_t port, const std::uint8_t value) {
+                  record_breakpoint_hit(BreakpointType::io_read, port, value);
+              },
+          .observe_internal_io_write =
+              [this](const std::uint16_t port, const std::uint8_t value) {
+                  record_breakpoint_hit(BreakpointType::io_write, port, value);
+                  if (port == 0x39) {
+                      record_bank_switch(value);
+                  }
+              },
           .record_warning = [this](std::string message) { bus_.record_warning(std::move(message)); },
           .acknowledge_int1 = [this]() { bus_.set_int1(false); },
       }) {
@@ -22,6 +41,10 @@ Z180Adapter::Z180Adapter(core::Bus& bus)
 void Z180Adapter::reset() {
     core_.reset();
     dma_ = {};
+    breakpoint_hits_.clear();
+    bank_switch_log_.clear();
+    pending_breakpoint_hit_.reset();
+    bank_switch_sequence_ = 0;
 }
 
 auto Z180Adapter::pc() const -> std::uint16_t { return core_.pc(); }
@@ -65,6 +88,14 @@ auto Z180Adapter::state_snapshot() const -> CpuStateSnapshot {
     };
 }
 
+auto Z180Adapter::breakpoints() const -> const std::vector<Breakpoint>& { return breakpoints_; }
+
+auto Z180Adapter::breakpoint_hits() const -> const std::vector<BreakpointHit>& { return breakpoint_hits_; }
+
+auto Z180Adapter::bank_switch_log() const -> const std::vector<BankSwitchEvent>& {
+    return bank_switch_log_;
+}
+
 void Z180Adapter::set_register_i(const std::uint8_t value) { core_.set_register_i(value); }
 
 void Z180Adapter::set_interrupt_mode(const std::uint8_t mode) { core_.set_interrupt_mode(mode); }
@@ -73,8 +104,24 @@ void Z180Adapter::set_iff1(const bool enabled) { core_.set_iff1(enabled); }
 
 void Z180Adapter::set_iff2(const bool enabled) { core_.set_iff2(enabled); }
 
+auto Z180Adapter::add_breakpoint(Breakpoint breakpoint) -> std::size_t {
+    breakpoint.id = next_breakpoint_id_++;
+    breakpoints_.push_back(breakpoint);
+    return breakpoint.id;
+}
+
+void Z180Adapter::clear_breakpoints() { breakpoints_.clear(); }
+
+void Z180Adapter::clear_breakpoint_hits() {
+    breakpoint_hits_.clear();
+    pending_breakpoint_hit_.reset();
+}
+
+void Z180Adapter::clear_bank_switch_log() { bank_switch_log_.clear(); }
+
 auto Z180Adapter::in0(const std::uint8_t port) -> std::uint8_t {
     if (const auto value = read_dma_register(port); value.has_value()) {
+        record_breakpoint_hit(BreakpointType::io_read, port, *value);
         return *value;
     }
 
@@ -83,6 +130,7 @@ auto Z180Adapter::in0(const std::uint8_t port) -> std::uint8_t {
 
 void Z180Adapter::out0(const std::uint8_t port, const std::uint8_t value) {
     if (write_dma_register(port, value)) {
+        record_breakpoint_hit(BreakpointType::io_write, port, value);
         return;
     }
 
@@ -163,6 +211,37 @@ auto Z180Adapter::service_pending_interrupt() -> std::optional<InterruptService>
 }
 
 void Z180Adapter::run_until_halt(const std::size_t max_instructions) { core_.run_until_halt(max_instructions); }
+
+auto Z180Adapter::run_until_breakpoint_or_halt(const std::size_t max_instructions)
+    -> BreakpointRunResult {
+    BreakpointRunResult result;
+    pending_breakpoint_hit_.reset();
+
+    while (!halted()) {
+        if (result.executed_instructions >= max_instructions) {
+            throw std::runtime_error("Test ROM did not halt or hit a breakpoint within the instruction budget.");
+        }
+
+        record_breakpoint_hit(BreakpointType::pc, core_.pc());
+        if (pending_breakpoint_hit_.has_value()) {
+            result.breakpoint_hit = true;
+            result.hit = pending_breakpoint_hit_;
+            break;
+        }
+
+        core_.step_one();
+        ++result.executed_instructions;
+        if (pending_breakpoint_hit_.has_value()) {
+            result.breakpoint_hit = true;
+            result.hit = pending_breakpoint_hit_;
+            break;
+        }
+    }
+
+    result.halted = halted();
+    pending_breakpoint_hit_.reset();
+    return result;
+}
 
 auto Z180Adapter::read_dma_register(const std::uint8_t port) const -> std::optional<std::uint8_t> {
     switch (port) {
@@ -325,6 +404,52 @@ auto Z180Adapter::dma_mode_supported(const DmaChannel channel) -> bool {
     }
 
     return true;
+}
+
+void Z180Adapter::record_breakpoint_hit(
+    const BreakpointType type,
+    const std::uint16_t address,
+    const std::optional<std::uint8_t> value
+) {
+    if (pending_breakpoint_hit_.has_value()) {
+        return;
+    }
+
+    for (const auto& breakpoint : breakpoints_) {
+        if (!breakpoint.enabled || breakpoint.type != type || breakpoint.address != address) {
+            continue;
+        }
+        if (breakpoint.value.has_value() && breakpoint.value != value) {
+            continue;
+        }
+
+        pending_breakpoint_hit_ = BreakpointHit{
+            .breakpoint = breakpoint,
+            .pc = core_.pc(),
+            .address = address,
+            .value = value,
+        };
+        breakpoint_hits_.push_back(*pending_breakpoint_hit_);
+        constexpr std::size_t max_breakpoint_hits = 256;
+        if (breakpoint_hits_.size() > max_breakpoint_hits) {
+            breakpoint_hits_.erase(breakpoint_hits_.begin());
+        }
+        return;
+    }
+}
+
+void Z180Adapter::record_bank_switch(const std::uint8_t value) {
+    bank_switch_log_.push_back(BankSwitchEvent{
+        .sequence = bank_switch_sequence_++,
+        .pc = core_.pc(),
+        .bbr = value,
+        .bank = value >= 0x04U ? static_cast<int>(value / 4U) - 1 : -1,
+        .legal = value < 0xF0U,
+    });
+    constexpr std::size_t max_bank_switch_entries = 256;
+    if (bank_switch_log_.size() > max_bank_switch_entries) {
+        bank_switch_log_.erase(bank_switch_log_.begin());
+    }
 }
 
 }  // namespace vanguard8::core::cpu

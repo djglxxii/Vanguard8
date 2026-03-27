@@ -58,6 +58,10 @@ struct Callbacks {
     std::function<void(std::uint32_t, std::uint8_t)> write_memory;
     std::function<std::uint8_t(std::uint16_t)> read_port;
     std::function<void(std::uint16_t, std::uint8_t)> write_port;
+    std::function<void(std::uint16_t, std::uint8_t)> observe_logical_memory_read;
+    std::function<void(std::uint16_t, std::uint8_t)> observe_logical_memory_write;
+    std::function<void(std::uint16_t, std::uint8_t)> observe_internal_io_read;
+    std::function<void(std::uint16_t, std::uint8_t)> observe_internal_io_write;
     std::function<void(std::string)> record_warning;
     std::function<void()> acknowledge_int1;
 };
@@ -96,6 +100,7 @@ class Core {
 
     [[nodiscard]] auto service_pending_interrupt(bool int0_asserted, bool int1_asserted)
         -> std::optional<InterruptService>;
+    void step_one();
     void run_until_halt(std::size_t max_instructions);
 
   private:

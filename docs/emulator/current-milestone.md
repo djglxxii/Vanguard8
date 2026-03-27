@@ -2,7 +2,7 @@
 
 - Active milestone: `11`
 - Title: `Coverage Expansion, Audit Closure, and 1.0 Readiness`
-- Status: `active`
+- Status: `ready_for_verification`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
 - Contract file: `docs/emulator/milestones/11.md`
 

@@ -234,11 +234,27 @@ auto run_frontend_app(int argc, char** argv) -> int {
         std::cout << std::dec << "Recent ROM count: " << config.recent_roms.size() << '\n';
         std::cout << "Frontend frame digest: " << display.frame_digest() << '\n';
         if (debugger_snapshot.debugger_visible) {
+            const auto cpu_snapshot = debugger_shell.cpu_panel().snapshot(emulator);
+            const auto memory_snapshot = debugger_shell.memory_panel().snapshot(
+                emulator,
+                debugger::MemorySelection{
+                    .region = debugger::MemoryRegion::logical,
+                    .start = cpu_snapshot.cpu.registers.pc,
+                    .length = 8,
+                }
+            );
+            const auto vdp_snapshot = debugger_shell.vdp_panel().snapshot(emulator, debugger::VdpTarget::a);
             std::cout << "Debugger status: "
                       << (debugger_snapshot.rendered ? "rendered" : "hidden")
                       << '\n';
             std::cout << "Debugger dockspace: " << debugger_shell.layout().dockspace_id << '\n';
             std::cout << "Debugger visible panels: " << debugger_snapshot.visible_panel_count << '\n';
+            std::cout << "Debugger CPU PC: 0x" << std::hex << std::uppercase
+                      << cpu_snapshot.cpu.registers.pc << '\n';
+            std::cout << "Debugger disassembly: " << cpu_snapshot.disassembly.front().mnemonic << '\n';
+            std::cout << std::dec << "Debugger logical bytes: " << memory_snapshot.bytes.size() << '\n';
+            std::cout << "Debugger VDP-A CE: "
+                      << (((vdp_snapshot.status[2] & 0x01U) != 0U) ? "on" : "off") << '\n';
         }
         return 0;
     }
@@ -251,11 +267,15 @@ auto run_frontend_app(int argc, char** argv) -> int {
     std::cout << "Fullscreen: " << std::boolalpha << config.fullscreen << '\n';
     std::cout << "Frame pacing: " << std::boolalpha << config.frame_pacing << '\n';
     if (debugger_snapshot.debugger_visible) {
+        const auto cpu_snapshot = debugger_shell.cpu_panel().snapshot(emulator);
         std::cout << "Debugger status: "
                   << (debugger_snapshot.rendered ? "rendered" : "hidden")
                   << '\n';
         std::cout << "Debugger dockspace: " << debugger_shell.layout().dockspace_id << '\n';
         std::cout << "Debugger visible panels: " << debugger_snapshot.visible_panel_count << '\n';
+        std::cout << "Debugger CPU PC: 0x" << std::hex << std::uppercase
+                  << cpu_snapshot.cpu.registers.pc << '\n';
+        std::cout << "Debugger disassembly: " << cpu_snapshot.disassembly.front().mnemonic << '\n';
     }
     return 0;
 }

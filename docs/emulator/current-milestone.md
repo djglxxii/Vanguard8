@@ -11,5 +11,6 @@ Execution rules:
   executed.
 - Do not pull in milestone `10+` tasks until milestone `9` is accepted and this
   lock file is advanced.
-- Keep milestone `9` work inside `src/debugger/`, `src/frontend/`, and
-  `tests/` unless the milestone contract changes in the same edit.
+- Keep milestone `9` work inside `src/debugger/`, `src/frontend/`,
+  `src/core/`, `src/core/cpu/`, `third_party/z180/`, and `tests/` unless the
+  milestone contract changes in the same edit.

@@ -87,6 +87,39 @@ auto Core::interrupt_mode() const -> std::uint8_t { return interrupt_mode_; }
 
 auto Core::halted() const -> bool { return halted_; }
 
+auto Core::register_snapshot() const -> RegisterSnapshot {
+    return RegisterSnapshot{
+        .af = af_.value,
+        .bc = bc_.value,
+        .de = de_.value,
+        .hl = hl_.value,
+        .sp = sp_.value,
+        .pc = pc_.value,
+        .af_alt = af2_.value,
+        .bc_alt = bc2_.value,
+        .de_alt = de2_.value,
+        .hl_alt = hl2_.value,
+        .ix = ix_.value,
+        .iy = iy_.value,
+        .r = r_,
+        .i = i_,
+        .il = il_,
+        .itc = itc_,
+        .cbar = cbar_,
+        .cbr = cbr_,
+        .bbr = bbr_,
+        .interrupt_mode = interrupt_mode_,
+        .iff1 = iff1_,
+        .iff2 = iff2_,
+        .halted = halted_,
+        .tcr = tcr_,
+        .tmdr0 = prt0_.tmdr.value,
+        .rldr0 = prt0_.rldr.value,
+        .tmdr1 = prt1_.tmdr.value,
+        .rldr1 = prt1_.rldr.value,
+    };
+}
+
 void Core::set_register_i(const std::uint8_t value) { i_ = value; }
 
 void Core::set_interrupt_mode(const std::uint8_t mode) { interrupt_mode_ = static_cast<std::uint8_t>(mode & 0x03U); }

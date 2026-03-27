@@ -22,6 +22,37 @@ struct InterruptService {
     std::uint16_t handler_address = 0;
 };
 
+struct RegisterSnapshot {
+    std::uint16_t af = 0;
+    std::uint16_t bc = 0;
+    std::uint16_t de = 0;
+    std::uint16_t hl = 0;
+    std::uint16_t sp = 0;
+    std::uint16_t pc = 0;
+    std::uint16_t af_alt = 0;
+    std::uint16_t bc_alt = 0;
+    std::uint16_t de_alt = 0;
+    std::uint16_t hl_alt = 0;
+    std::uint16_t ix = 0;
+    std::uint16_t iy = 0;
+    std::uint8_t r = 0;
+    std::uint8_t i = 0;
+    std::uint8_t il = 0;
+    std::uint8_t itc = 0;
+    std::uint8_t cbar = 0;
+    std::uint8_t cbr = 0;
+    std::uint8_t bbr = 0;
+    std::uint8_t interrupt_mode = 0;
+    bool iff1 = false;
+    bool iff2 = false;
+    bool halted = false;
+    std::uint8_t tcr = 0;
+    std::uint16_t tmdr0 = 0;
+    std::uint16_t rldr0 = 0;
+    std::uint16_t tmdr1 = 0;
+    std::uint16_t rldr1 = 0;
+};
+
 struct Callbacks {
     std::function<std::uint8_t(std::uint32_t)> read_memory;
     std::function<void(std::uint32_t, std::uint8_t)> write_memory;
@@ -47,6 +78,7 @@ class Core {
     [[nodiscard]] auto bbr() const -> std::uint8_t;
     [[nodiscard]] auto interrupt_mode() const -> std::uint8_t;
     [[nodiscard]] auto halted() const -> bool;
+    [[nodiscard]] auto register_snapshot() const -> RegisterSnapshot;
 
     void set_register_i(std::uint8_t value);
     void set_interrupt_mode(std::uint8_t mode);

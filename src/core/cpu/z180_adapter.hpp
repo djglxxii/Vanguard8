@@ -20,6 +20,27 @@ enum class DmaChannel {
     channel1,
 };
 
+struct DmaChannel0Snapshot {
+    std::uint32_t source = 0;
+    std::uint32_t destination = 0;
+    std::uint16_t length = 0;
+};
+
+struct DmaChannel1Snapshot {
+    std::uint32_t memory_address = 0;
+    std::uint16_t port = 0;
+    std::uint16_t length = 0;
+};
+
+struct CpuStateSnapshot {
+    third_party::z180::RegisterSnapshot registers;
+    DmaChannel0Snapshot dma0;
+    DmaChannel1Snapshot dma1;
+    std::uint8_t dstat = 0;
+    std::uint8_t dmode = 0;
+    std::uint8_t dcntl = 0;
+};
+
 struct InterruptService {
     InterruptSource source;
     std::uint16_t handler_address = 0;
@@ -41,6 +62,7 @@ class Z180Adapter {
     [[nodiscard]] auto bbr() const -> std::uint8_t;
     [[nodiscard]] auto interrupt_mode() const -> std::uint8_t;
     [[nodiscard]] auto halted() const -> bool;
+    [[nodiscard]] auto state_snapshot() const -> CpuStateSnapshot;
 
     void set_register_i(std::uint8_t value);
     void set_interrupt_mode(std::uint8_t mode);
@@ -54,6 +76,7 @@ class Z180Adapter {
 
     [[nodiscard]] auto translate_logical_address(std::uint16_t logical_address) const
         -> std::uint32_t;
+    [[nodiscard]] auto peek_logical(std::uint16_t logical_address) const -> std::uint8_t;
     [[nodiscard]] auto read_logical(std::uint16_t logical_address) -> std::uint8_t;
     void write_logical(std::uint16_t logical_address, std::uint8_t value);
 

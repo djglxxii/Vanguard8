@@ -1,6 +1,6 @@
 # M09-T03 — Add Breakpoints, Watchpoints, and Core Logs
 
-Status: `planned`
+Status: `active`
 Milestone: `9`
 Depends on: `M09-T02`
 

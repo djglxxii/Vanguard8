@@ -62,6 +62,18 @@ auto DebuggerShell::panels() const -> const std::array<PanelLayout, panel_count>
 
 auto DebuggerShell::last_render() const -> const RenderSnapshot& { return last_render_; }
 
+auto DebuggerShell::cpu_panel() -> CpuPanel& { return cpu_panel_; }
+
+auto DebuggerShell::cpu_panel() const -> const CpuPanel& { return cpu_panel_; }
+
+auto DebuggerShell::memory_panel() -> MemoryPanel& { return memory_panel_; }
+
+auto DebuggerShell::memory_panel() const -> const MemoryPanel& { return memory_panel_; }
+
+auto DebuggerShell::vdp_panel() -> VdpPanel& { return vdp_panel_; }
+
+auto DebuggerShell::vdp_panel() const -> const VdpPanel& { return vdp_panel_; }
+
 auto DebuggerShell::render() -> const RenderSnapshot& {
     last_render_ = RenderSnapshot{
         .rendered = false,

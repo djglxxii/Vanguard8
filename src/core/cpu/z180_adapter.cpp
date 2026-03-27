@@ -44,6 +44,27 @@ auto Z180Adapter::interrupt_mode() const -> std::uint8_t { return core_.interrup
 
 auto Z180Adapter::halted() const -> bool { return core_.halted(); }
 
+auto Z180Adapter::state_snapshot() const -> CpuStateSnapshot {
+    return CpuStateSnapshot{
+        .registers = core_.register_snapshot(),
+        .dma0 =
+            DmaChannel0Snapshot{
+                .source = dma_channel0_source(),
+                .destination = dma_channel0_destination(),
+                .length = dma_channel0_length(),
+            },
+        .dma1 =
+            DmaChannel1Snapshot{
+                .memory_address = dma_channel1_memory_address(),
+                .port = dma_channel1_port(),
+                .length = dma_channel1_length(),
+            },
+        .dstat = dma_.dstat,
+        .dmode = dma_.dmode,
+        .dcntl = dma_.dcntl,
+    };
+}
+
 void Z180Adapter::set_register_i(const std::uint8_t value) { core_.set_register_i(value); }
 
 void Z180Adapter::set_interrupt_mode(const std::uint8_t mode) { core_.set_interrupt_mode(mode); }
@@ -100,6 +121,19 @@ void Z180Adapter::execute_dma(const DmaChannel channel) {
 auto Z180Adapter::translate_logical_address(const std::uint16_t logical_address) const
     -> std::uint32_t {
     return core_.translate_logical_address(logical_address);
+}
+
+auto Z180Adapter::peek_logical(const std::uint16_t logical_address) const -> std::uint8_t {
+    const auto physical_address = translate_logical_address(logical_address);
+    if (memory::CartridgeSlot::contains_physical_address(physical_address)) {
+        return bus_.cartridge().read_physical(physical_address);
+    }
+
+    if (memory::Sram::contains_physical_address(physical_address)) {
+        return bus_.sram().read(physical_address);
+    }
+
+    return core::Bus::open_bus_value;
 }
 
 auto Z180Adapter::read_logical(const std::uint16_t logical_address) -> std::uint8_t {

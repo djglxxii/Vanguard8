@@ -1,5 +1,9 @@
 #pragma once
 
+#include "debugger/cpu_panel.hpp"
+#include "debugger/memory_panel.hpp"
+#include "debugger/vdp_panel.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -77,6 +81,12 @@ class DebuggerShell {
     [[nodiscard]] auto layout() const -> const DockLayout&;
     [[nodiscard]] auto panels() const -> const std::array<PanelLayout, panel_count>&;
     [[nodiscard]] auto last_render() const -> const RenderSnapshot&;
+    [[nodiscard]] auto cpu_panel() -> CpuPanel&;
+    [[nodiscard]] auto cpu_panel() const -> const CpuPanel&;
+    [[nodiscard]] auto memory_panel() -> MemoryPanel&;
+    [[nodiscard]] auto memory_panel() const -> const MemoryPanel&;
+    [[nodiscard]] auto vdp_panel() -> VdpPanel&;
+    [[nodiscard]] auto vdp_panel() const -> const VdpPanel&;
 
     [[nodiscard]] auto render() -> const RenderSnapshot&;
 
@@ -89,6 +99,9 @@ class DebuggerShell {
         .dockspace_id = "vanguard8.debugger.root",
     };
     std::array<PanelLayout, panel_count> panels_{};
+    CpuPanel cpu_panel_{};
+    MemoryPanel memory_panel_{};
+    VdpPanel vdp_panel_{};
     RenderSnapshot last_render_{};
 };
 

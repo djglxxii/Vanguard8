@@ -1,6 +1,6 @@
 # M11-T01 — Expand Documented VDP Mode Coverage
 
-Status: `planned`
+Status: `in_progress`
 Milestone: `11`
 Depends on: `M10-T03`
 

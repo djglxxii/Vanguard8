@@ -1,0 +1,21 @@
+# Local IDE metadata
+.idea/
+.vscode/
+
+# Local CMake and build output
+build/
+cmake-build-*/
+out/
+
+# CMake-generated local files
+CMakeUserPresets.json
+
+# Generic local build/test artifacts
+*.o
+*.obj
+*.so
+*.a
+*.dll
+*.dylib
+*.exe
+*.pdb

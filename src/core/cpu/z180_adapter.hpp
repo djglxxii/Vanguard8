@@ -127,6 +127,7 @@ class Z180Adapter {
     void write_logical(std::uint16_t logical_address, std::uint8_t value);
 
     [[nodiscard]] auto service_pending_interrupt() -> std::optional<InterruptService>;
+    void step_instruction();
     void run_until_halt(std::size_t max_instructions);
     [[nodiscard]] auto run_until_breakpoint_or_halt(std::size_t max_instructions) -> BreakpointRunResult;
 

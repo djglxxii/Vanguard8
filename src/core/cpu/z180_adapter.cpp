@@ -232,6 +232,8 @@ auto Z180Adapter::service_pending_interrupt() -> std::optional<InterruptService>
     };
 }
 
+void Z180Adapter::step_instruction() { core_.step_one(); }
+
 void Z180Adapter::run_until_halt(const std::size_t max_instructions) { core_.run_until_halt(max_instructions); }
 
 auto Z180Adapter::run_until_breakpoint_or_halt(const std::size_t max_instructions)

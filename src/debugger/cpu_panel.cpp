@@ -29,6 +29,8 @@ auto hex16(const std::uint16_t value) -> std::string {
     return stream.str();
 }
 
+}  // namespace
+
 auto decode_instruction(
     const vanguard8::core::cpu::Z180Adapter& cpu,
     const std::uint16_t address,
@@ -124,8 +126,6 @@ auto decode_instruction(
 
     return row;
 }
-
-}  // namespace
 
 auto CpuPanel::snapshot(const core::Emulator& emulator) const -> CpuPanelSnapshot {
     const auto cpu_state = emulator.cpu().state_snapshot();

@@ -7,6 +7,7 @@
 #include "core/replay/replayer.hpp"
 #include "core/save_state.hpp"
 #include "core/video/compositor.hpp"
+#include "debugger/trace_panel.hpp"
 #include "frontend/display.hpp"
 #include "frontend/input.hpp"
 #include "frontend/rom_loader.hpp"
@@ -41,6 +42,8 @@ struct RuntimeOptions {
     std::optional<std::pair<std::uint64_t, std::string>> expect_frame_hash;
     bool hash_audio = false;
     std::optional<std::string> expect_audio_hash;
+    std::optional<std::filesystem::path> trace_path;
+    std::size_t trace_instructions = 256;
     std::vector<std::string> pressed_keys;
     std::vector<std::string> gamepad1_buttons;
     std::vector<std::string> gamepad2_buttons;
@@ -128,6 +131,14 @@ auto parse_options(int argc, char** argv) -> RuntimeOptions {
             options.hash_audio = true;
             continue;
         }
+        if (arg == "--trace" && (index + 1) < argc) {
+            options.trace_path = argv[++index];
+            continue;
+        }
+        if (arg == "--trace-instructions" && (index + 1) < argc) {
+            options.trace_instructions = static_cast<std::size_t>(std::stoull(argv[++index]));
+            continue;
+        }
         if (arg == "--expect-audio-hash" && (index + 1) < argc) {
             options.expect_audio_hash = std::string(argv[++index]);
             continue;
@@ -172,6 +183,7 @@ auto run_headless_app(int argc, char** argv) -> int {
             << "Usage: vanguard8_headless [--rom path] [--recent index] [--frames N] [--paused] "
                "[--step-frame] [--replay file.v8r] [--vclk off|4000|6000|8000] [--dump-frame path.ppm] "
                "[--hash-frame N] [--expect-frame-hash N HASH] [--hash-audio] [--expect-audio-hash HASH] "
+               "[--trace path.log] [--trace-instructions N] "
                "[--press-key NAME] [--gamepad1-button NAME] [--gamepad2-button NAME]\n";
         return 0;
     }
@@ -239,6 +251,24 @@ auto run_headless_app(int argc, char** argv) -> int {
     }
     for (const auto& button : options.gamepad2_buttons) {
         (void)input.press_gamepad_button(1, button);
+    }
+
+    if (options.trace_path.has_value()) {
+        debugger::TracePanel trace_panel;
+        try {
+            const auto result =
+                trace_panel.write_to_file(emulator, *options.trace_path, options.trace_instructions);
+            const auto rom_label =
+                loaded_rom.has_value() ? loaded_rom->path.string() : std::string("idle ROM");
+            std::cout << debugger::format_trace_runtime_summary(emulator, rom_label);
+            std::cout << "Trace file: " << options.trace_path->string() << '\n';
+            std::cout << "Trace lines written: " << result.line_count << '\n';
+            std::cout << "CPU halted: " << std::boolalpha << result.halted << '\n';
+        } catch (const std::exception& error) {
+            std::cerr << "Trace write error: " << error.what() << '\n';
+            return static_cast<int>(ExitCode::emulator_error);
+        }
+        return static_cast<int>(ExitCode::success);
     }
 
     core::log(core::LogLevel::info, "Launching deterministic headless runtime.");

@@ -403,35 +403,43 @@ debugger toggle so it can remain visible during normal play.
 
 ## Trace-to-File
 
-For long bug hunts where the in-memory ring buffer (1024 entries) is
-insufficient, the execution trace can be written directly to a file.
+For long bug hunts where the covered in-memory debugger surfaces are
+insufficient, the current repo can write decoded instruction history directly
+to a file from the command line without requiring a live ImGui panel.
 
 ### Activation
 
-From the Execution Trace panel: **Trace → Write to File…** opens a file picker.
-From the command line:
+Current repo path:
 
 ```bash
-vanguard8_frontend --rom game.rom --trace trace.log
+vanguard8_headless --rom game.rom --trace trace.log --trace-instructions 256
 ```
+
+Current precision boundary:
+- This milestone-14 path traces the covered CPU stepping surface, not the full
+  live desktop runtime loop.
+- The file is written synchronously and the command exits after the requested
+  instruction budget is captured.
+- A live on-screen trace panel and background file-streaming path remain future
+  UI work.
 
 ### File Format
 
-Plain text, one instruction per line, same columns as the on-screen trace:
+Plain text, one instruction per line:
 
 ```
-CYCLE        PC    PHYS   BANK  BYTES        MNEMONIC                CYCLES
-00000000000  0000  00000  F     76           HALT                    4
-00000000004  0038  00038  F     ED 56        IM 1                    8
-00000000012  003A  0003A  F     FB           EI                      4
+STEP         PC    PHYS   BANK  BYTES        MNEMONIC
+000000000000  0000  00000     F  76           HALT
+000000000001  0038  00038     F  ED 56        IM 1
+000000000002  003A  0003A     F  FB           EI
 ...
 ```
 
-The file is written synchronously on a background thread (via a lock-free
-queue) to avoid stalling emulation. The trace file is automatically closed and
-flushed when tracing is stopped or when the emulator exits.
+`STEP` is a monotonically increasing instruction index in the captured trace.
+`BANK` is `F` for the fixed ROM region, `S` for SRAM-backed logical space, or
+the decoded bank number while the PC is in the cartridge bank window.
 
 ### Stopping
 
-Click **Trace → Stop** in the panel, press the same hotkey again, or close the
-emulator. The final line count is printed to the status bar.
+The command stops after the requested instruction budget is reached or when the
+CPU halts. The final line count is printed to stdout.

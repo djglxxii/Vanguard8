@@ -56,13 +56,12 @@ The architecture below is still the target desktop shape, not the exact
 implemented frontend state.
 
 Implemented today:
-- Core emulation, tests, headless runtime, deterministic frame upload/dump
-  buffer, ROM/config plumbing, and debugger snapshot/control models.
+- Core emulation, tests, headless runtime, desktop SDL/OpenGL/audio runtime,
+  deterministic frame upload/dump buffer, ROM/config plumbing, debugger
+  snapshot/control models, and CLI trace-to-file support over the covered CPU
+  stepping surface.
 
 Not yet implemented as a live desktop path:
-- SDL window lifetime
-- OpenGL frame presentation
-- SDL audio playback
 - Interactive Dear ImGui rendering
 
 The authoritative gap analysis and implementation requirements for that work
@@ -259,7 +258,8 @@ Vanguard8/
 - Audio register inspector (live state for all three chips)
 - Interrupt log (ring buffer with cycle timestamp and source identification)
 - Execution trace (recent PC history with decoded instructions)
-- Trace-to-file (unbounded execution trace written to disk via background queue)
+- Trace-to-file (current repo: headless CLI writer over the covered CPU
+  stepping surface; full live desktop trace panel/file piping remains future UI work)
 - ROM bank tracker (BBR write log with timestamps)
 - Per-chip audio mute and volume trim
 - Performance overlay (emulation speed, frame time, audio buffer fill, host CPU)

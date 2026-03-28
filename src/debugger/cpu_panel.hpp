@@ -75,4 +75,10 @@ class CpuPanel {
     std::vector<ExecutionCommand> pending_commands_;
 };
 
+[[nodiscard]] auto decode_instruction(
+    const core::cpu::Z180Adapter& cpu,
+    std::uint16_t address,
+    std::uint16_t current_pc
+) -> DecodedInstruction;
+
 }  // namespace vanguard8::debugger

@@ -4,6 +4,7 @@
 #include "core/emulator.hpp"
 #include "core/logging.hpp"
 #include "core/video/compositor.hpp"
+#include "debugger/trace_panel.hpp"
 #include "frontend/audio_output.hpp"
 #include "frontend/display.hpp"
 #include "frontend/display_presenter.hpp"
@@ -212,14 +213,10 @@ void print_runtime_status(
     const SdlAudioOutputDevice& audio_output,
     const std::optional<LoadedRom>& loaded_rom
 ) {
-    std::cout << "Runtime status: ";
-    if (loaded_rom.has_value()) {
-        std::cout << loaded_rom->path.string();
-    } else {
-        std::cout << "fixture mode";
-    }
-    std::cout << '\n';
-    std::cout << "Frame count: " << status.frame_count << '\n';
+    const auto rom_label =
+        loaded_rom.has_value() ? loaded_rom->path.string() : std::string("fixture mode");
+    std::cout << debugger::format_trace_runtime_summary(emulator, rom_label);
+    std::cout << "Presented frames: " << status.frame_count << '\n';
     std::cout << "Fullscreen: " << std::boolalpha << status.fullscreen << '\n';
     std::cout << "Audio queued bytes: " << audio_output.queued_bytes() << '\n';
     std::cout << "Controller 1 port: "

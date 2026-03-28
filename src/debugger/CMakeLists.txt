@@ -5,6 +5,7 @@ add_library(
     cpu_panel.cpp
     interrupt_panel.cpp
     memory_panel.cpp
+    trace_panel.cpp
     vdp_panel.cpp
 )
 target_include_directories(vanguard8_debugger PUBLIC ${PROJECT_SOURCE_DIR}/src)

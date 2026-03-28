@@ -35,6 +35,7 @@ class AudioMixer {
     [[nodiscard]] auto total_output_sample_count() const -> std::uint64_t;
     [[nodiscard]] auto current_common_sample() const -> StereoSample;
     [[nodiscard]] auto output_bytes() const -> const std::vector<std::uint8_t>&;
+    [[nodiscard]] auto consume_output_bytes() -> std::vector<std::uint8_t>;
     [[nodiscard]] auto state_snapshot() const -> AudioMixerState;
     void load_state(const AudioMixerState& state);
 

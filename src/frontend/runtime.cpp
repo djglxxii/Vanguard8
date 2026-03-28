@@ -29,20 +29,30 @@ auto run_window_runtime(
     }
 
     WindowHostGuard guard(window_host);
+    if (hooks.on_started && !hooks.on_started(error)) {
+        if (hooks.on_shutdown) {
+            hooks.on_shutdown();
+        }
+        return 2;
+    }
+
     std::vector<RuntimeEvent> events;
     bool running = true;
 
     while (running) {
-        if (hooks.on_frame) {
-            hooks.on_frame();
+        if (hooks.on_frame && !hooks.on_frame(error)) {
+            if (hooks.on_shutdown) {
+                hooks.on_shutdown();
+            }
+            return 2;
         }
         window_host.present();
 
         events.clear();
         window_host.pump_events(events);
         for (const auto& event : events) {
-            if (hooks.on_event) {
-                hooks.on_event(event);
+            if (hooks.on_event && !hooks.on_event(event)) {
+                running = false;
             }
             if (event.type == RuntimeEventType::quit) {
                 running = false;
@@ -50,6 +60,9 @@ auto run_window_runtime(
         }
     }
 
+    if (hooks.on_shutdown) {
+        hooks.on_shutdown();
+    }
     return 0;
 }
 

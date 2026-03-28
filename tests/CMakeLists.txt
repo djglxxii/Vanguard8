@@ -1,5 +1,8 @@
 include(FetchContent)
 
+find_package(OpenGL REQUIRED)
+find_package(SDL2 CONFIG REQUIRED)
+
 find_package(Catch2 3 CONFIG QUIET)
 if(NOT Catch2_FOUND)
     FetchContent_Declare(
@@ -21,18 +24,23 @@ add_executable(
     test_debugger_panels.cpp
     test_bus.cpp
     test_cpu.cpp
+    test_frontend_backends.cpp
     test_frontend_runtime.cpp
     test_input.cpp
     test_integration.cpp
     test_scheduler.cpp
     test_video.cpp
+    ../src/frontend/audio_output.cpp
     ../src/frontend/display.cpp
+    ../src/frontend/display_presenter.cpp
     ../src/frontend/input.cpp
     ../src/frontend/rom_loader.cpp
     ../src/frontend/runtime.cpp
+    ../src/frontend/sdl_window.cpp
     ../src/frontend/video_fixture.cpp
 )
 target_link_libraries(vanguard8_tests PRIVATE Catch2::Catch2 vanguard8_core vanguard8_debugger)
+target_link_libraries(vanguard8_tests PRIVATE OpenGL::GL SDL2::SDL2)
 target_include_directories(vanguard8_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
 
 include(Catch)

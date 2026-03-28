@@ -58,6 +58,12 @@ auto AudioMixer::current_common_sample() const -> StereoSample { return current_
 
 auto AudioMixer::output_bytes() const -> const std::vector<std::uint8_t>& { return output_bytes_; }
 
+auto AudioMixer::consume_output_bytes() -> std::vector<std::uint8_t> {
+    auto bytes = std::move(output_bytes_);
+    output_bytes_.clear();
+    return bytes;
+}
+
 auto AudioMixer::state_snapshot() const -> AudioMixerState {
     return AudioMixerState{
         .current_common_sample = current_common_sample_,

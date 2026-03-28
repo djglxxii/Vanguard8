@@ -3,15 +3,21 @@
 #include "core/config.hpp"
 #include "core/emulator.hpp"
 #include "core/logging.hpp"
+#include "core/video/compositor.hpp"
+#include "frontend/audio_output.hpp"
+#include "frontend/display.hpp"
+#include "frontend/display_presenter.hpp"
 #include "frontend/input.hpp"
 #include "frontend/rom_loader.hpp"
 #include "frontend/runtime.hpp"
 #include "frontend/sdl_window.hpp"
+#include "frontend/video_fixture.hpp"
 
 #include <exception>
 #include <filesystem>
 #include <iomanip>
 #include <iostream>
+#include <sstream>
 #include <optional>
 #include <string>
 #include <vector>
@@ -158,6 +164,7 @@ void print_runtime_banner(
     std::cout << "Fullscreen: " << std::boolalpha << config.fullscreen << '\n';
     std::cout << "Frame pacing: " << std::boolalpha << config.frame_pacing << '\n';
     std::cout << "Debugger requested: " << std::boolalpha << debugger_visible << '\n';
+    std::cout << "Runtime controls: Escape=quit, F11=fullscreen, F10=print status" << '\n';
 }
 
 void apply_cli_input(InputManager& input, const RuntimeOptions& options) {
@@ -172,9 +179,79 @@ void apply_cli_input(InputManager& input, const RuntimeOptions& options) {
     }
 }
 
-void apply_runtime_event(InputManager& input, const RuntimeEvent& event) {
+[[nodiscard]] auto controller_port_hex(const std::uint8_t value) -> std::string {
+    std::ostringstream stream;
+    stream << "0x" << std::hex << std::uppercase << std::setw(2) << std::setfill('0')
+           << static_cast<int>(value);
+    return stream.str();
+}
+
+struct RuntimeStatus {
+    std::string title_base = "Vanguard 8";
+    std::uint64_t frame_count = 0;
+    bool fullscreen = false;
+};
+
+[[nodiscard]] auto build_window_title(
+    const RuntimeStatus& status,
+    const core::Emulator& emulator,
+    const SdlAudioOutputDevice& audio_output
+) -> std::string {
+    std::ostringstream stream;
+    stream << status.title_base << " | frame " << status.frame_count << " | audio "
+           << audio_output.queued_bytes() << " B | P1 "
+           << controller_port_hex(emulator.bus().controller_ports().read(core::io::Player::one))
+           << " | P2 "
+           << controller_port_hex(emulator.bus().controller_ports().read(core::io::Player::two));
+    return stream.str();
+}
+
+void print_runtime_status(
+    const RuntimeStatus& status,
+    const core::Emulator& emulator,
+    const SdlAudioOutputDevice& audio_output,
+    const std::optional<LoadedRom>& loaded_rom
+) {
+    std::cout << "Runtime status: ";
+    if (loaded_rom.has_value()) {
+        std::cout << loaded_rom->path.string();
+    } else {
+        std::cout << "fixture mode";
+    }
+    std::cout << '\n';
+    std::cout << "Frame count: " << status.frame_count << '\n';
+    std::cout << "Fullscreen: " << std::boolalpha << status.fullscreen << '\n';
+    std::cout << "Audio queued bytes: " << audio_output.queued_bytes() << '\n';
+    std::cout << "Controller 1 port: "
+              << controller_port_hex(emulator.bus().controller_ports().read(core::io::Player::one)) << '\n';
+    std::cout << "Controller 2 port: "
+              << controller_port_hex(emulator.bus().controller_ports().read(core::io::Player::two)) << '\n';
+}
+
+[[nodiscard]] auto apply_runtime_event(
+    WindowHost& window_host,
+    InputManager& input,
+    const RuntimeEvent& event,
+    RuntimeStatus& status,
+    const core::Emulator& emulator,
+    const SdlAudioOutputDevice& audio_output,
+    const std::optional<LoadedRom>& loaded_rom
+) -> bool {
     switch (event.type) {
     case RuntimeEventType::key_down:
+        if (event.control_name == "Escape") {
+            return false;
+        }
+        if (event.control_name == "F11") {
+            status.fullscreen = !status.fullscreen;
+            window_host.set_fullscreen(status.fullscreen);
+            window_host.set_title(build_window_title(status, emulator, audio_output));
+            return true;
+        }
+        if (event.control_name == "F10") {
+            print_runtime_status(status, emulator, audio_output, loaded_rom);
+            return true;
+        }
         (void)input.press_key(event.control_name);
         break;
     case RuntimeEventType::key_up:
@@ -189,6 +266,7 @@ void apply_runtime_event(InputManager& input, const RuntimeEvent& event) {
     case RuntimeEventType::quit:
         break;
     }
+    return true;
 }
 
 }  // namespace
@@ -202,6 +280,7 @@ auto run_frontend_app(int argc, char** argv) -> int {
         options = parse_options(argc, argv);
     } catch (const std::exception& error) {
         std::cerr << "Frontend argument error: " << error.what() << '\n';
+        show_frontend_error_dialog("Vanguard 8 Frontend Error", error.what());
         return 2;
     }
 
@@ -231,6 +310,7 @@ auto run_frontend_app(int argc, char** argv) -> int {
         }
     } catch (const std::exception& error) {
         std::cerr << "ROM load error: " << error.what() << '\n';
+        show_frontend_error_dialog("Vanguard 8 ROM Load Error", error.what());
         return 2;
     }
 
@@ -248,9 +328,19 @@ auto run_frontend_app(int argc, char** argv) -> int {
     print_runtime_banner(emulator, config, loaded_rom, options.debugger_visible);
 
     SdlWindowHost window_host;
+    Display display;
+    OpenGlDisplayPresenter presenter;
+    SdlAudioOutputDevice audio_output;
+    AudioQueuePump audio_queue_pump(16'384);
+    RuntimeStatus runtime_status{
+        .title_base =
+            loaded_rom.has_value() ? std::string("Vanguard 8 - ") + loaded_rom->path.filename().string()
+                                   : std::string("Vanguard 8 - Fixture"),
+        .fullscreen = config.fullscreen,
+    };
+    bool fixture_initialized = false;
     const WindowConfig window_config{
-        .title = loaded_rom.has_value() ? std::string("Vanguard 8 - ") + loaded_rom->path.filename().string()
-                                        : std::string("Vanguard 8"),
+        .title = runtime_status.title_base,
         .logical_width = 256,
         .logical_height = 212,
         .scale = config.display_scale,
@@ -258,13 +348,71 @@ auto run_frontend_app(int argc, char** argv) -> int {
     };
 
     RuntimeHooks hooks;
-    hooks.on_event = [&](const RuntimeEvent& event) { apply_runtime_event(input, event); };
-    hooks.on_frame = []() {};
+    hooks.on_event = [&](const RuntimeEvent& event) {
+        return apply_runtime_event(window_host, input, event, runtime_status, emulator, audio_output, loaded_rom);
+    };
+    hooks.on_started = [&](std::string& error) {
+        if (!presenter.initialize(error)) {
+            return false;
+        }
+        if (!audio_output.open(
+            AudioDeviceConfig{
+                .sample_rate = config.audio_sample_rate,
+                .max_queue_bytes = 16'384,
+            },
+            error
+        )) {
+            return false;
+        }
+        window_host.set_title(build_window_title(runtime_status, emulator, audio_output));
+        return true;
+    };
+    hooks.on_frame = [&](std::string& error) {
+        if (loaded_rom.has_value()) {
+            emulator.run_frames(1);
+        } else if (!fixture_initialized) {
+            build_dual_vdp_fixture_frame(
+                emulator.mutable_bus().mutable_vdp_a(),
+                emulator.mutable_bus().mutable_vdp_b()
+            );
+            fixture_initialized = true;
+        }
+
+        display.upload_frame(core::video::Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b()));
+
+        int drawable_width = 0;
+        int drawable_height = 0;
+        window_host.drawable_size(drawable_width, drawable_height);
+        if (!presenter.present(display, drawable_width, drawable_height, error)) {
+            return false;
+        }
+
+        if (!audio_queue_pump.pump(
+            audio_output,
+            emulator.mutable_bus().mutable_audio_mixer().consume_output_bytes(),
+            error
+        )) {
+            return false;
+        }
+
+        ++runtime_status.frame_count;
+        if (runtime_status.frame_count == 1 || (runtime_status.frame_count % 60) == 0) {
+            window_host.set_title(build_window_title(runtime_status, emulator, audio_output));
+        }
+        return true;
+    };
+    hooks.on_shutdown = [&]() {
+        audio_output.close();
+        presenter.shutdown();
+    };
 
     std::string error;
     const auto result = run_window_runtime(window_host, window_config, hooks, error);
     if (result != 0) {
         std::cerr << "Frontend runtime error: " << error << '\n';
+        if (!error.empty()) {
+            show_frontend_error_dialog("Vanguard 8 Frontend Error", error);
+        }
     }
     return result;
 }

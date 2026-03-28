@@ -1,6 +1,6 @@
 # M12-T03 — Wire Command-Line ROM Launch, Minimal Live Input, and Runtime Status Closure
 
-Status: `planned`
+Status: `completed`
 Milestone: `12`
 Depends on: `M12-T02`
 
@@ -24,3 +24,14 @@ Done when:
   failures without relying on terminal-only reporting.
 
 Completion summary:
+- Kept command-line ROM launch as the primary desktop entry path and confirmed
+  both fixture and ROM-backed frontend sessions remain alive in the real SDL
+  runtime instead of exiting immediately.
+- Closed the minimal live input path with keyboard/gamepad event handling,
+  runtime `Escape`/`F11`/`F10` controls, corrected SDL gamepad ownership
+  tracking, and title-bar status updates that expose frame/audio/controller
+  state without adding a debugger UI.
+- Added lightweight desktop-visible failure surfacing through SDL message boxes,
+  expanded frontend runtime/backend tests for the new host controls and SDL
+  event mapping, and verified the full milestone command set plus timeout-based
+  frontend sanity runs with and without a ROM.

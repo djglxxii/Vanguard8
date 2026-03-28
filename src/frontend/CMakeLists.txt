@@ -4,7 +4,9 @@ find_package(SDL2 CONFIG REQUIRED)
 add_library(
     vanguard8_frontend_lib
     app.cpp
+    audio_output.cpp
     display.cpp
+    display_presenter.cpp
     input.cpp
     rom_loader.cpp
     runtime.cpp

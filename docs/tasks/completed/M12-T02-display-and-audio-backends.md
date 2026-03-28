@@ -1,6 +1,6 @@
 # M12-T02 — Add the Real Display and Audio Backends plus Deterministic Desktop Seams
 
-Status: `active`
+Status: `completed`
 Milestone: `12`
 Depends on: `M12-T01`
 
@@ -25,3 +25,13 @@ Done when:
   covered queue/ring-buffer path with clean startup and shutdown behavior.
 
 Completion summary:
+- Added a real OpenGL presenter in `src/frontend/display_presenter.*` that
+  uploads the existing deterministic `Display` frame buffer to a desktop
+  texture, presents it through the SDL window host, and exposes deterministic
+  RGB readback for regression coverage.
+- Added a frontend-owned SDL audio output seam in `src/frontend/audio_output.*`
+  plus `AudioMixer::consume_output_bytes()` so the existing core mixer path can
+  feed a live desktop device without changing the headless hash path.
+- Wired both backends into `run_frontend_app()` and added backend tests for GL
+  readback, SDL audio queueing, frontend queue bounds, and runtime seam updates,
+  then re-ran the full build and `ctest` suite successfully.

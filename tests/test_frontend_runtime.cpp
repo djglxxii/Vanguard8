@@ -34,6 +34,11 @@ class FakeWindowHost final : public WindowHost {
         return true;
     }
 
+    void drawable_size(int& width, int& height) const override {
+        width = created_config.logical_width * created_config.scale;
+        height = created_config.logical_height * created_config.scale;
+    }
+
     void pump_events(std::vector<RuntimeEvent>& events) override {
         if (event_batch_index >= event_batches.size()) {
             return;
@@ -44,6 +49,8 @@ class FakeWindowHost final : public WindowHost {
         ++event_batch_index;
     }
 
+    void set_title(std::string_view) override {}
+    void set_fullscreen(bool) override {}
     void present() override { ++present_count; }
 
     void shutdown() override { shutdown_called = true; }
@@ -70,7 +77,10 @@ TEST_CASE("window runtime creates pumps and shuts down through the host seam", "
             .fullscreen = true,
         },
         RuntimeHooks{
-            .on_frame = [&]() { ++frame_count; },
+            .on_frame = [&](std::string&) {
+                ++frame_count;
+                return true;
+            },
         },
         error
     );
@@ -121,7 +131,9 @@ TEST_CASE("window runtime forwards input events to the callback hook", "[fronten
             .on_event =
                 [&](const RuntimeEvent& event) {
                     seen_events.emplace_back(event.type, event.control_name);
+                    return true;
                 },
+            .on_frame = [](std::string&) { return true; },
         },
         error
     );
@@ -134,4 +146,27 @@ TEST_CASE("window runtime forwards input events to the callback hook", "[fronten
     REQUIRE(seen_events[1].first == RuntimeEventType::gamepad_button_down);
     REQUIRE(seen_events[1].second == "a");
     REQUIRE(seen_events[2].first == RuntimeEventType::quit);
+}
+
+TEST_CASE("window runtime reports startup hook failures after the host creates", "[frontend]") {
+    FakeWindowHost host;
+
+    std::string error;
+    const auto result = vanguard8::frontend::run_window_runtime(
+        host,
+        WindowConfig{},
+        RuntimeHooks{
+            .on_started =
+                [](std::string& hook_error) {
+                    hook_error = "startup failure";
+                    return false;
+                },
+        },
+        error
+    );
+
+    REQUIRE(result == 2);
+    REQUIRE(error == "startup failure");
+    REQUIRE(host.create_called);
+    REQUIRE(host.shutdown_called);
 }

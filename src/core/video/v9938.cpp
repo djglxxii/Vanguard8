@@ -39,7 +39,10 @@ void V9938::reset() {
     line_buffer_.fill(0x00);
     reg_[0] = graphic4_mode_r0;
     reg_[1] = graphic_mode_r1;
+    reg_[5] = static_cast<std::uint8_t>(graphic4_sprite_attribute_base >> 7U);
+    reg_[6] = static_cast<std::uint8_t>(graphic4_sprite_pattern_base >> 11U);
     reg_[9] = 0x80;  // 212-line operation recommended by the spec baseline.
+    reg_[11] = static_cast<std::uint8_t>((graphic4_sprite_attribute_base >> 15U) & 0x03U);
 }
 
 auto V9938::read_data() -> std::uint8_t {
@@ -827,10 +830,13 @@ void V9938::render_mode2_sprites_for_scanline(const int line) {
         const auto early_clock = (color_flags & 0x80U) != 0U;
         const auto sprite_left = early_clock ? static_cast<int>(x) - 32 : static_cast<int>(x);
         const auto sprite_top = static_cast<int>(y);
-        constexpr int sprite_size = 8;
-        const auto sprite_row = line - sprite_top;
+        const auto magnified = sprite_magnified();
+        const auto sprite_size = sprite_size_pixels();
+        const auto display_size = magnified ? sprite_size * 2 : sprite_size;
+        const auto sprite_line = line - sprite_top;
+        const auto sprite_row = magnified ? sprite_line / 2 : sprite_line;
 
-        if (sprite_row < 0 || sprite_row >= sprite_size) {
+        if (sprite_line < 0 || sprite_line >= display_size) {
             continue;
         }
 
@@ -845,35 +851,50 @@ void V9938::render_mode2_sprites_for_scanline(const int line) {
             continue;
         }
 
-        const auto pattern = sprite_pattern_byte(pattern_number, sprite_row);
-        for (int bit = 0; bit < 8; ++bit) {
-            if ((pattern & (0x80U >> bit)) == 0U) {
-                continue;
+        const auto pattern = sprite_pattern_row_bytes(pattern_number, sprite_row);
+        for (int half = 0; half < 2; ++half) {
+            if (half == 1 && sprite_size < 16) {
+                break;
             }
 
-            const auto pixel_x = sprite_left + bit;
-            if (pixel_x < 0 || pixel_x >= visible_width) {
-                continue;
-            }
+            for (int bit = 0; bit < 8; ++bit) {
+                if ((pattern[half] & (0x80U >> bit)) == 0U) {
+                    continue;
+                }
 
-            if (first_owner[pixel_x] >= 0 && !collision_recorded) {
-                status_[0] = static_cast<std::uint8_t>(status_[0] | 0x20U);
-                status_[3] = static_cast<std::uint8_t>(pixel_x & 0xFF);
-                status_[4] = static_cast<std::uint8_t>((pixel_x >> 8) & 0x01);
-                status_[5] = static_cast<std::uint8_t>(line & 0xFF);
-                status_[6] = static_cast<std::uint8_t>((line >> 8) & 0x01);
-                collision_recorded = true;
-            }
+                const auto pattern_x = half * 8 + bit;
+                const auto pixel_x = sprite_left + pattern_x * (magnified ? 2 : 1);
+                const auto pixel_width = magnified ? 2 : 1;
+                for (int stretch = 0; stretch < pixel_width; ++stretch) {
+                    const auto stretched_x = pixel_x + stretch;
+                    if (stretched_x < 0 || stretched_x >= visible_width) {
+                        continue;
+                    }
 
-            if (first_owner[pixel_x] >= 0) {
-                continue;
-            }
+                    if (first_owner[stretched_x] >= 0 && !collision_recorded) {
+                        status_[0] = static_cast<std::uint8_t>(status_[0] | 0x20U);
+                        status_[3] = static_cast<std::uint8_t>(stretched_x & 0xFF);
+                        status_[4] = static_cast<std::uint8_t>((stretched_x >> 8) & 0x01);
+                        status_[5] = static_cast<std::uint8_t>(line & 0xFF);
+                        status_[6] = static_cast<std::uint8_t>((line >> 8) & 0x01);
+                        collision_recorded = true;
+                    }
 
-            first_owner[pixel_x] = sprite_index;
-            sprite_line_buffer_[pixel_x] = *color;
+                    if (first_owner[stretched_x] >= 0) {
+                        continue;
+                    }
+
+                    first_owner[stretched_x] = sprite_index;
+                    sprite_line_buffer_[stretched_x] = *color;
+                }
+            }
         }
     }
 }
+
+auto V9938::sprite_size_pixels() const -> int { return (reg_[1] & 0x02U) != 0U ? 16 : 8; }
+
+auto V9938::sprite_magnified() const -> bool { return (reg_[1] & 0x01U) != 0U; }
 
 auto V9938::sprite_color_for_line(const std::uint8_t sprite_index, const int row) const
     -> std::optional<std::uint8_t> {
@@ -886,30 +907,42 @@ auto V9938::sprite_color_for_line(const std::uint8_t sprite_index, const int row
     return static_cast<std::uint8_t>(color_entry & 0x0FU);
 }
 
-auto V9938::sprite_pattern_byte(const std::uint8_t pattern_number, const int row) const
-    -> std::uint8_t {
-    // TODO(spec): Milestone 5 locks the covered sprite tests to the recommended
-    // Graphic 3 / Graphic 4 fixed VRAM layouts and 8x8 Mode-2 pattern fetch path.
-    // General base-register relocation and larger sprite geometries should follow
-    // only after the repo docs carry the needed alignment and addressing detail.
-    const auto pattern_address =
-        static_cast<std::uint16_t>(sprite_pattern_base() + pattern_number * 8U + row);
-    return vram_[pattern_address];
+auto V9938::sprite_pattern_row_bytes(const std::uint8_t pattern_number, const int row) const
+    -> std::array<std::uint8_t, 2> {
+    const auto pattern_base = sprite_pattern_base();
+    const auto row_in_block = static_cast<std::uint16_t>(row & 0x07);
+    const auto pattern_group = static_cast<std::uint8_t>(
+        sprite_size_pixels() >= 16 ? (pattern_number & 0xFCU) : pattern_number
+    );
+    const auto block_base =
+        static_cast<std::uint16_t>(pattern_base + static_cast<std::uint16_t>(pattern_group) * 8U);
+
+    if (sprite_size_pixels() < 16) {
+        return {vram_[static_cast<std::uint16_t>(block_base + row_in_block)], 0x00};
+    }
+
+    const auto lower_half = row >= 8;
+    const auto left_offset = static_cast<std::uint16_t>(lower_half ? 16U : 0U);
+    const auto right_offset = static_cast<std::uint16_t>(left_offset + 8U);
+    return {
+        vram_[static_cast<std::uint16_t>(block_base + left_offset + row_in_block)],
+        vram_[static_cast<std::uint16_t>(block_base + right_offset + row_in_block)],
+    };
 }
 
 auto V9938::sprite_pattern_base() const -> std::uint16_t {
-    return current_display_mode() == DisplayMode::graphic3 ? graphic3_sprite_pattern_base
-                                                           : graphic4_sprite_pattern_base;
+    return static_cast<std::uint16_t>((reg_[6] & 0x3FU) << 11U);
 }
 
 auto V9938::sprite_color_base() const -> std::uint16_t {
-    return current_display_mode() == DisplayMode::graphic3 ? graphic3_sprite_color_base
-                                                           : graphic4_sprite_color_base;
+    return static_cast<std::uint16_t>(sprite_attribute_base() - 0x0200U);
 }
 
 auto V9938::sprite_attribute_base() const -> std::uint16_t {
-    return current_display_mode() == DisplayMode::graphic3 ? graphic3_sprite_attribute_base
-                                                           : graphic4_sprite_attribute_base;
+    return static_cast<std::uint16_t>(
+        ((static_cast<std::uint16_t>(reg_[11] & 0x03U)) << 15U) |
+        (static_cast<std::uint16_t>(reg_[5]) << 7U)
+    );
 }
 
 auto V9938::current_palette_rgb(const std::uint8_t index) const -> std::array<std::uint8_t, 3> {

@@ -129,12 +129,12 @@ Horizontal scroll (R#26/R#27): **not implemented**. Marked as unspecified in
 A `TODO(spec)` stub exists in the renderer.
 
 Sprite layout note:
-- The covered milestone-5 sprite path uses the recommended Graphic 4 sprite
-  layout from `docs/spec/02-video.md`:
-  pattern generator at `0x6A00`, color table at `0x7A00`, and SAT at `0x7C00`.
-- General register-relocated sprite table addressing is intentionally deferred
-  until the repo docs carry the exact alignment detail needed to implement it
-  without guessing.
+- The covered sprite path now uses register-relative `R#5`/`R#6`/`R#11`
+  addressing for Mode 2 instead of fixed table assumptions.
+- The covered default Graphic 4 setup is:
+  pattern generator at `0x7000`, color table at `0x7A00`, and SAT at `0x7C00`.
+- The covered default Graphic 3 setup is:
+  pattern generator at `0x3000`, color table at `0x4000`, and SAT at `0x4200`.
 
 #### Graphic 3 rendering (fixed-layout milestone-11 path)
 
@@ -153,8 +153,8 @@ Background:
     output backdrop color from R#7
 ```
 
-The Graphic 3 sprite path reuses the covered 8x8 Sprite Mode 2 fetch logic,
-but switches to the documented Graphic 3 fixed layout:
+The Graphic 3 sprite path uses the same register-relative Mode 2 table
+addressing as Graphic 4, with the documented default Graphic 3 layout:
 
 - pattern generator at `0x3000`
 - color table at `0x4000`

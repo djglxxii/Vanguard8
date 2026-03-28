@@ -22,11 +22,41 @@ void write_register(V9938& vdp, const std::uint8_t reg, const std::uint8_t value
 void set_graphic4_mode(V9938& vdp) {
     write_register(vdp, 0, V9938::graphic4_mode_r0);
     write_register(vdp, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U));
+    write_register(
+        vdp,
+        5,
+        static_cast<std::uint8_t>(V9938::graphic4_sprite_attribute_base >> 7U)
+    );
+    write_register(
+        vdp,
+        6,
+        static_cast<std::uint8_t>(V9938::graphic4_sprite_pattern_base >> 11U)
+    );
+    write_register(
+        vdp,
+        11,
+        static_cast<std::uint8_t>((V9938::graphic4_sprite_attribute_base >> 15U) & 0x03U)
+    );
 }
 
 void set_graphic3_mode(V9938& vdp) {
     write_register(vdp, 0, V9938::graphic3_mode_r0);
     write_register(vdp, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U));
+    write_register(
+        vdp,
+        5,
+        static_cast<std::uint8_t>(V9938::graphic3_sprite_attribute_base >> 7U)
+    );
+    write_register(
+        vdp,
+        6,
+        static_cast<std::uint8_t>(V9938::graphic3_sprite_pattern_base >> 11U)
+    );
+    write_register(
+        vdp,
+        11,
+        static_cast<std::uint8_t>((V9938::graphic3_sprite_attribute_base >> 15U) & 0x03U)
+    );
 }
 
 void write_command_word(V9938& vdp, const std::uint8_t low_reg, const std::uint16_t value) {
@@ -85,6 +115,24 @@ void write_sprite_pattern_rows(V9938& vdp, const std::uint8_t pattern_number, co
         static_cast<std::uint16_t>(V9938::graphic4_sprite_pattern_base + pattern_number * 8U);
     for (int row = 0; row < 8; ++row) {
         vdp.poke_vram(static_cast<std::uint16_t>(base + row), row_value);
+    }
+}
+
+void write_16x16_sprite_pattern_rows(
+    V9938& vdp,
+    const std::uint8_t pattern_number,
+    const std::uint8_t left_row_value,
+    const std::uint8_t right_row_value
+) {
+    const auto aligned_pattern = static_cast<std::uint8_t>(pattern_number & 0xFCU);
+    const auto base = static_cast<std::uint16_t>(
+        V9938::graphic4_sprite_pattern_base + static_cast<std::uint16_t>(aligned_pattern) * 8U
+    );
+    for (int row = 0; row < 8; ++row) {
+        vdp.poke_vram(static_cast<std::uint16_t>(base + row), left_row_value);
+        vdp.poke_vram(static_cast<std::uint16_t>(base + 8U + row), right_row_value);
+        vdp.poke_vram(static_cast<std::uint16_t>(base + 16U + row), left_row_value);
+        vdp.poke_vram(static_cast<std::uint16_t>(base + 24U + row), right_row_value);
     }
 }
 
@@ -475,6 +523,80 @@ TEST_CASE("Sprite overflow and collision flags behave for covered mode-2 cases",
     REQUIRE((collision_vdp.status_value(0) & 0x20U) != 0U);
     REQUIRE(collision_vdp.status_value(3) == 32);
     REQUIRE(collision_vdp.status_value(5) == 20);
+}
+
+TEST_CASE("Mode 2 sprites support 16x16 size and magnification", "[video]") {
+    V9938 size_vdp;
+    set_graphic4_mode(size_vdp);
+    write_register(
+        size_vdp,
+        1,
+        static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U | 0x02U)
+    );
+    write_mode2_sprite(size_vdp, 0, 30, 40, 0x03, 0x07);
+    write_16x16_sprite_pattern_rows(size_vdp, 0x03, 0xFF, 0xFF);
+    terminate_sprite_list(size_vdp, 1);
+
+    size_vdp.tick_scanline(45);
+    REQUIRE(size_vdp.sprite_line_buffer()[39] == V9938::transparent_sprite_pixel);
+    REQUIRE(size_vdp.sprite_line_buffer()[40] == 0x07);
+    REQUIRE(size_vdp.sprite_line_buffer()[55] == 0x07);
+    REQUIRE(size_vdp.sprite_line_buffer()[56] == V9938::transparent_sprite_pixel);
+
+    V9938 magnified_vdp;
+    set_graphic4_mode(magnified_vdp);
+    write_register(
+        magnified_vdp,
+        1,
+        static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U | 0x03U)
+    );
+    write_mode2_sprite(magnified_vdp, 0, 50, 60, 0x00, 0x06);
+    write_sprite_pattern_rows(magnified_vdp, 0x00, 0x80);
+    terminate_sprite_list(magnified_vdp, 1);
+
+    magnified_vdp.tick_scanline(51);
+    REQUIRE(magnified_vdp.sprite_line_buffer()[60] == 0x06);
+    REQUIRE(magnified_vdp.sprite_line_buffer()[61] == 0x06);
+    REQUIRE(magnified_vdp.sprite_line_buffer()[62] == V9938::transparent_sprite_pixel);
+
+    magnified_vdp.tick_scanline(52);
+    REQUIRE(magnified_vdp.sprite_line_buffer()[60] == 0x06);
+    REQUIRE(magnified_vdp.sprite_line_buffer()[61] == 0x06);
+}
+
+TEST_CASE("Mode 2 sprites use register-relative table bases", "[video]") {
+    V9938 vdp;
+    set_graphic4_mode(vdp);
+
+    constexpr std::uint16_t relocated_attribute_base = 0x5200;
+    constexpr std::uint16_t relocated_pattern_base = 0x4800;
+    write_register(vdp, 5, static_cast<std::uint8_t>(relocated_attribute_base >> 7U));
+    write_register(vdp, 6, static_cast<std::uint8_t>(relocated_pattern_base >> 11U));
+    write_register(vdp, 11, static_cast<std::uint8_t>((relocated_attribute_base >> 15U) & 0x03U));
+
+    vdp.poke_vram(relocated_attribute_base + 0, 70);
+    vdp.poke_vram(relocated_attribute_base + 1, 80);
+    vdp.poke_vram(relocated_attribute_base + 2, 0x05);
+    vdp.poke_vram(relocated_attribute_base + 3, 0x00);
+    for (int byte = 4; byte < 8; ++byte) {
+        vdp.poke_vram(static_cast<std::uint16_t>(relocated_attribute_base + byte), 0x00);
+    }
+
+    const auto relocated_color_base = static_cast<std::uint16_t>(relocated_attribute_base - 0x0200U);
+    for (int row = 0; row < 16; ++row) {
+        vdp.poke_vram(static_cast<std::uint16_t>(relocated_color_base + row), 0x09);
+    }
+
+    const auto relocated_pattern_address =
+        static_cast<std::uint16_t>(relocated_pattern_base + 0x05U * 8U);
+    vdp.poke_vram(relocated_pattern_address, 0x80);
+    vdp.poke_vram(V9938::graphic4_sprite_pattern_base, 0x00);
+    terminate_sprite_list(vdp, 1);
+    vdp.poke_vram(static_cast<std::uint16_t>(relocated_attribute_base + 8U), 0xD0);
+
+    vdp.tick_scanline(70);
+    REQUIRE(vdp.sprite_line_buffer()[80] == 0x09);
+    REQUIRE(vdp.sprite_line_buffer()[81] == V9938::transparent_sprite_pixel);
 }
 
 TEST_CASE("Reading S#0 and S#1 clears the documented VDP-A interrupt flags", "[video]") {

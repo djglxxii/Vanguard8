@@ -212,8 +212,9 @@ VRAM tables (register-controlled):
 - **Pattern Generator Table** (R#4): 2,048 bytes (256 patterns × 8 bytes)
 - **Color Table** (R#3): 32 bytes (one byte per 8-pattern group)
 - **Sprite Attribute Table** (R#5/R#11): 128 bytes (32 sprites × 4 bytes, Mode 1)
-- **Sprite Pattern Generator** (R#6): 2,048 bytes (256 patterns × 8 bytes) or
-  512 bytes (64 patterns × 8 bytes) for 8×8 sprites
+- **Sprite Pattern Generator** (R#6): 2,048 bytes (256 patterns × 8 bytes);
+  8×8 sprites use one pattern per sprite and 16×16 sprites use four consecutive
+  patterns per sprite
 
 ### Graphic 2 (Screen 2)
 
@@ -380,7 +381,7 @@ boundaries.
 
 ```
 0x0000 – 0x69FF   Active display bitmap      (27,136 bytes, 212 lines × 128 bytes)
-0x6A00 – 0x79FF   Sprite pattern generator   (4,096 bytes = 128 unique 16×16 patterns)
+0x7000 – 0x77FF   Sprite pattern generator   (2,048 bytes = 256 8×8 patterns or 64 16×16 patterns)
 0x7A00 – 0x7BFF   Sprite Color Table         (512 bytes, Mode 2: 32 sprites × 16 rows)
 0x7C00 – 0x7CFF   Sprite Attribute Table     (256 bytes, 32 entries × 8 bytes)
 0x7D00 – 0xFFFF   Tile/asset pattern bank    (~33 KB available for blitter source data)
@@ -390,6 +391,13 @@ boundaries.
 Table base as the Sprite Attribute Table base address minus 512 bytes. With the
 SAT at 0x7C00, the Color Table is automatically at 0x7A00. This offset is fixed
 by hardware and cannot be independently configured.
+
+Covered Graphic 4 / Mode 2 table-base packing:
+- **R#5/R#11** form the Sprite Attribute Table base as
+  `((R#11 bits 1:0) << 15) | (R#5 << 7)`.
+- **R#6** forms the Sprite Pattern Generator base as `(R#6 bits 5:0) << 11`.
+- The covered default register setup uses pattern base `0x7000`, color base
+  `0x7A00`, and SAT base `0x7C00`.
 
 The tile/asset bank stores pre-rendered tile bitmaps for use with the HMMM
 blitter. Each 8×8 tile at 4bpp occupies 32 bytes (8 rows × 4 bytes per row).
@@ -401,23 +409,26 @@ blitter. Each 8×8 tile at 4bpp occupies 32 bytes (8 rows × 4 bytes per row).
 0x0000 – 0x02FF   Pattern Name Table         (768 bytes, 32×24 tile map)
 0x0300 – 0x17FF   Pattern Generator Table    (6,144 bytes, 3 banks × 256 × 8)
 0x1800 – 0x2FFF   Color Table                (6,144 bytes, 3 banks × 256 × 8)
-0x3000 – 0x3FFF   Sprite pattern generator   (4,096 bytes = 128 16×16 patterns)
+0x3000 – 0x37FF   Sprite pattern generator   (2,048 bytes = 256 8×8 patterns or 64 16×16 patterns)
 0x4000 – 0x41FF   Sprite Color Table         (512 bytes, SAT base − 512)
 0x4200 – 0x42FF   Sprite Attribute Table     (256 bytes, 32 entries × 8 bytes)
 0x4300 – 0xFFFF   Remaining VRAM             (~47 KB available)
 ```
 
-The exact alignment requirements for each table base register in Graphic 3
-should be verified against the V9938 Technical Data Book (table bases are
-typically aligned to fixed block sizes).
+Covered Graphic 3 / Mode 2 table-base packing:
+- **R#5/R#11** form the Sprite Attribute Table base as
+  `((R#11 bits 1:0) << 15) | (R#5 << 7)`.
+- **R#6** forms the Sprite Pattern Generator base as `(R#6 bits 5:0) << 11`.
+- In the recommended Graphic 3 layout, this yields pattern base `0x3000`,
+  color base `0x4000`, and SAT base `0x4200`.
 
 ### Graphic 6 / 7 Layout Note
 
 With ~54 KB consumed by the framebuffer, only ~10 KB remains. Sprite tables
 and pattern storage must fit within that remainder. Sprite pattern generator
-(4 KB for 128 16×16 patterns) plus SAT (256 bytes) plus Sprite Color Table
-(512 bytes) totals ~4.75 KB — leaving approximately 5 KB of free VRAM.
-Reduce sprite pattern count or use 8×8 sprites (512 bytes per 64 patterns)
+(2 KB for 256 8×8 patterns or 64 16×16 patterns) plus SAT (256 bytes) plus
+Sprite Color Table (512 bytes) totals ~2.75 KB — leaving approximately 7 KB of
+free VRAM. Reduce sprite pattern count or use 8×8 sprites (512 bytes per 64 patterns)
 to recover headroom.
 
 ---
@@ -638,6 +649,14 @@ Byte 3   — Color/flags
   Bit  7    — EC (Early Clock): shifts sprite 32 pixels left for off-screen entry
 Bytes 4–7 — (Color table stored separately in VRAM, not in SAT)
 ```
+
+Sprite geometry controls:
+- **R#1 bit 1** selects sprite size: `0 = 8×8`, `1 = 16×16`
+- **R#1 bit 0** selects magnification: `0 = normal`, `1 = ×2`
+
+For 16×16 sprites, the covered behavior follows the V9938 four-pattern layout:
+the SAT pattern number selects a four-pattern group and the lower two bits are
+ignored for fetch.
 
 Sprite rendering stops when a Y value of **0xD0 (208)** is encountered,
 regardless of remaining SAT entries.

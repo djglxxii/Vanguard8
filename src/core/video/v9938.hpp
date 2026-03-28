@@ -23,7 +23,7 @@ class V9938 {
         static_cast<std::uint8_t>(register0_mode_m4 | register0_mode_m3);
     static constexpr std::uint8_t graphic3_mode_r0 = register0_mode_m4;
     static constexpr std::uint8_t graphic_mode_r1 = 0x00;
-    static constexpr std::uint16_t graphic4_sprite_pattern_base = 0x6A00;
+    static constexpr std::uint16_t graphic4_sprite_pattern_base = 0x7000;
     static constexpr std::uint16_t graphic4_sprite_color_base = 0x7A00;
     static constexpr std::uint16_t graphic4_sprite_attribute_base = 0x7C00;
     static constexpr std::uint16_t graphic3_name_table_base = 0x0000;
@@ -192,13 +192,15 @@ class V9938 {
     void render_graphic4_background_scanline(int line);
     void render_graphic3_background_scanline(int line);
     void render_mode2_sprites_for_scanline(int line);
+    [[nodiscard]] auto sprite_size_pixels() const -> int;
+    [[nodiscard]] auto sprite_magnified() const -> bool;
     [[nodiscard]] auto sprite_pattern_base() const -> std::uint16_t;
     [[nodiscard]] auto sprite_color_base() const -> std::uint16_t;
     [[nodiscard]] auto sprite_attribute_base() const -> std::uint16_t;
     [[nodiscard]] auto sprite_color_for_line(std::uint8_t sprite_index, int row) const
         -> std::optional<std::uint8_t>;
-    [[nodiscard]] auto sprite_pattern_byte(std::uint8_t pattern_number, int row) const
-        -> std::uint8_t;
+    [[nodiscard]] auto sprite_pattern_row_bytes(std::uint8_t pattern_number, int row) const
+        -> std::array<std::uint8_t, 2>;
     [[nodiscard]] auto current_palette_rgb(std::uint8_t index) const
         -> std::array<std::uint8_t, 3>;
 };

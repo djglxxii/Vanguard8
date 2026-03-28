@@ -1,6 +1,6 @@
 # M14-T01 — Add Trace-to-File Support and Lightweight Runtime Debug Output
 
-Status: `planned`
+Status: `active`
 Milestone: `14`
 Depends on: `M13-T03`
 

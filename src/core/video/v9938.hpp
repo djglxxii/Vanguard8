@@ -105,6 +105,8 @@ class V9938 {
   private:
     enum class DisplayMode {
         unsupported,
+        graphic1,
+        graphic2,
         graphic3,
         graphic4,
     };
@@ -189,8 +191,16 @@ class V9938 {
     [[nodiscard]] auto current_display_mode() const -> DisplayMode;
     [[nodiscard]] auto display_enabled() const -> bool;
     [[nodiscard]] auto backdrop_color() const -> std::uint8_t;
+    [[nodiscard]] auto pattern_name_base() const -> std::uint16_t;
+    [[nodiscard]] auto graphic1_color_base() const -> std::uint16_t;
+    [[nodiscard]] auto graphic1_pattern_base() const -> std::uint16_t;
+    [[nodiscard]] auto graphic2_color_base() const -> std::uint16_t;
+    [[nodiscard]] auto graphic2_pattern_base() const -> std::uint16_t;
+    void render_graphic1_background_scanline(int line);
+    void render_graphic2_background_scanline(int line);
     void render_graphic4_background_scanline(int line);
     void render_graphic3_background_scanline(int line);
+    void render_mode1_sprites_for_scanline(int line);
     void render_mode2_sprites_for_scanline(int line);
     [[nodiscard]] auto sprite_size_pixels() const -> int;
     [[nodiscard]] auto sprite_magnified() const -> bool;

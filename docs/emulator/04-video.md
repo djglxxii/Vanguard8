@@ -95,6 +95,8 @@ R#1 bit 3 = M2
 
 Covered scanline modes:
 
+- **Graphic 1**: 192-line tile renderer with grouped color-table lookup
+- **Graphic 2**: 192-line three-bank tile renderer
 - **Graphic 4**: default bitmap path
 - **Graphic 3**: fixed-layout tile path using the repo's documented
   `0x0000-0x42FF` table placement
@@ -102,6 +104,13 @@ Covered scanline modes:
 Unsupported display modes must not silently fall back to a neighboring mode.
 The narrow emulator path fills the background with the backdrop color until the
 mode is implemented from spec.
+
+Sprite coverage in the current repo:
+
+- **Graphic 1 / Graphic 2** use Sprite Mode 1 with a 4-sprite-per-scanline
+  visibility limit and the single-color SAT byte-3 path.
+- **Graphic 3 / Graphic 4** use Sprite Mode 2 with the covered per-row color
+  table path.
 
 #### Graphic 4 rendering (primary/default mode)
 
@@ -167,6 +176,19 @@ Current precision boundary:
   lines `192-211`; those lines intentionally render the backdrop color.
 - `R#23` vertical scroll remains locked to the existing Graphic 4 path until
   Graphic 3 scroll behavior is written into the spec without ambiguity.
+
+#### Graphic 1 / Graphic 2 rendering (milestone-13 tile compatibility path)
+
+Graphic 1 and Graphic 2 share the same `32x24` tile-map shape but use Sprite
+Mode 1 instead of the Mode 2 color-table sprite path:
+
+- **Graphic 1** reads one 8-byte pattern per tile row and one color byte per
+  group of 8 pattern numbers.
+- **Graphic 2** keeps the same 32x24 tile map but selects pattern/color data
+  from one of three 64-line banks, enabling per-row color control across the
+  full 192-line display.
+- Lines `192-211` in both modes output the backdrop color because these modes
+  are locked to their documented 192-line behavior.
 
 ### VDP Command Engine
 

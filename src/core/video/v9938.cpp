@@ -150,6 +150,12 @@ void V9938::tick_scanline(const int line) {
         line_buffer_.fill(backdrop_color());
     } else {
         switch (current_display_mode()) {
+        case DisplayMode::graphic1:
+            render_graphic1_background_scanline(line);
+            break;
+        case DisplayMode::graphic2:
+            render_graphic2_background_scanline(line);
+            break;
         case DisplayMode::graphic3:
             render_graphic3_background_scanline(line);
             break;
@@ -160,7 +166,19 @@ void V9938::tick_scanline(const int line) {
             background_line_buffer_.fill(backdrop_color());
             break;
         }
-        render_mode2_sprites_for_scanline(line);
+        switch (current_display_mode()) {
+        case DisplayMode::graphic1:
+        case DisplayMode::graphic2:
+            render_mode1_sprites_for_scanline(line);
+            break;
+        case DisplayMode::graphic3:
+        case DisplayMode::graphic4:
+            render_mode2_sprites_for_scanline(line);
+            break;
+        case DisplayMode::unsupported:
+            sprite_line_buffer_.fill(transparent_sprite_pixel);
+            break;
+        }
 
         for (int x = 0; x < visible_width; ++x) {
             line_buffer_[x] =
@@ -748,6 +766,10 @@ auto V9938::current_display_mode() const -> DisplayMode {
     );
 
     switch (mode_bits) {
+    case 0x00:
+        return DisplayMode::graphic1;
+    case 0x04:
+        return DisplayMode::graphic2;
     case 0x08:
         return DisplayMode::graphic3;
     case 0x0C:
@@ -760,6 +782,91 @@ auto V9938::current_display_mode() const -> DisplayMode {
 auto V9938::display_enabled() const -> bool { return (reg_[1] & 0x40U) != 0U; }
 
 auto V9938::backdrop_color() const -> std::uint8_t { return static_cast<std::uint8_t>(reg_[7] & 0x0FU); }
+
+auto V9938::pattern_name_base() const -> std::uint16_t {
+    return static_cast<std::uint16_t>(reg_[2] << 10U);
+}
+
+auto V9938::graphic1_color_base() const -> std::uint16_t {
+    return static_cast<std::uint16_t>(reg_[3] << 6U);
+}
+
+auto V9938::graphic1_pattern_base() const -> std::uint16_t {
+    return static_cast<std::uint16_t>((reg_[4] & 0x3FU) << 11U);
+}
+
+auto V9938::graphic2_color_base() const -> std::uint16_t {
+    return static_cast<std::uint16_t>(reg_[3] << 6U);
+}
+
+auto V9938::graphic2_pattern_base() const -> std::uint16_t {
+    return static_cast<std::uint16_t>((reg_[4] & 0x3FU) << 11U);
+}
+
+void V9938::render_graphic1_background_scanline(const int line) {
+    if (line < 0 || line >= 192) {
+        background_line_buffer_.fill(backdrop_color());
+        return;
+    }
+
+    const auto tile_row = line / 8;
+    const auto row_in_tile = line % 8;
+    const auto name_base = pattern_name_base();
+    const auto pattern_base = graphic1_pattern_base();
+    const auto color_base = graphic1_color_base();
+
+    for (int tile_col = 0; tile_col < 32; ++tile_col) {
+        const auto name_address = static_cast<std::uint16_t>(name_base + tile_row * 32 + tile_col);
+        const auto pattern_number = vram_[name_address];
+        const auto pattern_address =
+            static_cast<std::uint16_t>(pattern_base + static_cast<std::uint16_t>(pattern_number) * 8U + row_in_tile);
+        const auto color_address =
+            static_cast<std::uint16_t>(color_base + static_cast<std::uint16_t>(pattern_number / 8U));
+        const auto pattern = vram_[pattern_address];
+        const auto colors = vram_[color_address];
+        const auto foreground = static_cast<std::uint8_t>((colors >> 4) & 0x0FU);
+        const auto background = static_cast<std::uint8_t>(colors & 0x0FU);
+
+        for (int pixel = 0; pixel < 8; ++pixel) {
+            const auto x = tile_col * 8 + pixel;
+            background_line_buffer_[x] =
+                (pattern & (0x80U >> pixel)) != 0U ? foreground : background;
+        }
+    }
+}
+
+void V9938::render_graphic2_background_scanline(const int line) {
+    if (line < 0 || line >= 192) {
+        background_line_buffer_.fill(backdrop_color());
+        return;
+    }
+
+    const auto tile_row = line / 8;
+    const auto row_in_tile = line % 8;
+    const auto bank = tile_row / 8;
+    const auto bank_offset = static_cast<std::uint16_t>(bank * 0x0800U);
+    const auto name_base = pattern_name_base();
+    const auto pattern_base = graphic2_pattern_base();
+    const auto color_base = graphic2_color_base();
+
+    for (int tile_col = 0; tile_col < 32; ++tile_col) {
+        const auto name_address = static_cast<std::uint16_t>(name_base + tile_row * 32 + tile_col);
+        const auto pattern_number = vram_[name_address];
+        const auto row_offset = static_cast<std::uint16_t>(pattern_number * 8U + row_in_tile);
+        const auto pattern =
+            vram_[static_cast<std::uint16_t>(pattern_base + bank_offset + row_offset)];
+        const auto colors =
+            vram_[static_cast<std::uint16_t>(color_base + bank_offset + row_offset)];
+        const auto foreground = static_cast<std::uint8_t>((colors >> 4) & 0x0FU);
+        const auto background = static_cast<std::uint8_t>(colors & 0x0FU);
+
+        for (int pixel = 0; pixel < 8; ++pixel) {
+            const auto x = tile_col * 8 + pixel;
+            background_line_buffer_[x] =
+                (pattern & (0x80U >> pixel)) != 0U ? foreground : background;
+        }
+    }
+}
 
 void V9938::render_graphic4_background_scanline(const int line) {
     for (int x = 0; x < visible_width; ++x) {
@@ -798,6 +905,92 @@ void V9938::render_graphic3_background_scanline(const int line) {
             const auto x = tile_col * 8 + pixel;
             background_line_buffer_[x] =
                 (pattern & (0x80U >> pixel)) != 0U ? foreground : background;
+        }
+    }
+}
+
+void V9938::render_mode1_sprites_for_scanline(const int line) {
+    sprite_line_buffer_.fill(transparent_sprite_pixel);
+
+    const auto mode = current_display_mode();
+    if (mode != DisplayMode::graphic1 && mode != DisplayMode::graphic2) {
+        return;
+    }
+
+    std::array<int, visible_width> first_owner{};
+    first_owner.fill(-1);
+
+    int visible_sprite_count = 0;
+    bool collision_recorded = false;
+
+    for (std::uint8_t sprite_index = 0; sprite_index < 32; ++sprite_index) {
+        const auto sat_base =
+            static_cast<std::uint16_t>(sprite_attribute_base() + sprite_index * 4U);
+        const auto y = vram_[sat_base + 0];
+        if (y == 0xD0U) {
+            break;
+        }
+
+        const auto x = vram_[sat_base + 1];
+        const auto pattern_number = vram_[sat_base + 2];
+        const auto color_flags = vram_[sat_base + 3];
+        const auto early_clock = (color_flags & 0x80U) != 0U;
+        const auto color = static_cast<std::uint8_t>(color_flags & 0x0FU);
+        const auto sprite_left = early_clock ? static_cast<int>(x) - 32 : static_cast<int>(x);
+        const auto sprite_top = static_cast<int>(y);
+        const auto magnified = sprite_magnified();
+        const auto sprite_size = sprite_size_pixels();
+        const auto display_size = magnified ? sprite_size * 2 : sprite_size;
+        const auto sprite_line = line - sprite_top;
+        const auto sprite_row = magnified ? sprite_line / 2 : sprite_line;
+
+        if (sprite_line < 0 || sprite_line >= display_size) {
+            continue;
+        }
+
+        ++visible_sprite_count;
+        if (visible_sprite_count > 4) {
+            status_[0] = static_cast<std::uint8_t>(status_[0] | 0x40U);
+            continue;
+        }
+
+        const auto pattern = sprite_pattern_row_bytes(pattern_number, sprite_row);
+        for (int half = 0; half < 2; ++half) {
+            if (half == 1 && sprite_size < 16) {
+                break;
+            }
+
+            for (int bit = 0; bit < 8; ++bit) {
+                if ((pattern[half] & (0x80U >> bit)) == 0U) {
+                    continue;
+                }
+
+                const auto pattern_x = half * 8 + bit;
+                const auto pixel_x = sprite_left + pattern_x * (magnified ? 2 : 1);
+                const auto pixel_width = magnified ? 2 : 1;
+                for (int stretch = 0; stretch < pixel_width; ++stretch) {
+                    const auto stretched_x = pixel_x + stretch;
+                    if (stretched_x < 0 || stretched_x >= visible_width) {
+                        continue;
+                    }
+
+                    if (first_owner[stretched_x] >= 0 && !collision_recorded) {
+                        status_[0] = static_cast<std::uint8_t>(status_[0] | 0x20U);
+                        status_[3] = static_cast<std::uint8_t>(stretched_x & 0xFF);
+                        status_[4] = static_cast<std::uint8_t>((stretched_x >> 8) & 0x01);
+                        status_[5] = static_cast<std::uint8_t>(line & 0xFF);
+                        status_[6] = static_cast<std::uint8_t>((line >> 8) & 0x01);
+                        collision_recorded = true;
+                    }
+
+                    if (first_owner[stretched_x] >= 0) {
+                        continue;
+                    }
+
+                    first_owner[stretched_x] = sprite_index;
+                    sprite_line_buffer_[stretched_x] = color;
+                }
+            }
         }
     }
 }

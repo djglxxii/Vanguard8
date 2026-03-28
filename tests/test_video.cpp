@@ -59,6 +59,28 @@ void set_graphic3_mode(V9938& vdp) {
     );
 }
 
+void set_graphic1_mode(V9938& vdp) {
+    write_register(vdp, 0, 0x00);
+    write_register(vdp, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U));
+    write_register(vdp, 2, 0x06);   // name table at 0x1800
+    write_register(vdp, 3, 0x80);   // color table at 0x2000
+    write_register(vdp, 4, 0x00);   // pattern table at 0x0000
+    write_register(vdp, 5, 0x78);   // sprite attribute table at 0x3C00
+    write_register(vdp, 6, 0x07);   // sprite pattern table at 0x3800
+    write_register(vdp, 11, 0x00);
+}
+
+void set_graphic2_mode(V9938& vdp) {
+    write_register(vdp, 0, V9938::register0_mode_m3);
+    write_register(vdp, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U));
+    write_register(vdp, 2, 0x06);   // name table at 0x1800
+    write_register(vdp, 3, 0x80);   // color table at 0x2000
+    write_register(vdp, 4, 0x00);   // pattern table at 0x0000
+    write_register(vdp, 5, 0x78);   // sprite attribute table at 0x3C00
+    write_register(vdp, 6, 0x07);   // sprite pattern table at 0x3800
+    write_register(vdp, 11, 0x00);
+}
+
 void write_command_word(V9938& vdp, const std::uint8_t low_reg, const std::uint16_t value) {
     write_register(vdp, low_reg, static_cast<std::uint8_t>(value & 0x00FFU));
     write_register(vdp, static_cast<std::uint8_t>(low_reg + 1U), static_cast<std::uint8_t>((value >> 8U) & 0x0003U));
@@ -141,6 +163,36 @@ void terminate_sprite_list(V9938& vdp, const std::uint8_t sprite_index) {
         static_cast<std::uint16_t>(V9938::graphic4_sprite_attribute_base + sprite_index * 8U),
         0xD0
     );
+}
+
+void write_mode1_sprite(
+    V9938& vdp,
+    const std::uint8_t sprite_index,
+    const std::uint8_t y,
+    const std::uint8_t x,
+    const std::uint8_t pattern_number,
+    const std::uint8_t color_flags
+) {
+    const auto attribute_base = static_cast<std::uint16_t>(0x3C00U + sprite_index * 4U);
+    vdp.poke_vram(attribute_base + 0, y);
+    vdp.poke_vram(attribute_base + 1, x);
+    vdp.poke_vram(attribute_base + 2, pattern_number);
+    vdp.poke_vram(attribute_base + 3, color_flags);
+}
+
+void write_mode1_sprite_pattern_rows(
+    V9938& vdp,
+    const std::uint8_t pattern_number,
+    const std::uint8_t row_value
+) {
+    const auto base = static_cast<std::uint16_t>(0x3800U + pattern_number * 8U);
+    for (int row = 0; row < 8; ++row) {
+        vdp.poke_vram(static_cast<std::uint16_t>(base + row), row_value);
+    }
+}
+
+void terminate_mode1_sprite_list(V9938& vdp, const std::uint8_t sprite_index) {
+    vdp.poke_vram(static_cast<std::uint16_t>(0x3C00U + sprite_index * 4U), 0xD0);
 }
 
 }  // namespace
@@ -597,6 +649,87 @@ TEST_CASE("Mode 2 sprites use register-relative table bases", "[video]") {
     vdp.tick_scanline(70);
     REQUIRE(vdp.sprite_line_buffer()[80] == 0x09);
     REQUIRE(vdp.sprite_line_buffer()[81] == V9938::transparent_sprite_pixel);
+}
+
+TEST_CASE("Graphic 1 rendering uses the documented tile and grouped color layout", "[video]") {
+    V9938 vdp;
+    set_graphic1_mode(vdp);
+
+    vdp.poke_vram(0x1800, 0x01);
+    vdp.poke_vram(0x0008, 0x80);
+    vdp.poke_vram(0x2000, 0x21);
+    write_register(vdp, 7, 0x03);
+
+    vdp.tick_scanline(0);
+    REQUIRE(vdp.background_line_buffer()[0] == 0x02);
+    REQUIRE(vdp.background_line_buffer()[1] == 0x01);
+
+    vdp.tick_scanline(192);
+    REQUIRE(vdp.background_line_buffer()[0] == 0x03);
+}
+
+TEST_CASE("Graphic 2 rendering follows the documented three-bank tile layout", "[video]") {
+    V9938 vdp;
+    set_graphic2_mode(vdp);
+
+    vdp.poke_vram(0x1800, 0x01);
+    vdp.poke_vram(0x1900, 0x02);
+    vdp.poke_vram(0x0008, 0x80);
+    vdp.poke_vram(0x2008, 0x43);
+    vdp.poke_vram(0x0810, 0x80);
+    vdp.poke_vram(0x2810, 0x65);
+
+    vdp.tick_scanline(0);
+    REQUIRE(vdp.background_line_buffer()[0] == 0x04);
+    REQUIRE(vdp.background_line_buffer()[1] == 0x03);
+
+    vdp.tick_scanline(64);
+    REQUIRE(vdp.background_line_buffer()[0] == 0x06);
+    REQUIRE(vdp.background_line_buffer()[1] == 0x05);
+}
+
+TEST_CASE("Sprite Mode 1 renders single-color sprites and enforces the 4-sprite scanline limit", "[video]") {
+    V9938 vdp;
+    set_graphic1_mode(vdp);
+
+    write_mode1_sprite(vdp, 0, 24, 40, 0x00, 0x0A);
+    write_mode1_sprite_pattern_rows(vdp, 0x00, 0x80);
+    terminate_mode1_sprite_list(vdp, 1);
+
+    vdp.tick_scanline(24);
+    REQUIRE(vdp.sprite_line_buffer()[40] == 0x0A);
+    REQUIRE(vdp.sprite_line_buffer()[41] == V9938::transparent_sprite_pixel);
+
+    V9938 overflow_vdp;
+    set_graphic1_mode(overflow_vdp);
+    for (std::uint8_t sprite_index = 0; sprite_index < 5; ++sprite_index) {
+        write_mode1_sprite(
+            overflow_vdp,
+            sprite_index,
+            32,
+            static_cast<std::uint8_t>(sprite_index * 8),
+            sprite_index,
+            0x05
+        );
+        write_mode1_sprite_pattern_rows(overflow_vdp, sprite_index, 0x80);
+    }
+    terminate_mode1_sprite_list(overflow_vdp, 5);
+    overflow_vdp.tick_scanline(32);
+    REQUIRE((overflow_vdp.status_value(0) & 0x40U) != 0U);
+
+    V9938 collision_vdp;
+    set_graphic1_mode(collision_vdp);
+    write_mode1_sprite(collision_vdp, 0, 48, 60, 0x00, 0x06);
+    write_mode1_sprite(collision_vdp, 1, 48, 60, 0x01, 0x07);
+    write_mode1_sprite_pattern_rows(collision_vdp, 0x00, 0x80);
+    write_mode1_sprite_pattern_rows(collision_vdp, 0x01, 0x80);
+    terminate_mode1_sprite_list(collision_vdp, 2);
+
+    collision_vdp.tick_scanline(48);
+    REQUIRE((collision_vdp.status_value(0) & 0x20U) != 0U);
+    REQUIRE(collision_vdp.status_value(3) == 60);
+    REQUIRE(collision_vdp.status_value(5) == 48);
+    REQUIRE(collision_vdp.sprite_line_buffer()[60] == 0x06);
 }
 
 TEST_CASE("Reading S#0 and S#1 clears the documented VDP-A interrupt flags", "[video]") {

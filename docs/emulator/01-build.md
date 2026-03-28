@@ -5,6 +5,14 @@
 This document describes the intended build system and directory layout. The
 files and targets below may not exist yet in a fresh documentation-only repo.
 
+Current repo note:
+- The build files, source tree, and dependency manifest now exist.
+- The dependency stack already includes SDL2, Dear ImGui, OpenGL bindings, and
+  native file dialog support in `vcpkg.json`, but the live desktop frontend
+  backend is still planned work rather than completed implementation.
+- See `docs/emulator/10-desktop-gui-audit.md` for the current gap between the
+  built frontend binary and the intended desktop application shape.
+
 CMake 3.25 or later, using **vcpkg manifest mode** for third-party library
 acquisition. vcpkg is added as a git submodule at `third_party/vcpkg` and
 bootstrapped automatically during the CMake configure step via the vcpkg
@@ -86,11 +94,19 @@ tests/CMakeLists.txt            Catch2 test executables + ctest replay integrati
 third_party/CMakeLists.txt      Vendored libraries as INTERFACE/STATIC targets
 ```
 
-`vanguard8_frontend` links `vanguard8_core` and adds the SDL2/OpenGL/ImGui
-frontend. `vanguard8_headless` links `vanguard8_core` with only the headless
-frontend (no SDL window, no GL, no ImGui). The test executables link
-`vanguard8_core` directly. The replay tests in `tests/replays/` are registered
-as ctest entries that invoke `vanguard8_headless`.
+Target architecture:
+- `vanguard8_frontend` links `vanguard8_core` and adds the SDL2/OpenGL/ImGui
+  frontend.
+- `vanguard8_headless` links `vanguard8_core` with only the headless frontend
+  (no SDL window, no GL, no ImGui).
+
+Current repo state:
+- `vanguard8_frontend` exists, but its compiled path is still a deterministic
+  CLI/status launcher rather than the full SDL/OpenGL/ImGui host described
+  here.
+- The test executables link `vanguard8_core` directly. The replay tests in
+  `tests/replays/` are registered as `ctest` entries that invoke
+  `vanguard8_headless`.
 
 ---
 

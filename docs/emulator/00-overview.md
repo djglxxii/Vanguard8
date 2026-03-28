@@ -19,8 +19,9 @@ behavior. When this document and the spec conflict, the spec wins.
   timers.
 - **Readable component boundaries.** Each hardware chip maps to one C++ class.
   The bus connects them. No component reaches directly into another.
-- **Debugger always present.** The Dear ImGui debugger is compiled unconditionally
-  and toggled at runtime. There is no debug/release split of features.
+- **Debugger model always present.** The debugger snapshot/control model is
+  compiled into the repo today. Live Dear ImGui presentation remains a desktop
+  frontend milestone and must not be implied by the current CLI frontend.
 - **No custom silicon to invent.** The hardware uses only off-the-shelf parts.
   The emulator has no undefined internal state to fill in — every register is
   documented.
@@ -46,6 +47,26 @@ behavior. When this document and the spec conflict, the spec wins.
 | Logging            | spdlog                            | Structured logging; debug trace buffer             |
 | Testing            | Catch2                            | Unit and integration tests                         |
 | File dialogs       | nativefiledialog-extended         | Native OS file picker for ROM load                 |
+
+---
+
+## Current Repo State
+
+The architecture below is still the target desktop shape, not the exact
+implemented frontend state.
+
+Implemented today:
+- Core emulation, tests, headless runtime, deterministic frame upload/dump
+  buffer, ROM/config plumbing, and debugger snapshot/control models.
+
+Not yet implemented as a live desktop path:
+- SDL window lifetime
+- OpenGL frame presentation
+- SDL audio playback
+- Interactive Dear ImGui rendering
+
+The authoritative gap analysis and implementation requirements for that work
+live in `docs/emulator/10-desktop-gui-audit.md`.
 
 ---
 
@@ -142,7 +163,7 @@ does not use wall-clock time to drive emulation — it uses master-cycle budgets
 
 ---
 
-## Repository Layout (planned)
+## Repository Layout (target)
 
 ```
 Vanguard8/

@@ -2,9 +2,16 @@
 
 ## Overview
 
-The debugger is a set of Dear ImGui panels that attach directly to emulator
-state. It is compiled unconditionally and toggled at runtime with a key
-(default: F1). When closed, its overhead is one `bool` check per frame.
+Target desktop shape:
+- The debugger is a set of Dear ImGui panels that attach directly to emulator
+  state and can be toggled at runtime with a key (default: F1).
+
+Current repo state:
+- The implemented debugger is a snapshot/control layer (`DebuggerShell`,
+  panel snapshots, breakpoint/watchpoint logic, interrupt/bank logs) that does
+  not yet create a Dear ImGui context or render visible on-screen panels.
+- This document describes the intended live desktop debugger once the desktop
+  GUI backend from `docs/emulator/10-desktop-gui-audit.md` is implemented.
 
 The debugger never owns emulator state — it holds const references or raw
 pointers to the components it inspects. Writes (e.g., memory edits,
@@ -14,6 +21,10 @@ drains between emulation steps, avoiding races.
 ---
 
 ## ImGui Setup
+
+Current limitation:
+- The ImGui setup below is not live in the current tree. The repo currently
+  stores debugger layout metadata and render snapshots only.
 
 The docking branch of Dear ImGui is used, which allows debugger panels to be
 docked into a layout and resized freely. The layout is persisted to

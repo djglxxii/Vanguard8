@@ -4,10 +4,19 @@ A hypothetical premium home game console, designed as if launched in mid-1986.
 Positioned as "the ultimate 8-bit home arcade experience" — above the NES and
 Sega Master System in capability, far below the cost of an arcade cabinet.
 
-This repository is currently documentation-first. It contains the hardware
-specification, emulator design, milestone contracts, and task queue, but it does
-not yet contain the emulator source tree or build system described by those
-documents.
+This repository contains the Vanguard 8 hardware specification, emulator design,
+implementation source tree, milestone contracts, and task queue.
+
+Current repo state:
+- The emulator core, tests, headless binary, and a deterministic frontend
+  launcher are present and build.
+- The current `vanguard8_frontend` binary is not yet a live desktop GUI
+  application. It prints frontend/debugger status to the terminal and can build
+  deterministic frame data, but it does not currently open an SDL/OpenGL window
+  or render an interactive Dear ImGui debugger on screen.
+- Desktop GUI implementation requirements and the milestone-12+ roadmap now
+  live in `docs/emulator/10-desktop-gui-audit.md` and
+  `docs/emulator/07-implementation-plan.md`.
 
 **Design constraint:** No custom silicon. Every chip was commercially available
 off-the-shelf by 1985–1986. No ASIC NRE, no mask costs, no fab risk.
@@ -64,21 +73,29 @@ docs/
 
 ---
 
-## Planned Emulator
+## Emulator Status
 
-The planned emulator is a C++20 Linux implementation built for accuracy and
-developer ergonomics. The detailed design lives under `docs/emulator/`.
+The emulator is a C++20 Linux implementation built for accuracy and developer
+ergonomics. The detailed design and implementation roadmap live under
+`docs/emulator/`.
 
-Planned headline properties:
+Implemented headline properties:
 
 - Scanline-accurate video, instruction-level CPU accounting, and
   sample-accurate audio derived from the 14.31818 MHz master clock.
-- MAME Z180 core integration for HD64180 execution, pending the compatibility
-  audit documented in `docs/emulator/03-cpu-and-bus.md`.
+- Extracted Z180-based HD64180 execution with milestone-11 compatibility audit
+  notes documented in `docs/emulator/03-cpu-and-bus.md` and
+  `docs/emulator/08-compatibility-audit.md`.
 - Dual V9938 rendering with VDP-A-over-VDP-B compositing.
 - YM2151, AY-3-8910, and MSM5205 audio via the libraries documented in
   `docs/emulator/05-audio.md`.
-- Dear ImGui debugger support as described in `docs/emulator/06-debugger.md`.
+
+Planned-but-not-yet-live desktop features:
+
+- SDL2 desktop window and OpenGL presentation path.
+- Interactive Dear ImGui debugger rendering.
+- Live audio device playback and runtime desktop UX around ROM loading,
+  fullscreen, drag-and-drop, and overlays.
 
 ---
 

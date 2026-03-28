@@ -12,6 +12,13 @@ not batched to the end of a full scanline.
 All timing is expressed in **master clock cycles** at 14.31818 MHz.
 The CPU runs at master ÷ 2 (7.15909 MHz), so one CPU T-state = 2 master cycles.
 
+Current frontend note:
+- The scheduler and frame-production model are implemented and verified through
+  the core/headless paths.
+- The live desktop loop that continuously presents frames in a visible window
+  is still future work tracked by `docs/emulator/10-desktop-gui-audit.md` and
+  milestones 12 through 14.
+
 ---
 
 ## Key Timing Constants

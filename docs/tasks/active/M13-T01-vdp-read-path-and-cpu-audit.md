@@ -1,6 +1,6 @@
 # M13-T01 — Implement the V9938 Read-Path Fixes and Targeted HD64180 Audit Coverage
 
-Status: `planned`
+Status: `active`
 Milestone: `13`
 Depends on: `M12-T03`
 

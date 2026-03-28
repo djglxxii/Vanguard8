@@ -7,6 +7,7 @@
 
 namespace vanguard8::core {
 class Emulator;
+class SymbolTable;
 }
 
 namespace vanguard8::debugger {
@@ -33,6 +34,7 @@ struct MemoryViewSnapshot {
     std::uint32_t base_address = 0;
     std::size_t length = 0;
     std::vector<std::uint8_t> bytes;
+    std::vector<std::string> annotations;
 };
 
 class MemoryPanel {
@@ -40,6 +42,11 @@ class MemoryPanel {
     [[nodiscard]] auto snapshot(
         const core::Emulator& emulator,
         const MemorySelection& selection
+    ) const -> MemoryViewSnapshot;
+    [[nodiscard]] auto snapshot(
+        const core::Emulator& emulator,
+        const MemorySelection& selection,
+        const core::SymbolTable& symbols
     ) const -> MemoryViewSnapshot;
 };
 

@@ -1,6 +1,7 @@
 #include "debugger/cpu_panel.hpp"
 
 #include "core/emulator.hpp"
+#include "core/symbols.hpp"
 
 #include <iomanip>
 #include <sstream>
@@ -34,11 +35,17 @@ auto hex16(const std::uint16_t value) -> std::string {
 auto decode_instruction(
     const vanguard8::core::cpu::Z180Adapter& cpu,
     const std::uint16_t address,
-    const std::uint16_t current_pc
+    const std::uint16_t current_pc,
+    const core::SymbolTable* symbols
 ) -> DecodedInstruction {
     DecodedInstruction row;
     row.address = address;
     row.current_pc = address == current_pc;
+    if (symbols != nullptr) {
+        if (const auto* exact = symbols->find_exact(address); exact != nullptr) {
+            row.address_label = exact->label;
+        }
+    }
 
     const auto byte0 = cpu.peek_logical(address);
     row.bytes[0] = byte0;
@@ -124,10 +131,31 @@ auto decode_instruction(
         break;
     }
 
+    if (symbols != nullptr) {
+        switch (byte0) {
+        case 0xC3:
+        case 0xCD: {
+            const auto target = static_cast<std::uint16_t>(byte1 | (byte2 << 8U));
+            if (const auto label = symbols->format_address(target); !label.empty()) {
+                row.mnemonic += "  ; " + label;
+            }
+            break;
+        }
+        default:
+            break;
+        }
+    }
+
     return row;
 }
 
 auto CpuPanel::snapshot(const core::Emulator& emulator) const -> CpuPanelSnapshot {
+    const core::SymbolTable empty_symbols;
+    return snapshot(emulator, empty_symbols);
+}
+
+auto CpuPanel::snapshot(const core::Emulator& emulator, const core::SymbolTable& symbols) const
+    -> CpuPanelSnapshot {
     const auto cpu_state = emulator.cpu().state_snapshot();
     const auto flags = cpu_state.registers.af & 0x00FFU;
     const auto cbar = cpu_state.registers.cbar;
@@ -161,7 +189,12 @@ auto CpuPanel::snapshot(const core::Emulator& emulator) const -> CpuPanelSnapsho
     std::uint16_t pc = cpu_state.registers.pc;
     snapshot.disassembly.reserve(20);
     for (std::size_t index = 0; index < 20; ++index) {
-        const auto row = decode_instruction(emulator.cpu(), pc, cpu_state.registers.pc);
+        const auto row = decode_instruction(
+            emulator.cpu(),
+            pc,
+            cpu_state.registers.pc,
+            symbols.empty() ? nullptr : &symbols
+        );
         snapshot.disassembly.push_back(row);
         pc = static_cast<std::uint16_t>(pc + row.length);
     }

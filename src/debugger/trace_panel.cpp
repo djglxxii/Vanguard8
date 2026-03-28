@@ -1,6 +1,7 @@
 #include "debugger/trace_panel.hpp"
 
 #include "core/emulator.hpp"
+#include "core/symbols.hpp"
 #include "debugger/cpu_panel.hpp"
 
 #include <fstream>
@@ -52,12 +53,22 @@ auto bank_label(const core::cpu::Z180Adapter& cpu, const std::uint16_t pc) -> st
     return std::to_string(static_cast<int>(bbr / 4U) - 1);
 }
 
+auto symbol_suffix(const core::SymbolTable* symbols, const std::uint16_t address) -> std::string {
+    if (symbols == nullptr || symbols->empty()) {
+        return {};
+    }
+
+    const auto label = symbols->format_address(address);
+    return label.empty() ? std::string{} : "  [" + label + "]";
+}
+
 }  // namespace
 
 auto TracePanel::write_to_file(
     core::Emulator& emulator,
     const std::filesystem::path& path,
-    const std::size_t max_instructions
+    const std::size_t max_instructions,
+    const core::SymbolTable* symbols
 ) const -> TraceWriteResult {
     if (max_instructions == 0U) {
         throw std::invalid_argument("Trace instruction budget must be greater than zero.");
@@ -73,13 +84,14 @@ auto TracePanel::write_to_file(
     TraceWriteResult result;
     for (; result.line_count < max_instructions && !emulator.cpu().halted(); ++result.line_count) {
         const auto pc = emulator.cpu().pc();
-        const auto row = decode_instruction(emulator.cpu(), pc, pc);
+        const auto row = decode_instruction(emulator.cpu(), pc, pc, symbols);
         const auto physical = emulator.cpu().translate_logical_address(pc);
 
         output << std::dec << std::setw(12) << std::setfill('0') << result.line_count << "  "
                << hex16(pc) << "  " << hex20(physical) << "  " << std::setw(4) << std::setfill(' ')
                << bank_label(emulator.cpu(), pc) << "  " << std::left << std::setw(11)
-               << bytes_string(row) << std::right << "  " << row.mnemonic << '\n';
+               << bytes_string(row) << std::right << "  " << row.mnemonic
+               << symbol_suffix(symbols, pc) << '\n';
 
         emulator.mutable_cpu().step_instruction();
     }

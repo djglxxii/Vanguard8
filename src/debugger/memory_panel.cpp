@@ -3,6 +3,7 @@
 #include "core/emulator.hpp"
 #include "core/memory/cartridge.hpp"
 #include "core/memory/sram.hpp"
+#include "core/symbols.hpp"
 
 #include <algorithm>
 
@@ -23,9 +24,16 @@ auto clamp_length(
 
 }  // namespace
 
+auto MemoryPanel::snapshot(const core::Emulator& emulator, const MemorySelection& selection) const
+    -> MemoryViewSnapshot {
+    const core::SymbolTable empty_symbols;
+    return snapshot(emulator, selection, empty_symbols);
+}
+
 auto MemoryPanel::snapshot(
     const core::Emulator& emulator,
-    const MemorySelection& selection
+    const MemorySelection& selection,
+    const core::SymbolTable& symbols
 ) const -> MemoryViewSnapshot {
     MemoryViewSnapshot snapshot{
         .region = selection.region,
@@ -73,10 +81,17 @@ auto MemoryPanel::snapshot(
         snapshot.label = "Logical CPU Space";
         snapshot.length = clamp_length(selection.start, selection.length, 0x10000U);
         snapshot.bytes.reserve(snapshot.length);
+        snapshot.annotations.reserve(snapshot.length);
         for (std::size_t offset = 0; offset < snapshot.length; ++offset) {
+            const auto logical_address = static_cast<std::uint16_t>(selection.start + offset);
             snapshot.bytes.push_back(
-                emulator.cpu().peek_logical(static_cast<std::uint16_t>(selection.start + offset))
+                emulator.cpu().peek_logical(logical_address)
             );
+            if (const auto* exact = symbols.find_exact(logical_address); exact != nullptr) {
+                snapshot.annotations.push_back(exact->label);
+            } else {
+                snapshot.annotations.emplace_back();
+            }
         }
         return snapshot;
     }

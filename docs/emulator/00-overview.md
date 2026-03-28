@@ -58,8 +58,9 @@ implemented frontend state.
 Implemented today:
 - Core emulation, tests, headless runtime, desktop SDL/OpenGL/audio runtime,
   deterministic frame upload/dump buffer, ROM/config plumbing, debugger
-  snapshot/control models, and CLI trace-to-file support over the covered CPU
-  stepping surface.
+  snapshot/control models, basic symbol loading/annotation over the covered
+  disassembly/memory/trace surfaces, and CLI trace-to-file support over the
+  covered CPU stepping surface.
 
 Not yet implemented as a live desktop path:
 - Interactive Dear ImGui rendering

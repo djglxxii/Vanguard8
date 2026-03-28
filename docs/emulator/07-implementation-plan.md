@@ -465,6 +465,11 @@ Deliverables:
 - Documentation closure for the remaining intentional deferrals and dropped
   non-goal items
 
+Milestone-14 closure rule:
+- If ROM validation does not prove that a lower-priority renderer or tooling
+  gap is required, close the milestone with the documentation-backed deferral
+  ledger rather than speculative implementation.
+
 Tests:
 - Trace file writer coverage
 - Symbol load/lookup/annotation coverage

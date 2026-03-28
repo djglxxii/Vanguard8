@@ -22,6 +22,7 @@ add_executable(
     test_debugger.cpp
     test_debugger_logs.cpp
     test_debugger_panels.cpp
+    test_symbols.cpp
     test_trace.cpp
     test_bus.cpp
     test_cpu.cpp

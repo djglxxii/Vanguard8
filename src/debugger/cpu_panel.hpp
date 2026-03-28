@@ -11,6 +11,7 @@
 
 namespace vanguard8::core {
 class Emulator;
+class SymbolTable;
 }
 
 namespace vanguard8::debugger {
@@ -26,6 +27,7 @@ struct DecodedInstruction {
     std::array<std::uint8_t, 4> bytes{};
     std::size_t length = 0;
     std::string mnemonic;
+    std::string address_label;
     bool current_pc = false;
 };
 
@@ -59,6 +61,8 @@ struct CpuPanelSnapshot {
 class CpuPanel {
   public:
     [[nodiscard]] auto snapshot(const core::Emulator& emulator) const -> CpuPanelSnapshot;
+    [[nodiscard]] auto snapshot(const core::Emulator& emulator, const core::SymbolTable& symbols) const
+        -> CpuPanelSnapshot;
 
     void queue_command(ExecutionCommand command);
     void apply_pending(core::Emulator& emulator);
@@ -78,7 +82,8 @@ class CpuPanel {
 [[nodiscard]] auto decode_instruction(
     const core::cpu::Z180Adapter& cpu,
     std::uint16_t address,
-    std::uint16_t current_pc
+    std::uint16_t current_pc,
+    const core::SymbolTable* symbols = nullptr
 ) -> DecodedInstruction;
 
 }  // namespace vanguard8::debugger

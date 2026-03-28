@@ -312,8 +312,9 @@ hardware should not depend on this port for correctness.
 
 ## Symbol File Support
 
-The debugger can load a symbol file to annotate the disassembler, memory panel,
-and execution trace with human-readable label names.
+The current repo can load a symbol file to annotate the covered disassembly,
+logical memory snapshot, and trace-to-file surfaces with human-readable label
+names without requiring a live desktop debugger UI.
 
 ### File Format
 
@@ -345,30 +346,39 @@ Examples:
 
 ### Loading
 
-Symbols are loaded from the main menu (`Debug → Load Symbol File…`) or
-automatically on ROM load if a `.sym` file with the same base name exists in
-the same directory as the ROM.
+Current repo path:
+
+```bash
+vanguard8_headless --rom game.rom --trace trace.log --symbols game.sym
+```
+
+If `--symbols` is omitted, the headless trace path automatically loads a `.sym`
+file with the same base name as the ROM when present:
 
 ```
-game.rom      → auto-loads game.sym if present
+game.rom      → auto-loads game.sym during trace mode if present
 ```
+
+Live desktop menu loading remains future debugger UI work.
 
 ### Annotations
 
 Once a symbol file is loaded:
 
-- **Disassembler**: jump and call targets show the symbol name alongside the
-  address (e.g., `CALL 0x0050  ; main_loop`). Addresses in the listing that
-  match a symbol show the label instead of the raw address where space permits.
-- **Memory panel**: the SRAM region labels known addresses with their symbol
-  names in a side column when the logical address view is active.
-- **Execution trace**: the PC column shows `label+offset` when the PC is within
-  a known symbol range (falls back to bare address when no symbol matches).
-- **Breakpoints**: breakpoints can be set by typing a label name rather than a
-  hex address in the add-breakpoint dialog.
+- **Disassembler snapshot**: jump and call targets append the resolved symbol
+  name alongside the address (e.g., `CALL 0x0050  ; main_loop`). Rows whose
+  current address exactly matches a symbol also expose that label in the
+  covered model snapshot.
+- **Memory panel snapshot**: the logical-address view exposes exact-match
+  symbol names alongside covered bytes.
+- **Trace-to-file**: jump and call targets keep their resolved symbol names,
+  and each traced PC can append the current location as `[label]` or
+  `[label+0xN]`.
 
-Symbols can be unloaded from the same menu. The symbol table is not saved with
-save states — it is a debugging aid, not emulator state.
+Current limitations:
+- Breakpoints by symbol name are not implemented in the current repo.
+- Symbols are not saved with save states; they remain a debugging aid, not
+  emulator state.
 
 ---
 

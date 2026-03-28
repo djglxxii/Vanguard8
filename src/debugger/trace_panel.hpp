@@ -7,6 +7,7 @@
 
 namespace vanguard8::core {
 class Emulator;
+class SymbolTable;
 }
 
 namespace vanguard8::debugger {
@@ -21,7 +22,8 @@ class TracePanel {
     [[nodiscard]] auto write_to_file(
         core::Emulator& emulator,
         const std::filesystem::path& path,
-        std::size_t max_instructions
+        std::size_t max_instructions,
+        const core::SymbolTable* symbols = nullptr
     ) const -> TraceWriteResult;
 };
 

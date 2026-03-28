@@ -7,6 +7,7 @@ add_library(
     rewind.cpp
     save_state.cpp
     scheduler.cpp
+    symbols.cpp
     config.cpp
     audio/audio_mixer.cpp
     audio/ay8910.cpp

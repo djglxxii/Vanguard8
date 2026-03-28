@@ -336,3 +336,33 @@ The most urgent items (16x16 sprites, VRAM read-ahead latch, Sprite
 Mode 1, Graphic 1/2, screen disable) should be scheduled immediately after the
 playable desktop baseline so ROM-driven validation can begin without mixing the
 frontend bring-up milestone with broad core-compatibility work.
+
+## Milestone 14 Closure Status
+
+Closed by milestones 13-14:
+- Graphic 1 and Graphic 2 renderers
+- Sprite Mode 1
+- 16x16 sprites and magnification
+- Register-relative sprite table addressing
+- VRAM read-ahead latch
+- VDP screen disable
+- Trace-to-file
+- Symbol loading and basic annotation support
+
+Intentionally deferred after milestone 14:
+- Text 1, Text 2, and Graphic 5/6/7 remain outside the current bring-up target
+  until a real target ROM proves they are needed; Graphic 5 and Graphic 7 also
+  still carry spec-verification notes in `docs/spec/02-video.md`.
+- Quicksave/quickload slots, speed-control UX, WAV export, PNG screenshot
+  output, and auto-resume remain out of scope for the current "see/hear the
+  ROM and get lightweight diagnostics" target.
+- Full audio-panel model work, the game debug console on port `0xFE`, and
+  breakpoints-by-symbol-name remain below the current lightweight tooling
+  threshold.
+- ASCI/CSIO remains deferred as documented in the CPU/bus design docs.
+
+Milestone-14 decision:
+- No additional lower-priority renderer or tooling closure was promoted beyond
+  trace and symbols because no target-ROM validation in the repo currently
+  demonstrates the need. The remaining items stay documented as deliberate
+  deferrals rather than speculative implementation work.

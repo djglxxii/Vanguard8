@@ -3,15 +3,13 @@
 #include "core/config.hpp"
 #include "core/emulator.hpp"
 #include "core/logging.hpp"
-#include "core/memory/cartridge.hpp"
-#include "core/video/compositor.hpp"
-#include "debugger/debugger.hpp"
-#include "frontend/display.hpp"
 #include "frontend/input.hpp"
 #include "frontend/rom_loader.hpp"
-#include "frontend/video_fixture.hpp"
+#include "frontend/runtime.hpp"
+#include "frontend/sdl_window.hpp"
 
 #include <exception>
+#include <filesystem>
 #include <iomanip>
 #include <iostream>
 #include <optional>
@@ -24,7 +22,6 @@ namespace {
 
 struct RuntimeOptions {
     bool help_requested = false;
-    bool render_fixture = false;
     bool debugger_visible = false;
     bool list_recent = false;
     std::optional<std::filesystem::path> rom_path;
@@ -52,10 +49,6 @@ auto parse_options(int argc, char** argv) -> RuntimeOptions {
     RuntimeOptions options;
     for (int index = 1; index < argc; ++index) {
         const std::string arg = argv[index];
-        if (arg == "--video-fixture") {
-            options.render_fixture = true;
-            continue;
-        }
         if (arg == "--debugger") {
             options.debugger_visible = true;
             continue;
@@ -116,6 +109,88 @@ auto parse_options(int argc, char** argv) -> RuntimeOptions {
     return options;
 }
 
+void print_usage() {
+    std::cout
+        << "Usage: vanguard8_frontend [--rom path] [--drop-rom path] [--recent index] [--list-recent] "
+           "[--debugger] [--scale N] [--aspect square|ntsc|stretch] [--fullscreen|--windowed] "
+           "[--frame-pacing on|off] [--press-key NAME] [--gamepad1-button NAME] [--gamepad2-button NAME]\n";
+}
+
+void apply_config_overrides(core::AppConfig& config, const RuntimeOptions& options) {
+    if (options.scale.has_value()) {
+        config.display_scale = *options.scale;
+    }
+    if (options.aspect.has_value()) {
+        config.display_aspect = *options.aspect;
+    }
+    if (options.fullscreen.has_value()) {
+        config.fullscreen = *options.fullscreen;
+    }
+    if (options.frame_pacing.has_value()) {
+        config.frame_pacing = *options.frame_pacing;
+    }
+}
+
+void print_recent_roms(const core::AppConfig& config) {
+    std::cout << "Recent ROMs: " << config.recent_roms.size() << '\n';
+    for (std::size_t index = 0; index < config.recent_roms.size(); ++index) {
+        std::cout << (index + 1) << ". " << config.recent_roms[index] << '\n';
+    }
+}
+
+void print_runtime_banner(
+    const core::Emulator& emulator,
+    const core::AppConfig& config,
+    const std::optional<LoadedRom>& loaded_rom,
+    const bool debugger_visible
+) {
+    std::cout << emulator.build_summary() << '\n';
+    if (loaded_rom.has_value()) {
+        std::cout << "Frontend status: desktop runtime with ROM" << '\n';
+        std::cout << "ROM path: " << loaded_rom->path.string() << '\n';
+        std::cout << "ROM size: " << emulator.loaded_rom_size() << '\n';
+    } else {
+        std::cout << "Frontend status: desktop runtime without ROM" << '\n';
+    }
+
+    std::cout << "Display scale: " << config.display_scale << '\n';
+    std::cout << "Display aspect: " << config.display_aspect << '\n';
+    std::cout << "Fullscreen: " << std::boolalpha << config.fullscreen << '\n';
+    std::cout << "Frame pacing: " << std::boolalpha << config.frame_pacing << '\n';
+    std::cout << "Debugger requested: " << std::boolalpha << debugger_visible << '\n';
+}
+
+void apply_cli_input(InputManager& input, const RuntimeOptions& options) {
+    for (const auto& key : options.pressed_keys) {
+        (void)input.press_key(key);
+    }
+    for (const auto& button : options.gamepad1_buttons) {
+        (void)input.press_gamepad_button(0, button);
+    }
+    for (const auto& button : options.gamepad2_buttons) {
+        (void)input.press_gamepad_button(1, button);
+    }
+}
+
+void apply_runtime_event(InputManager& input, const RuntimeEvent& event) {
+    switch (event.type) {
+    case RuntimeEventType::key_down:
+        (void)input.press_key(event.control_name);
+        break;
+    case RuntimeEventType::key_up:
+        (void)input.release_key(event.control_name);
+        break;
+    case RuntimeEventType::gamepad_button_down:
+        (void)input.press_gamepad_button(event.gamepad_index, event.control_name);
+        break;
+    case RuntimeEventType::gamepad_button_up:
+        (void)input.release_gamepad_button(event.gamepad_index, event.control_name);
+        break;
+    case RuntimeEventType::quit:
+        break;
+    }
+}
+
 }  // namespace
 
 auto run_frontend_app(int argc, char** argv) -> int {
@@ -131,43 +206,20 @@ auto run_frontend_app(int argc, char** argv) -> int {
     }
 
     if (options.help_requested) {
-        std::cout
-            << "Usage: vanguard8_frontend [--rom path] [--drop-rom path] [--recent index] [--list-recent] "
-               "[--video-fixture] [--debugger] [--scale N] [--aspect square|ntsc|stretch] [--fullscreen|--windowed] "
-               "[--frame-pacing on|off] [--press-key NAME] [--gamepad1-button NAME] [--gamepad2-button NAME]\n";
+        print_usage();
         return 0;
     }
 
-    if (options.scale.has_value()) {
-        config.display_scale = *options.scale;
-    }
-    if (options.aspect.has_value()) {
-        config.display_aspect = *options.aspect;
-    }
-    if (options.fullscreen.has_value()) {
-        config.fullscreen = *options.fullscreen;
-    }
-    if (options.frame_pacing.has_value()) {
-        config.frame_pacing = *options.frame_pacing;
-    }
-
-    const core::Emulator emulator_template;
-    core::log(core::LogLevel::info, "Launching frontend video path.");
-    std::cout << emulator_template.build_summary() << '\n';
+    apply_config_overrides(config, options);
+    core::log(core::LogLevel::info, "Launching frontend runtime.");
 
     if (options.list_recent) {
-        std::cout << "Recent ROMs: " << config.recent_roms.size() << '\n';
-        for (std::size_t index = 0; index < config.recent_roms.size(); ++index) {
-            std::cout << (index + 1) << ". " << config.recent_roms[index] << '\n';
-        }
+        print_recent_roms(config);
         return 0;
     }
 
     core::Emulator emulator;
-    debugger::DebuggerShell debugger_shell;
-    debugger_shell.set_visible(options.debugger_visible);
     std::optional<LoadedRom> loaded_rom;
-
     try {
         if (options.recent_index.has_value()) {
             if (*options.recent_index == 0 || *options.recent_index > config.recent_roms.size()) {
@@ -190,100 +242,31 @@ auto run_frontend_app(int argc, char** argv) -> int {
     InputManager input(emulator.mutable_bus().mutable_controller_ports());
     input.configure(config.input);
     input.reset();
-    for (const auto& key : options.pressed_keys) {
-        (void)input.press_key(key);
-    }
-    for (const auto& button : options.gamepad1_buttons) {
-        (void)input.press_gamepad_button(0, button);
-    }
-    for (const auto& button : options.gamepad2_buttons) {
-        (void)input.press_gamepad_button(1, button);
-    }
+    apply_cli_input(input, options);
 
     save_config(config_path, config);
+    print_runtime_banner(emulator, config, loaded_rom, options.debugger_visible);
 
-    if (loaded_rom.has_value() || options.render_fixture) {
-        build_dual_vdp_fixture_frame(
-            emulator.mutable_bus().mutable_vdp_a(),
-            emulator.mutable_bus().mutable_vdp_b()
-        );
+    SdlWindowHost window_host;
+    const WindowConfig window_config{
+        .title = loaded_rom.has_value() ? std::string("Vanguard 8 - ") + loaded_rom->path.filename().string()
+                                        : std::string("Vanguard 8"),
+        .logical_width = 256,
+        .logical_height = 212,
+        .scale = config.display_scale,
+        .fullscreen = config.fullscreen,
+    };
 
-        Display display;
-        display.upload_frame(core::video::Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b()));
-        debugger_shell.attach(emulator, display);
-        const auto& debugger_snapshot = debugger_shell.render();
+    RuntimeHooks hooks;
+    hooks.on_event = [&](const RuntimeEvent& event) { apply_runtime_event(input, event); };
+    hooks.on_frame = []() {};
 
-        if (loaded_rom.has_value()) {
-            std::cout << "Frontend status: ROM loaded" << '\n';
-            std::cout << "ROM path: " << loaded_rom->path.string() << '\n';
-            std::cout << "ROM size: " << emulator.loaded_rom_size() << '\n';
-        } else {
-            std::cout << "Frontend status: video fixture" << '\n';
-        }
-
-        std::cout << "Display scale: " << config.display_scale << '\n';
-        std::cout << "Display aspect: " << config.display_aspect << '\n';
-        std::cout << "Fullscreen: " << std::boolalpha << config.fullscreen << '\n';
-        std::cout << "Frame pacing: " << std::boolalpha << config.frame_pacing << '\n';
-        const auto p1 = emulator.bus().controller_ports().read(core::io::Player::one);
-        const auto p2 = emulator.bus().controller_ports().read(core::io::Player::two);
-        std::cout << "Controller 1 port: 0x" << std::hex << std::uppercase
-                  << static_cast<int>(p1) << '\n';
-        std::cout << "Controller 2 port: 0x" << std::hex << std::uppercase
-                  << static_cast<int>(p2) << '\n';
-        std::cout << std::dec << "Recent ROM count: " << config.recent_roms.size() << '\n';
-        std::cout << "Frontend frame digest: " << display.frame_digest() << '\n';
-        if (debugger_snapshot.debugger_visible) {
-            const auto cpu_snapshot = debugger_shell.cpu_panel().snapshot(emulator);
-            const auto memory_snapshot = debugger_shell.memory_panel().snapshot(
-                emulator,
-                debugger::MemorySelection{
-                    .region = debugger::MemoryRegion::logical,
-                    .start = cpu_snapshot.cpu.registers.pc,
-                    .length = 8,
-                }
-            );
-            const auto vdp_snapshot = debugger_shell.vdp_panel().snapshot(emulator, debugger::VdpTarget::a);
-            const auto interrupt_snapshot = debugger_shell.interrupt_panel().snapshot(emulator);
-            const auto bank_snapshot = debugger_shell.bank_panel().snapshot(emulator);
-            std::cout << "Debugger status: "
-                      << (debugger_snapshot.rendered ? "rendered" : "hidden")
-                      << '\n';
-            std::cout << "Debugger dockspace: " << debugger_shell.layout().dockspace_id << '\n';
-            std::cout << "Debugger visible panels: " << debugger_snapshot.visible_panel_count << '\n';
-            std::cout << "Debugger CPU PC: 0x" << std::hex << std::uppercase
-                      << cpu_snapshot.cpu.registers.pc << '\n';
-            std::cout << "Debugger disassembly: " << cpu_snapshot.disassembly.front().mnemonic << '\n';
-            std::cout << std::dec << "Debugger logical bytes: " << memory_snapshot.bytes.size() << '\n';
-            std::cout << "Debugger VDP-A CE: "
-                      << (((vdp_snapshot.status[2] & 0x01U) != 0U) ? "on" : "off") << '\n';
-            std::cout << "Debugger interrupts: " << interrupt_snapshot.size() << '\n';
-            std::cout << "Debugger bank switches: " << bank_snapshot.size() << '\n';
-        }
-        return 0;
+    std::string error;
+    const auto result = run_window_runtime(window_host, window_config, hooks, error);
+    if (result != 0) {
+        std::cerr << "Frontend runtime error: " << error << '\n';
     }
-
-    debugger_shell.attach(emulator);
-    const auto& debugger_snapshot = debugger_shell.render();
-    std::cout << "Frontend status: ROM workflow and controller mapping available" << '\n';
-    std::cout << "Display scale: " << config.display_scale << '\n';
-    std::cout << "Display aspect: " << config.display_aspect << '\n';
-    std::cout << "Fullscreen: " << std::boolalpha << config.fullscreen << '\n';
-    std::cout << "Frame pacing: " << std::boolalpha << config.frame_pacing << '\n';
-    if (debugger_snapshot.debugger_visible) {
-        const auto cpu_snapshot = debugger_shell.cpu_panel().snapshot(emulator);
-        const auto bank_snapshot = debugger_shell.bank_panel().snapshot(emulator);
-        std::cout << "Debugger status: "
-                  << (debugger_snapshot.rendered ? "rendered" : "hidden")
-                  << '\n';
-        std::cout << "Debugger dockspace: " << debugger_shell.layout().dockspace_id << '\n';
-        std::cout << "Debugger visible panels: " << debugger_snapshot.visible_panel_count << '\n';
-        std::cout << "Debugger CPU PC: 0x" << std::hex << std::uppercase
-                  << cpu_snapshot.cpu.registers.pc << '\n';
-        std::cout << "Debugger disassembly: " << cpu_snapshot.disassembly.front().mnemonic << '\n';
-        std::cout << std::dec << "Debugger bank switches: " << bank_snapshot.size() << '\n';
-    }
-    return 0;
+    return result;
 }
 
 }  // namespace vanguard8::frontend

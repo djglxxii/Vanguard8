@@ -1,6 +1,6 @@
 # M12-T02 — Add the Real Display and Audio Backends plus Deterministic Desktop Seams
 
-Status: `planned`
+Status: `active`
 Milestone: `12`
 Depends on: `M12-T01`
 

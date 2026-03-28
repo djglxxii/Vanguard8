@@ -1,6 +1,6 @@
 # M12-T01 — Refactor the Frontend into a Persistent SDL Runtime and Window Host
 
-Status: `active`
+Status: `completed`
 Milestone: `12`
 Depends on: `none`
 
@@ -23,3 +23,12 @@ Done when:
   new frontend host seams.
 
 Completion summary:
+- Replaced the old one-shot frontend CLI report path with a reusable runtime
+  loop in `src/frontend/runtime.*` so the desktop app now stays alive until a
+  quit event arrives.
+- Implemented a real SDL/OpenGL-backed window host in `src/frontend/sdl_window.*`
+  and wired `run_frontend_app()` to launch it instead of printing status and
+  exiting immediately.
+- Added lifecycle tests with fake window hosts for create failure, steady-state
+  runtime, event forwarding, and clean shutdown, then verified the full build
+  with `ctest` plus a timeout-based frontend runtime sanity check.

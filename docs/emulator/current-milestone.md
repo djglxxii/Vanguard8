@@ -2,7 +2,7 @@
 
 - Active milestone: `14`
 - Title: `Lightweight Bring-Up Tooling and Selected Closure`
-- Status: `active`
+- Status: `accepted`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
 - Contract file: `docs/emulator/milestones/14.md`
 

@@ -11,5 +11,6 @@ Execution rules:
   executed.
 - Do not pull in later work after milestone `13` until the plan is explicitly
   revised.
-- Keep milestone `13` work inside `src/`, `tests/`, and `docs/` unless the
+- Keep milestone `13` work inside `src/`, `tests/`, `docs/`, and the extracted
+  `third_party/z180/` CPU subset unless the
   milestone contract changes in the same edit.

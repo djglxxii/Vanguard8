@@ -26,6 +26,7 @@ void V9938::reset() {
         entry = {0x00, 0x00};
     }
     vram_addr_ = 0;
+    read_ahead_latch_ = 0;
     control_latch_ = 0;
     addr_latch_full_ = false;
     indirect_register_ = 0x20;
@@ -42,7 +43,8 @@ void V9938::reset() {
 }
 
 auto V9938::read_data() -> std::uint8_t {
-    const auto value = vram_[vram_addr_];
+    const auto value = read_ahead_latch_;
+    read_ahead_latch_ = vram_[vram_addr_];
     vram_addr_ = static_cast<std::uint16_t>(vram_addr_ + 1U);
     return value;
 }
@@ -85,11 +87,18 @@ void V9938::write_control(const std::uint8_t value) {
         return;
     }
 
-    // Keep the milestone implementation narrow: treat the two-byte control sequence
-    // as a 14-bit address load, which is sufficient for the active Graphic 4 writes
-    // covered by the tests and fixture frame paths.
-    vram_addr_ =
+    const auto address =
         static_cast<std::uint16_t>(control_latch_ | (static_cast<std::uint16_t>(value & 0x3FU) << 8));
+    if ((value & 0x40U) == 0U) {
+        // VRAM reads are one access behind the address latch. Loading a read address
+        // changes the source address for the next read-ahead refill but preserves the
+        // previously buffered byte, so the first read after an address load is the
+        // required dummy read.
+        vram_addr_ = address;
+        return;
+    }
+
+    vram_addr_ = address;
 }
 
 void V9938::write_palette(const std::uint8_t value) {
@@ -132,23 +141,29 @@ void V9938::advance_command(const std::uint64_t master_cycles) {
 
 void V9938::tick_scanline(const int line) {
     status_[0] = static_cast<std::uint8_t>(status_[0] & ~0x40U);
-    switch (current_display_mode()) {
-    case DisplayMode::graphic3:
-        render_graphic3_background_scanline(line);
-        break;
-    case DisplayMode::graphic4:
-        render_graphic4_background_scanline(line);
-        break;
-    case DisplayMode::unsupported:
+    if (!display_enabled()) {
         background_line_buffer_.fill(backdrop_color());
-        break;
-    }
-    render_mode2_sprites_for_scanline(line);
+        sprite_line_buffer_.fill(transparent_sprite_pixel);
+        line_buffer_.fill(backdrop_color());
+    } else {
+        switch (current_display_mode()) {
+        case DisplayMode::graphic3:
+            render_graphic3_background_scanline(line);
+            break;
+        case DisplayMode::graphic4:
+            render_graphic4_background_scanline(line);
+            break;
+        case DisplayMode::unsupported:
+            background_line_buffer_.fill(backdrop_color());
+            break;
+        }
+        render_mode2_sprites_for_scanline(line);
 
-    for (int x = 0; x < visible_width; ++x) {
-        line_buffer_[x] =
-            sprite_line_buffer_[x] == transparent_sprite_pixel ? background_line_buffer_[x]
-                                                               : sprite_line_buffer_[x];
+        for (int x = 0; x < visible_width; ++x) {
+            line_buffer_[x] =
+                sprite_line_buffer_[x] == transparent_sprite_pixel ? background_line_buffer_[x]
+                                                                   : sprite_line_buffer_[x];
+        }
     }
 
     if (line == reg_[19]) {
@@ -224,6 +239,7 @@ auto V9938::state_snapshot() const -> State {
         .status = status_,
         .palette = palette_,
         .vram_addr = vram_addr_,
+        .read_ahead_latch = read_ahead_latch_,
         .control_latch = control_latch_,
         .addr_latch_full = addr_latch_full_,
         .indirect_register = indirect_register_,
@@ -253,6 +269,7 @@ void V9938::load_state(const State& state) {
     status_ = state.status;
     palette_ = state.palette;
     vram_addr_ = state.vram_addr;
+    read_ahead_latch_ = state.read_ahead_latch;
     control_latch_ = state.control_latch;
     addr_latch_full_ = state.addr_latch_full;
     indirect_register_ = state.indirect_register;
@@ -736,6 +753,8 @@ auto V9938::current_display_mode() const -> DisplayMode {
         return DisplayMode::unsupported;
     }
 }
+
+auto V9938::display_enabled() const -> bool { return (reg_[1] & 0x40U) != 0U; }
 
 auto V9938::backdrop_color() const -> std::uint8_t { return static_cast<std::uint8_t>(reg_[7] & 0x0FU); }
 

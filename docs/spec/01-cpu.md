@@ -72,6 +72,9 @@ Beyond the standard Z80 instruction set, the HD64180 adds:
 | `OTDMR`           | Repeat OTDM until B=0                         |                              |
 | `SLP`             | CPU halts until next interrupt                | Power-saving sleep mode      |
 
+`TST` is a non-destructive AND test: it leaves `A` unchanged, derives `S`,
+`Z`, and `P/V` from the masked result, sets `H`, and resets `N` and `C`.
+
 ---
 
 ## Memory Management Unit (MMU)

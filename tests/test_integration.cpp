@@ -72,10 +72,10 @@ void program_integration_state(Emulator& emulator, const std::vector<std::uint8_
     bus.write_port(0x60, 0x01);
 
     write_vdp_register(bus, 0x81, 0, V9938::graphic3_mode_r0);
-    write_vdp_register(bus, 0x81, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x20U));
+    write_vdp_register(bus, 0x81, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x20U | 0x40U));
     write_vdp_register(bus, 0x81, 8, 0x20);
     write_vdp_register(bus, 0x85, 0, V9938::graphic4_mode_r0);
-    write_vdp_register(bus, 0x85, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x20U));
+    write_vdp_register(bus, 0x85, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x20U | 0x40U));
 
     write_palette_entry(bus, 0x82, 0x00, 0x00, 0x00);
     write_palette_entry(bus, 0x82, 0x04, 0x70, 0x00);

@@ -8,6 +8,13 @@
 
 namespace {
 
+constexpr std::uint8_t flag_sign = 0x80;
+constexpr std::uint8_t flag_zero = 0x40;
+constexpr std::uint8_t flag_half = 0x10;
+constexpr std::uint8_t flag_parity_overflow = 0x04;
+constexpr std::uint8_t flag_subtract = 0x02;
+constexpr std::uint8_t flag_carry = 0x01;
+
 auto make_boot_test_rom() -> std::vector<std::uint8_t> {
     constexpr std::size_t rom_size = 0xC000;
     std::vector<std::uint8_t> rom(rom_size, 0x00);
@@ -29,6 +36,33 @@ auto make_boot_test_rom() -> std::vector<std::uint8_t> {
     std::fill(rom.begin() + 0x4000, rom.begin() + 0x8000, 0xA0);
     std::fill(rom.begin() + 0x8000, rom.begin() + 0xC000, 0xB1);
     return rom;
+}
+
+auto make_instruction_test_rom(std::initializer_list<std::uint8_t> program) -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+    std::copy(program.begin(), program.end(), rom.begin());
+    return rom;
+}
+
+auto run_test_program(
+    const std::vector<std::uint8_t>& rom,
+    const vanguard8::third_party::z180::RegisterSnapshot& initial_state,
+    const std::size_t max_instructions = 8
+) -> vanguard8::core::cpu::CpuStateSnapshot {
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    state.registers = initial_state;
+    cpu.load_state_snapshot(state);
+    cpu.run_until_halt(max_instructions);
+    return cpu.state_snapshot();
+}
+
+auto default_register_snapshot() -> vanguard8::third_party::z180::RegisterSnapshot {
+    vanguard8::core::Bus bus{};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+    return cpu.state_snapshot().registers;
 }
 
 void write_vdp_register(
@@ -108,6 +142,70 @@ TEST_CASE("OUT0 writes to MMU registers affect bank translation", "[cpu]") {
     REQUIRE(cpu.in0(0x39) == 0x08);
     REQUIRE(cpu.translate_logical_address(0x4000) == 0x08000);
     REQUIRE(cpu.translate_logical_address(0x7FFF) == 0x0BFFF);
+}
+
+TEST_CASE("HD64180 MLT multiplies the covered register pairs in place", "[cpu]") {
+    auto initial = default_register_snapshot();
+    initial.bc = 0x0304;
+    const auto bc_result = run_test_program(make_instruction_test_rom({0xED, 0x4C, 0x76}), initial);
+    REQUIRE(bc_result.registers.bc == 0x000C);
+
+    initial = default_register_snapshot();
+    initial.de = 0x0506;
+    const auto de_result = run_test_program(make_instruction_test_rom({0xED, 0x5C, 0x76}), initial);
+    REQUIRE(de_result.registers.de == 0x001E);
+
+    initial = default_register_snapshot();
+    initial.hl = 0x0708;
+    const auto hl_result = run_test_program(make_instruction_test_rom({0xED, 0x6C, 0x76}), initial);
+    REQUIRE(hl_result.registers.hl == 0x0038);
+
+    initial = default_register_snapshot();
+    initial.sp = 0x090A;
+    const auto sp_result = run_test_program(make_instruction_test_rom({0xED, 0x7C, 0x76}), initial);
+    REQUIRE(sp_result.registers.sp == 0x005A);
+}
+
+TEST_CASE("HD64180 TST updates flags from the masked result without changing A", "[cpu]") {
+    auto initial = default_register_snapshot();
+    initial.af = 0xF0FF;
+    initial.bc = 0x0F00;
+
+    const auto reg_result = run_test_program(make_instruction_test_rom({0xED, 0x04, 0x76}), initial);
+    REQUIRE(static_cast<std::uint8_t>(reg_result.registers.af >> 8U) == 0xF0);
+    REQUIRE((reg_result.registers.af & 0x00FFU) == static_cast<std::uint16_t>(flag_zero | flag_half | flag_parity_overflow));
+
+    initial = default_register_snapshot();
+    initial.af = 0x81FF;
+    const auto imm_result = run_test_program(make_instruction_test_rom({0xED, 0x64, 0x80, 0x76}), initial);
+    REQUIRE(static_cast<std::uint8_t>(imm_result.registers.af >> 8U) == 0x81);
+    REQUIRE((imm_result.registers.af & 0x00FFU) == static_cast<std::uint16_t>(flag_sign | flag_half));
+    REQUIRE((imm_result.registers.af & flag_zero) == 0U);
+    REQUIRE((imm_result.registers.af & flag_subtract) == 0U);
+    REQUIRE((imm_result.registers.af & flag_carry) == 0U);
+}
+
+TEST_CASE("HD64180 IN0 and OUT0 cover non-A register variants and non-MMU internal ports", "[cpu]") {
+    auto initial = default_register_snapshot();
+    initial.il = 0xA5;
+    initial.itc = 0x12;
+
+    const auto result = run_test_program(
+        make_instruction_test_rom({
+            0xED, 0x00, 0x33,  // IN0 B,(0x33)
+            0xED, 0x08, 0x34,  // IN0 C,(0x34)
+            0xED, 0x01, 0x38,  // OUT0 (0x38),B
+            0xED, 0x09, 0x39,  // OUT0 (0x39),C
+            0x76,
+        }),
+        initial,
+        16
+    );
+
+    REQUIRE(static_cast<std::uint8_t>(result.registers.bc >> 8U) == 0xA5);
+    REQUIRE(static_cast<std::uint8_t>(result.registers.bc & 0x00FFU) == 0x12);
+    REQUIRE(result.registers.cbr == 0xA5);
+    REQUIRE(result.registers.bbr == 0x12);
 }
 
 TEST_CASE("Illegal BBR writes warn and alias the bank window into SRAM space", "[cpu]") {

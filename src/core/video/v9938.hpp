@@ -53,6 +53,7 @@ class V9938 {
         std::array<std::uint8_t, 10> status{};
         std::array<std::array<std::uint8_t, 2>, 16> palette{};
         std::uint16_t vram_addr = 0;
+        std::uint8_t read_ahead_latch = 0;
         std::uint8_t control_latch = 0;
         bool addr_latch_full = false;
         std::uint8_t indirect_register = 0x20;
@@ -139,6 +140,7 @@ class V9938 {
     std::array<std::uint8_t, 10> status_{};
     std::array<std::array<std::uint8_t, 2>, 16> palette_{};
     std::uint16_t vram_addr_ = 0;
+    std::uint8_t read_ahead_latch_ = 0;
     std::uint8_t control_latch_ = 0;
     bool addr_latch_full_ = false;
     std::uint8_t indirect_register_ = 0x20;
@@ -185,6 +187,7 @@ class V9938 {
     void advance_stream_position(bool byte_mode);
     void update_int_state();
     [[nodiscard]] auto current_display_mode() const -> DisplayMode;
+    [[nodiscard]] auto display_enabled() const -> bool;
     [[nodiscard]] auto backdrop_color() const -> std::uint8_t;
     void render_graphic4_background_scanline(int line);
     void render_graphic3_background_scanline(int line);

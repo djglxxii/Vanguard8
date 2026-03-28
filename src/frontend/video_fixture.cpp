@@ -52,6 +52,7 @@ void write_mode2_sprite(
 
 void build_video_fixture_frame(core::video::V9938& vdp) {
     vdp.reset();
+    write_register(vdp, 1, static_cast<std::uint8_t>(core::video::V9938::graphic_mode_r1 | 0x40U));
 
     vdp.write_palette(0x00);
     vdp.write_palette(0x00);

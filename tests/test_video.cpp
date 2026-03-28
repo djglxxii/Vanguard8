@@ -21,12 +21,12 @@ void write_register(V9938& vdp, const std::uint8_t reg, const std::uint8_t value
 
 void set_graphic4_mode(V9938& vdp) {
     write_register(vdp, 0, V9938::graphic4_mode_r0);
-    write_register(vdp, 1, V9938::graphic_mode_r1);
+    write_register(vdp, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U));
 }
 
 void set_graphic3_mode(V9938& vdp) {
     write_register(vdp, 0, V9938::graphic3_mode_r0);
-    write_register(vdp, 1, V9938::graphic_mode_r1);
+    write_register(vdp, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U));
 }
 
 void write_command_word(V9938& vdp, const std::uint8_t low_reg, const std::uint16_t value) {
@@ -37,6 +37,11 @@ void write_command_word(V9938& vdp, const std::uint8_t low_reg, const std::uint1
 void seek_vram_write(V9938& vdp, const std::uint16_t address) {
     vdp.write_control(static_cast<std::uint8_t>(address & 0xFFU));
     vdp.write_control(static_cast<std::uint8_t>(0x40U | ((address >> 8) & 0x3FU)));
+}
+
+void seek_vram_read(V9938& vdp, const std::uint16_t address) {
+    vdp.write_control(static_cast<std::uint8_t>(address & 0xFFU));
+    vdp.write_control(static_cast<std::uint8_t>((address >> 8) & 0x3FU));
 }
 
 void write_graphic4_byte(V9938& vdp, const int line, const int byte_index, const std::uint8_t value) {
@@ -109,6 +114,23 @@ TEST_CASE("VDP data and palette ports mutate VRAM and palette state", "[video]")
     REQUIRE(vdp.palette_entry_raw(3)[1] == 0x06);
 }
 
+TEST_CASE("VRAM reads follow the V9938 read-ahead latch behavior", "[video]") {
+    V9938 vdp;
+
+    vdp.poke_vram(0x1234, 0xAA);
+    vdp.poke_vram(0x1235, 0xBB);
+    vdp.poke_vram(0x1236, 0xCC);
+
+    seek_vram_read(vdp, 0x1234);
+    REQUIRE(vdp.read_data() == 0x00);
+    REQUIRE(vdp.read_data() == 0xAA);
+    REQUIRE(vdp.read_data() == 0xBB);
+
+    seek_vram_read(vdp, 0x1235);
+    REQUIRE(vdp.read_data() == 0xCC);
+    REQUIRE(vdp.read_data() == 0xBB);
+}
+
 TEST_CASE("Palette decoding expands 3 bit RGB channels correctly", "[video]") {
     V9938 vdp;
 
@@ -168,6 +190,26 @@ TEST_CASE("R#23 vertical scroll wraps within the VRAM page", "[video]") {
     write_register(vdp, 23, 0xFF);
     vdp.tick_scanline(1);
     REQUIRE(vdp.background_line_buffer()[0] == 0x00);
+}
+
+TEST_CASE("R#1 bit 6 blanks the display to the backdrop color", "[video]") {
+    V9938 vdp;
+
+    set_graphic4_mode(vdp);
+    write_register(vdp, 7, 0x03);
+    seek_vram_write(vdp, 0x0000);
+    vdp.write_data(0x12);
+
+    vdp.tick_scanline(0);
+    REQUIRE(vdp.line_buffer()[0] == 0x01);
+    REQUIRE(vdp.line_buffer()[1] == 0x02);
+
+    write_register(vdp, 1, V9938::graphic_mode_r1);
+    vdp.tick_scanline(0);
+    REQUIRE(vdp.background_line_buffer()[0] == 0x03);
+    REQUIRE(vdp.background_line_buffer()[1] == 0x03);
+    REQUIRE(vdp.line_buffer()[0] == 0x03);
+    REQUIRE(vdp.line_buffer()[1] == 0x03);
 }
 
 TEST_CASE("HMMM copies bytes and CE clears at the documented cycle boundary", "[video]") {

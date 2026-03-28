@@ -7,7 +7,12 @@ namespace vanguard8::third_party::z180 {
 
 namespace {
 
+constexpr std::uint8_t flag_sign = 0x80;
 constexpr std::uint8_t flag_zero = 0x40;
+constexpr std::uint8_t flag_half = 0x10;
+constexpr std::uint8_t flag_parity_overflow = 0x04;
+constexpr std::uint8_t flag_subtract = 0x02;
+constexpr std::uint8_t flag_carry = 0x01;
 constexpr std::uint8_t itc_ite1 = 0x02;
 constexpr std::uint8_t vector_code_int1 = 0x00;
 constexpr std::uint8_t vector_code_prt0 = 0x04;
@@ -23,6 +28,16 @@ constexpr std::uint8_t tcr_tde0 = 0x01;
     std::ostringstream stream;
     stream << "0x" << std::uppercase << std::hex << std::setw(width) << std::setfill('0') << value;
     return stream.str();
+}
+
+[[nodiscard]] auto has_even_parity(const std::uint8_t value) -> bool {
+    auto bits = value;
+    bool parity = true;
+    while (bits != 0U) {
+        parity = !parity;
+        bits = static_cast<std::uint8_t>(bits & static_cast<std::uint8_t>(bits - 1U));
+    }
+    return parity;
 }
 
 }  // namespace
@@ -492,6 +507,56 @@ void Core::service_vectored_interrupt(const InterruptSource source, const std::u
     pc_.value = handler_address;
 }
 
+auto Core::register8_from_code(const std::uint8_t code) -> std::uint8_t& {
+    switch (code & 0x07U) {
+    case 0x00:
+        return bc_.bytes.hi;
+    case 0x01:
+        return bc_.bytes.lo;
+    case 0x02:
+        return de_.bytes.hi;
+    case 0x03:
+        return de_.bytes.lo;
+    case 0x04:
+        return hl_.bytes.hi;
+    case 0x05:
+        return hl_.bytes.lo;
+    case 0x07:
+        return af_.bytes.hi;
+    default:
+        throw std::runtime_error("Unsupported HD64180 register selector " + hex_string(code, 2));
+    }
+}
+
+auto Core::register_pair_from_code(const std::uint8_t code) -> Pair& {
+    switch (code & 0x03U) {
+    case 0x00:
+        return bc_;
+    case 0x01:
+        return de_;
+    case 0x02:
+        return hl_;
+    case 0x03:
+        return sp_;
+    default:
+        throw std::runtime_error("Unsupported HD64180 register-pair selector " + hex_string(code, 2));
+    }
+}
+
+void Core::update_tst_flags(const std::uint8_t value) {
+    af_.bytes.lo = 0x00;
+    if ((value & 0x80U) != 0U) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_sign);
+    }
+    if (value == 0U) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_zero);
+    }
+    if (has_even_parity(value)) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_parity_overflow);
+    }
+    af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_half);
+}
+
 [[noreturn]] void Core::unsupported_opcode(const std::uint8_t opcode) {
     throw std::runtime_error("Unsupported extracted Z180 opcode " + hex_string(opcode, 2));
 }
@@ -538,11 +603,50 @@ void Core::op_ei() { iff1_ = true; iff2_ = true; }
 
 void Core::op_ed_prefix() {
     const auto opcode = fetch_byte();
+    if ((opcode & 0xC7U) == 0x00U && ((opcode >> 3U) & 0x07U) != 0x06U) {
+        op_ed_in0_r_n(static_cast<std::uint8_t>((opcode >> 3U) & 0x07U));
+        return;
+    }
+    if ((opcode & 0xC7U) == 0x01U && ((opcode >> 3U) & 0x07U) != 0x06U) {
+        op_ed_out0_n_r(static_cast<std::uint8_t>((opcode >> 3U) & 0x07U));
+        return;
+    }
+    if ((opcode & 0xC7U) == 0x04U && ((opcode >> 3U) & 0x07U) != 0x06U) {
+        op_ed_tst_r(static_cast<std::uint8_t>((opcode >> 3U) & 0x07U));
+        return;
+    }
+    if ((opcode & 0xCFU) == 0x4CU) {
+        op_ed_mlt_rr(static_cast<std::uint8_t>((opcode >> 4U) & 0x03U));
+        return;
+    }
+    if (opcode == 0x64U) {
+        op_ed_tst_n();
+        return;
+    }
     const auto handler = ed_opcodes_[opcode];
     if (handler == &Core::op_unimplemented) {
         unsupported_ed_opcode(opcode);
     }
     (this->*handler)();
+}
+
+void Core::op_ed_in0_r_n(const std::uint8_t reg_code) { register8_from_code(reg_code) = in0(fetch_byte()); }
+
+void Core::op_ed_out0_n_r(const std::uint8_t reg_code) { out0(fetch_byte(), register8_from_code(reg_code)); }
+
+void Core::op_ed_tst_r(const std::uint8_t reg_code) {
+    const auto value = static_cast<std::uint8_t>(af_.bytes.hi & register8_from_code(reg_code));
+    update_tst_flags(value);
+}
+
+void Core::op_ed_tst_n() {
+    const auto value = static_cast<std::uint8_t>(af_.bytes.hi & fetch_byte());
+    update_tst_flags(value);
+}
+
+void Core::op_ed_mlt_rr(const std::uint8_t pair_code) {
+    auto& reg = register_pair_from_code(pair_code);
+    reg.value = static_cast<std::uint16_t>(reg.bytes.hi * reg.bytes.lo);
 }
 
 void Core::op_ed_out0_n_a() { out0(fetch_byte(), af_.bytes.hi); }

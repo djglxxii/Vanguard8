@@ -1,6 +1,6 @@
 # M13-T02 — Expand Sprite Compatibility for Real ROM Bring-Up
 
-Status: `planned`
+Status: `active`
 Milestone: `13`
 Depends on: `M13-T01`
 

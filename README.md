@@ -10,6 +10,9 @@ implementation source tree, milestone contracts, and task queue.
 Current repo state:
 - The emulator core, tests, headless binary, and a deterministic frontend
   launcher are present and build.
+- A dedicated `showcase/` workspace is reserved for a ROM-side demonstration
+  cartridge, asset pipeline, and showcase-specific regression work so that ROM
+  authoring stays separate from the emulator implementation tree.
 - The current `vanguard8_frontend` binary is not yet a live desktop GUI
   application. It prints frontend/debugger status to the terminal and can build
   deterministic frame data, but it does not currently open an SDL/OpenGL window
@@ -69,6 +72,12 @@ docs/
   tasks/               Active/completed/blocked execution queue
     README.md
     task-template.md
+showcase/
+  docs/                Showcase-ROM planning and content briefs
+  assets/              Source art/audio and provenance notes
+  src/                 Showcase-ROM source tree
+  tools/               Asset conversion and ROM packaging helpers
+  tests/               Showcase-ROM checkpoint manifests and captures
 ```
 
 ---

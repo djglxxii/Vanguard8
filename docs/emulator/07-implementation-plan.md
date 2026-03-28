@@ -9,6 +9,8 @@ specification in `docs/spec/` and the emulator design docs in `docs/emulator/`.
 Traceability:
 - Hardware contract: `docs/spec/00-overview.md` through `docs/spec/04-io.md`
 - Emulator architecture: `docs/emulator/00-overview.md` through `docs/emulator/06-debugger.md`
+- Desktop GUI gap audit: `docs/emulator/10-desktop-gui-audit.md`
+- Pre-GUI compatibility audit: `docs/emulator/11-pre-gui-audit.md`
 
 ## Planning Rules
 
@@ -18,6 +20,12 @@ Traceability:
 - Prefer headless verification first, then SDL/OpenGL/ImGui integration.
 - Land the minimum documented behavior before optional features.
 - Do not implement currently unspecified areas without a spec update.
+- Milestone 11 closed the core emulator baseline, not the live desktop GUI
+  target described in older frontend/debugger docs. Milestone 12 and later
+  reopen that work explicitly.
+- Post-milestone-11 work is intentionally prioritized toward the shortest path
+  to a usable desktop ROM bring-up: visible window, live video, live audio,
+  minimal input, and lightweight debug/status output before broader polish.
 
 ## Explicit Deferrals
 
@@ -73,6 +81,9 @@ Workflow:
 | 9 | Add debugger foundation and core developer panels |
 | 10 | Add save states, rewind, replay, and headless regression tooling |
 | 11 | Expand format coverage, compatibility audits, and polish to 1.0 |
+| 12 | Deliver a playable desktop frontend baseline for ROM bring-up |
+| 13 | Close critical pre-GUI audit items that block real ROM testing |
+| 14 | Add lightweight bring-up tooling and selected non-essential closure |
 
 ## Milestones
 
@@ -366,6 +377,105 @@ Exit criteria:
   explicitly deferred spec gaps
 - Remaining limitations are documented, narrow, and intentional
 
+### Milestone 12 — Playable Desktop Frontend Baseline
+
+Objective:
+- Turn the current terminal-only frontend launcher into a minimal but usable
+  desktop application that can launch a ROM, present live video, play live
+  audio, accept basic input, and expose simple bring-up/debug status.
+
+Deliverables:
+- Persistent SDL frontend runtime loop
+- SDL window creation and lifecycle management
+- OpenGL context creation and swap/present path
+- Display backend that uploads composited `256x212` frames to a real texture
+- Backend-neutral readback/test seam so desktop output can still be checked
+  against headless output deterministically
+- SDL audio device fed from the existing mixer/resampler path
+- Command-line ROM launch into the live desktop session
+- Minimal SDL keyboard/gamepad handling for covered controller input, quit, and
+  the narrow runtime controls needed for bring-up
+- Basic runtime status/error/debug output suitable for ROM bring-up without a
+  live Dear ImGui debugger
+
+Tests:
+- Frontend runtime lifecycle tests using fake window/display/audio hosts
+- Presentation/readback tests that prove a known frame can be uploaded and read
+  back through the desktop path
+- Audio device queue/ring buffer tests covering startup, shutdown, and covered
+  underrun handling
+- ROM startup and backend/ROM failure handling tests
+- Minimal SDL event mapping tests through frontend host abstractions
+
+Exit criteria:
+- Launching `vanguard8_frontend --rom <path>` opens a visible window, keeps
+  running until quit, displays live ROM-driven frames, and produces audible
+  audio
+- Covered input events reach the controller path without regressing headless
+  determinism
+- Basic runtime/debug output is available without requiring the full desktop
+  debugger
+
+### Milestone 13 — Critical Audit Closure for Real ROM Compatibility
+
+Objective:
+- Close the smallest set of pre-GUI audit gaps that are most likely to block
+  real ROM and showcase-ROM testing after the playable desktop frontend exists.
+
+Deliverables:
+- V9938 VRAM read-ahead latch
+- VDP screen-disable behavior via `R#1` bit 6
+- 16x16 sprite size and sprite magnification
+- Register-relative sprite table addressing via `R#5`, `R#6`, and `R#11`
+- Sprite Mode 1
+- Graphic 1 and Graphic 2 renderers
+- Targeted HD64180 audit coverage for `MLT`, `TST`, and broader covered
+  `IN0`/`OUT0` behavior
+- ROM-driven or representative fixture-driven compatibility tests for the
+  covered bring-up cases
+
+Tests:
+- VRAM read-ahead coverage that proves the first read after address set matches
+  the documented latch behavior
+- Screen-disable coverage that locks blanked output to the backdrop color
+- Sprite tests covering 16x16 size, magnification, and register-relative table
+  bases
+- Mode-specific Graphic 1/2 tests with Sprite Mode 1 coverage
+- HD64180 instruction tests for the newly audited covered cases
+
+Exit criteria:
+- The critical pre-GUI audit items most likely to block first-wave ROM testing
+  are implemented and regression-covered
+- Remaining compatibility gaps are either lower priority or explicitly
+  spec-gated
+
+### Milestone 14 — Lightweight Bring-Up Tooling and Selected Closure
+
+Objective:
+- Add only the smaller non-essential items that materially help ROM bring-up
+  and debugging, while leaving full heavy debugger/UI work out of scope unless
+  it is explicitly promoted later.
+
+Deliverables:
+- Trace-to-file support over the existing trace surface
+- Symbol file loading and basic annotation support
+- Lightweight desktop/runtime status improvements only where they help bring-up
+- Selected additional renderer or tooling coverage only where the written spec
+  is already sufficient and a target ROM actually needs the feature
+- Documentation closure for the remaining intentional deferrals and dropped
+  non-goal items
+
+Tests:
+- Trace file writer coverage
+- Symbol load/lookup/annotation coverage
+- Mode-specific tests for any additional renderer added in this milestone
+- Documentation-backed regression notes for the remaining deferred items
+
+Exit criteria:
+- A developer can run a target ROM, see/hear it in the desktop app, and get
+  lightweight diagnostic output without needing a full live debugger UI
+- Remaining omissions are narrow, deliberate, and documented
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:
@@ -413,6 +523,34 @@ Meaning:
 - The documented hardware surface is implemented except for explicit spec
   deferrals, and those deferrals are clearly called out in docs and tests.
 
+### Gate F — First Playable Desktop Frontend
+
+Required milestones:
+- 0 through 12
+
+Meaning:
+- The frontend is no longer terminal-only; it can launch a ROM in a real window
+  with live video, live audio, and minimal input/debug bring-up support.
+
+### Gate G — First ROM-Compatibility Desktop Build
+
+Required milestones:
+- 0 through 13
+
+Meaning:
+- The highest-value pre-GUI audit blockers for real ROM testing are closed and
+  the desktop build is suitable for practical showcase-ROM validation.
+
+### Gate H — Lightweight Desktop Developer Build
+
+Required milestones:
+- 0 through 14
+
+Meaning:
+- The desktop build includes lightweight diagnostic tooling and any selected
+  non-essential closures that proved necessary during ROM bring-up, without
+  requiring a full live debugger project.
+
 ## Recommended Order of Work Inside the Repo
 
 1. Build and test scaffolding
@@ -426,6 +564,9 @@ Meaning:
 9. Debugger
 10. Save/replay/headless regression
 11. Expanded mode coverage and release hardening
+12. Playable desktop ROM bring-up baseline
+13. Critical real-ROM compatibility closure
+14. Lightweight tooling and selected non-essential closure
 
 ## Definition of Done for Each Milestone
 

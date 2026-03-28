@@ -78,3 +78,27 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 - `M11-T01` Expand documented VDP mode coverage and mixed-mode validation.
 - `M11-T02` Run compatibility/performance closure work against real ROMs.
 - `M11-T03` Close documentation gaps and finalize the 1.0 readiness audit.
+
+## Milestone 12
+
+- `M12-T01` Refactor the frontend into a persistent SDL runtime and window host.
+- `M12-T02` Add the real display and audio backends plus deterministic
+  presentation/readback seams.
+- `M12-T03` Wire command-line ROM launch, minimal live input, and runtime
+  status closure.
+
+## Milestone 13
+
+- `M13-T01` Implement the V9938 read-path fixes and targeted HD64180 audit
+  coverage needed for ROM bring-up.
+- `M13-T02` Expand sprite compatibility with 16x16/magnification and
+  register-relative table addressing.
+- `M13-T03` Add Sprite Mode 1 plus Graphic 1/2 renderer coverage for startup,
+  title, and menu-screen ROM paths.
+
+## Milestone 14
+
+- `M14-T01` Add trace-to-file support and lightweight runtime debug output.
+- `M14-T02` Add symbol loading and annotation support.
+- `M14-T03` Close the remaining selected non-essential gaps and deferral
+  ledger.

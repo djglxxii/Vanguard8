@@ -42,3 +42,9 @@ Milestone 0 output layout:
 - `build/showcase/showcase.rom`
 - `build/showcase/showcase.sym`
 - `build/showcase/*.trace`
+
+Milestone 1 review surfaces:
+- Headless checkpoint run:
+  `python3 showcase/tools/package/run_showcase_headless.py --frames 240 --trace build/showcase/m1.trace --hash-frame 239 --symbols build/showcase/showcase.sym`
+- Checkpoint notes:
+  `showcase/tests/milestone-01-checkpoints.md`

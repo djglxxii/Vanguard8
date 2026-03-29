@@ -19,3 +19,7 @@ CMakeUserPresets.json
 *.dylib
 *.exe
 *.pdb
+
+# Python local cache
+__pycache__/
+*.pyc

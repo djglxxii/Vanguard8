@@ -14,3 +14,8 @@ Recommended layout:
 
 Do not check converted runtime blobs directly into this folder unless the
 conversion step is intentionally part of source control.
+
+Current milestone-2 provenance note:
+- `provenance/milestone-02-scenes.md`
+  Documents the assembly-authored Graphic 4 title and compositing assets now
+  used by the ROM.

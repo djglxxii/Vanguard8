@@ -34,7 +34,7 @@ The current planning surfaces are:
 - `showcase/docs/current-milestone.md`
 - `showcase/docs/agent-kickoff-prompts.md`
 
-Milestone 0 wrapper interface:
+Stable wrapper interface:
 - Build: `python3 showcase/tools/package/build_showcase.py`
 - Run headless: `python3 showcase/tools/package/run_showcase_headless.py --frames 1 --trace build/showcase/m0.trace`
 
@@ -48,3 +48,13 @@ Milestone 1 review surfaces:
   `python3 showcase/tools/package/run_showcase_headless.py --frames 240 --trace build/showcase/m1.trace --hash-frame 239 --symbols build/showcase/showcase.sym`
 - Checkpoint notes:
   `showcase/tests/milestone-01-checkpoints.md`
+
+Milestone 2 review surfaces:
+- Asset guidance:
+  `showcase/docs/asset-guidelines.md`
+- Provenance note:
+  `showcase/assets/provenance/milestone-02-scenes.md`
+- Headless checkpoint notes:
+  `showcase/tests/milestone-02-checkpoints.md`
+- Contract run:
+  `python3 showcase/tools/package/run_showcase_headless.py --frames 480 --trace build/showcase/m2.trace --hash-frame 479 --symbols build/showcase/showcase.sym`

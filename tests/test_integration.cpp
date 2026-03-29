@@ -25,6 +25,25 @@ auto make_integration_rom() -> std::vector<std::uint8_t> {
     return rom;
 }
 
+auto make_frame_loop_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xF3;             // DI
+    rom[0x0001] = 0x3E; rom[0x0002] = 0x01;  // LD A,0x01
+    rom[0x0003] = 0xD3; rom[0x0004] = 0x82;  // OUT (0x82),A
+    rom[0x0005] = 0x3E; rom[0x0006] = 0x07;  // LD A,0x07
+    rom[0x0007] = 0xD3; rom[0x0008] = 0x82;  // OUT (0x82),A
+    rom[0x0009] = 0x3E; rom[0x000A] = 0x00;  // LD A,0x00
+    rom[0x000B] = 0xD3; rom[0x000C] = 0x82;  // OUT (0x82),A
+    rom[0x000D] = 0x3E; rom[0x000E] = 0x01;  // LD A,0x01
+    rom[0x000F] = 0xD3; rom[0x0010] = 0x81;  // OUT (0x81),A
+    rom[0x0011] = 0x3E; rom[0x0012] = 0x87;  // LD A,0x87
+    rom[0x0013] = 0xD3; rom[0x0014] = 0x81;  // OUT (0x81),A
+    rom[0x0015] = 0xC3; rom[0x0016] = 0x15; rom[0x0017] = 0x00;  // JP 0x0015
+
+    return rom;
+}
+
 void write_vdp_register(
     vanguard8::core::Bus& bus,
     const std::uint16_t control_port,
@@ -145,4 +164,17 @@ TEST_CASE("bank switching interrupts audio and compositing stay deterministic to
     REQUIRE(second.event_log_digest() == first.event_log_digest());
     REQUIRE(second.audio_output_digest() == first.audio_output_digest());
     REQUIRE(second_frame == first_frame);
+}
+
+TEST_CASE("frame loop executes ROM instructions and reaches ROM-driven VDP state", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_frame_loop_rom());
+    emulator.run_frames(1);
+
+    REQUIRE(emulator.vdp_a().register_value(7) == 0x01);
+    REQUIRE(emulator.vdp_a().palette_entry_raw(1) == std::array<std::uint8_t, 2>{0x07, 0x00});
+
+    const auto frame = Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b());
+    REQUIRE_FALSE(frame.empty());
+    REQUIRE(std::array<std::uint8_t, 3>{frame[0], frame[1], frame[2]} == emulator.vdp_a().palette_entry_rgb(1));
 }

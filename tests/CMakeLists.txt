@@ -32,6 +32,7 @@ add_executable(
     test_integration.cpp
     test_scheduler.cpp
     test_video.cpp
+    ../src/frontend/app.cpp
     ../src/frontend/audio_output.cpp
     ../src/frontend/display.cpp
     ../src/frontend/display_presenter.cpp

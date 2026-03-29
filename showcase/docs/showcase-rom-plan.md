@@ -2,11 +2,14 @@
 
 ## Purpose
 
-Create a demonstration cartridge ROM that serves two roles at once:
+Create a single cartridge ROM whose primary job is to verify that documented
+Vanguard 8 emulator features are implemented correctly.
 
-1. Show off the strongest documented Vanguard 8 hardware features with
-   intentional presentation.
-2. Provide a practical ROM-driven validation target for the current emulator.
+Presentation still matters, but only to the extent that it improves
+verification. The ROM should look coherent enough that a developer can tell
+whether compositing, tile fetch, sprites, palette setup, interrupt-driven
+updates, and audio playback are behaving correctly. It does not need elaborate
+art or externally supplied content.
 
 This plan is written against the current documented and implemented hardware
 surface, not against speculative future features.
@@ -17,63 +20,121 @@ Traceability:
 - Video contract: `docs/spec/02-video.md`
 - Audio contract: `docs/spec/03-audio.md`
 - I/O/timing contract: `docs/spec/04-io.md`
-- Current emulator compatibility posture: `docs/emulator/08-compatibility-audit.md`
-- Milestone-13/14 closure notes:
+- Compatibility posture: `docs/emulator/08-compatibility-audit.md`
+- Milestone-14 scope posture: `docs/emulator/milestones/14.md`
+- Showcase execution plan: `showcase/docs/showcase-implementation-plan.md`
+- Showcase milestone lock: `showcase/docs/current-milestone.md`
+- Selected closure notes:
   `docs/emulator/11-pre-gui-audit.md`,
   `docs/tasks/completed/M13-T03-graphic1-graphic2-and-sprite-mode1.md`,
   `docs/tasks/completed/M14-T03-targeted-closure-and-deferral-ledger.md`
 
+## Milestone Posture
+
+This plan stays within the current accepted milestone posture:
+
+- Objective:
+  use the existing desktop/headless runtime plus lightweight tooling to support
+  practical ROM bring-up and validation
+- Allowed scope:
+  `docs/` planning plus showcase-ROM-side work that proves currently covered
+  emulator surfaces
+- Explicit non-goals:
+  no speculative later-milestone video work, no debugger/UI expansion, and no
+  new hardware behavior invented only to support the ROM
+- Exit posture for this document:
+  define a ROM plan that exercises only documented and covered behavior and can
+  be validated with the current build, symbol, trace, frame-hash, and
+  audio-hash tooling
+
 ## Current Baseline
 
-The repo is in a good position to support a showcase ROM:
+The repo is already in a workable position for a verification ROM:
 
-- The emulator already loads raw cartridge images and exposes a usable desktop
-  and headless runtime.
-- The headless runner can emit frame hashes, audio hashes, traces, and symbol-
-  aware annotations.
-- The covered graphics surface includes Graphic 1, Graphic 2, Graphic 3, and
-  Graphic 4, dual-VDP compositing, Sprite Mode 1, Sprite Mode 2, covered sprite
-  compatibility work, and the documented Graphic 4 command-engine paths.
-- The covered audio surface includes YM2151, AY-3-8910, MSM5205, and the
-  documented INT1-driven ADPCM flow.
-- The covered CPU/system surface includes MMU setup, ROM banking, INT0/INT1,
-  DMA channel paths, and programmable reload timer exposure.
+- The emulator loads raw cartridge images and exposes both desktop and headless
+  runtimes.
+- The headless runner can emit frame hashes, audio hashes, traces, and
+  symbol-aware annotations.
+- Covered video paths include Graphic 1, Graphic 2, Graphic 3, Graphic 4,
+  dual-VDP compositing, Sprite Mode 1, Sprite Mode 2, sprite size and
+  magnification handling, and the documented Graphic 4 command paths.
+- Covered audio paths include YM2151, AY-3-8910, MSM5205, and the documented
+  INT1-driven ADPCM feed flow.
+- Covered CPU/system paths include MMU setup, ROM banking, INT0/INT1, DMA
+  channel surfaces, and programmable reload timer exposure.
 
-There is no ROM authoring/build scaffold in the repo yet. That must be added as
-part of the showcase effort.
+There is still no ROM authoring/build scaffold in the repo. The showcase effort
+must add that first.
 
 ## Goals
 
-- Produce a single reproducible cartridge ROM image plus symbol file.
-- Make the ROM usable both as a polished attract-mode showcase and as a
-  deterministic validation target.
-- Prefer real supplied assets over generated placeholder content.
-- Keep the first version strictly within documented and covered hardware
-  behavior.
-- Build the ROM in a way that supports incremental scene bring-up and headless
-  regression capture.
+- Produce one reproducible cartridge ROM image plus symbol file.
+- Make the ROM a deterministic validation target first and a coherent readable
+  artifact second.
+- Use coding-agent-generated assets by default, but keep them scene-coherent
+  and visually readable.
+- Keep all scenes within documented and currently covered hardware behavior.
+- Structure the ROM so scenes map cleanly to frame, audio, and trace
+  checkpoints.
+- Prefer simple assets that make failures obvious over elaborate assets that
+  hide failures.
 
 ## Non-Goals For Version 1
 
 - Do not depend on unverified or explicitly deferred hardware behavior.
-- Do not treat the showcase ROM as a general SDK or game-engine effort.
-- Do not broaden emulator behavior just to support a flashy demo scene.
-- Do not introduce later-stage content tooling before the minimal ROM pipeline
-  exists.
+- Do not turn the showcase ROM into a general SDK, engine, or content-pipeline
+  product.
+- Do not require commissioned, licensed, or externally sourced art/audio before
+  progress can continue.
+- Do not broaden emulator behavior just to support a prettier scene.
+- Do not add later-stage tooling before the minimal ROM pipeline exists.
 
-## Explicitly Avoided Features In The First Showcase Pass
+## Asset Policy
 
-The first ROM should not rely on:
+Version 1 should assume all art and audio assets are generated by coding agents
+or assembled procedurally from simple authored primitives.
+
+The asset standard is not "impressive." The asset standard is:
+
+- coherent enough that a human can recognize what each scene is meant to show
+- consistent enough that hashes and screenshots remain stable
+- simple enough that hardware failures are easy to spot
+
+Generated assets should follow these rules:
+
+- Use a small repeated visual language across the ROM, such as one logo, one
+  sci-fi facility backdrop family, one sprite family, and one HUD/icon set.
+- Favor clean silhouettes, large readable shapes, and deliberate palette use.
+- Avoid random-noise textures, excessive dithering, painterly detail, or any
+  content that makes pixel-level verification harder.
+- Include obvious transparency windows, high-contrast edges, and stable color
+  regions in scenes that verify compositing and sprite behavior.
+- Keep audio phrases short, distinctive, and loop-stable so chip identity and
+  mixer behavior remain easy to hear and hash.
+
+To keep the ROM reproducible, any generated source asset should be checked into
+the repo along with enough provenance to recreate or revise it later:
+
+- scene assignment
+- source format
+- conversion target
+- palette assumptions
+- short prompt/spec note describing the intended result
+
+## Explicitly Avoided Features In The First Pass
+
+The first verification ROM should not rely on:
 
 - Text 1 or Text 2
 - Graphic 5, Graphic 6, or Graphic 7
 - Horizontal scroll via `R#26`/`R#27`
 - Per-line horizontal parallax based on unverified scroll behavior
-- Any invented Graphic 3 LN=1 background fetch behavior for lines `192-211`
+- Any invented Graphic 3 `LN=1` background fetch behavior for lines `192-211`
 - 4-player expansion behavior
 - Battery-backed cartridge SRAM mapping details
 - Any broader HD64180 behavior outside the repo's current tested execution
-  subset unless it is first proven in the ROM bring-up phase
+  subset unless ROM bring-up first proves it necessary and the spec already
+  supports it
 
 ## Recommended Repo Structure
 
@@ -84,12 +145,12 @@ showcase/
   README.md
   docs/
     showcase-rom-plan.md
-    content-brief.md
-    asset-requests/
+    asset-guidelines.md
+    scene-checkpoints.md
   assets/
     art/
     audio/
-    licenses/
+    provenance/
   src/
     boot/
     engine/
@@ -107,20 +168,20 @@ Rationale:
 
 - ROM source and asset tools are a separate product surface from the emulator
   core.
-- It keeps `src/` and `tests/` focused on the emulator implementation.
-- It gives the showcase ROM its own iteration loop without implying that ROM
-  authoring is part of the emulator runtime.
+- The showcase tree can keep prompt/spec notes next to generated source assets
+  without implying the emulator itself owns a general content pipeline.
+- Verification manifests and capture notes stay close to the ROM they validate.
 
 ## Build Pipeline Plan
 
 Use `sjasmplus` as the initial ROM assembler. It is already available in the
-local environment and is a simple fit for a banked Z80/HD64180 cartridge image.
+local environment and fits a banked Z80/HD64180 cartridge image well.
 
 Planned outputs:
 
 - `showcase.rom`
 - `showcase.sym`
-- generated converted asset blobs used to build the ROM
+- generated converted asset blobs used by the ROM build
 
 Planned supporting tools:
 
@@ -129,17 +190,25 @@ Planned supporting tools:
   - tile conversion
   - sprite conversion
   - Graphic 4 bitmap packing
-  - ADPCM sample packing/prep
+  - AY/YM sequence packing from simple authored note/event data
+  - ADPCM sample preparation for MSM5205 input
 - a packaging script or Make/CMake wrapper to assemble the ROM deterministically
+
+Important constraint:
+
+- asset generation must not happen implicitly at build time through a live
+  model call
+- build inputs must be committed source assets or committed source data derived
+  from earlier agent work
 
 ## Development Strategy
 
-Build the showcase ROM in two layers.
+Build the ROM in two layers.
 
 ### Layer 1: Bring-Up Cartridge
 
-The first ROM should be deliberately plain and deterministic. Its job is to
-prove that the whole authoring and runtime path works:
+The first ROM should be deliberately plain. Its job is to prove that the full
+authoring and runtime path works:
 
 - boot/reset path
 - MMU setup
@@ -154,60 +223,74 @@ prove that the whole authoring and runtime path works:
 Deliverable:
 
 - a minimal ROM that boots, changes banks, initializes audio/video, and cycles
-  through a few simple known scenes under deterministic timing
+  through a few simple deterministic scenes
 
-### Layer 2: Polished Showcase
+### Layer 2: Coherent Verification ROM
 
-Once the bring-up cartridge is stable, replace fixture-like scenes with
-presented showcase scenes using real supplied content.
+Once bring-up is stable, replace the most fixture-like scenes with coherent
+generated assets that still prioritize observability over polish.
 
 Deliverable:
 
-- a single attract-style ROM whose scenes still map cleanly to regression
-  checkpoints
+- a single looped verification ROM whose scenes remain easy to inspect, hash,
+  and trace
+
+## Scene Design Rules
+
+Each scene should answer a specific validation question. If a scene does not
+make a hardware rule easier to verify, it should be simplified or removed.
+
+Scene assets should be designed so that:
+
+- layer ordering is obvious at a glance
+- color index `0` transparency regions are large and intentional
+- sprite size, magnification, and overlap are visible without ambiguity
+- tile boundaries can still be inferred in tile scenes
+- bitmap blits and command-engine updates produce clearly detectable changes
+- banked content changes are obvious to both the eye and frame hashes
 
 ## Recommended Scene Set
 
-Each scene should be visually distinct and validate a specific hardware path.
+Each scene should be visually distinct and validate a specific covered path.
 
 ### Scene 1: Boot / Identity Screen
 
 Purpose:
-- prove basic boot, palette setup, controller polling, and title presentation
+- prove fixed-ROM boot, palette setup, controller polling, and title display
 
 Suggested content:
-- Vanguard 8 logo
-- short YM2151 boot sting
-- simple menu prompt or timed auto-advance
+- simple generated Vanguard 8 logo
+- palette ramp or border accents
+- timed auto-advance plus optional start prompt
 
 Key validation:
 - fixed ROM boot path
 - palette writes
 - controller reads
 
-### Scene 2: Dual-VDP Compositing Demo
+### Scene 2: Dual-VDP Compositing Scene
 
 Purpose:
-- show the system-defining two-layer architecture directly
+- verify the system-defining two-layer architecture directly
 
 Suggested content:
-- VDP-B background artwork
-- VDP-A foreground frame, logo, or cutout overlay
-- obvious transparency windows using VDP-A color index `0`
+- VDP-B generated backdrop such as a hangar, skyline, or control-room wall
+- VDP-A foreground frame, signage, or cutout overlay
+- large intentional transparency windows using VDP-A color index `0`
 
 Key validation:
 - VDP-A-over-VDP-B priority
 - transparency behavior
 - independent palette setup per VDP
 
-### Scene 3: Tile-Mode Presentation
+### Scene 3: Tile-Mode Presentation Scene
 
 Purpose:
 - exercise covered tile paths likely to appear in menus and title screens
 
 Suggested content:
-- Graphic 1 or Graphic 2 title/menu scene
-- Sprite Mode 1 cursor or icon animation
+- Graphic 1 or Graphic 2 status/menu screen with a coherent icon set
+- Sprite Mode 1 cursor, marker, or pointer animation
 
 Key validation:
 - Graphic 1 or Graphic 2 tile fetch
@@ -217,26 +300,27 @@ Key validation:
 ### Scene 4: Graphic 3 + Graphic 4 Mixed-Mode Scene
 
 Purpose:
-- show mixed-mode layer operation using documented covered paths
+- verify mixed-mode layer operation using documented covered paths
 
 Suggested content:
 - Graphic 4 bitmap background on one VDP
 - Graphic 3 tile/status/ornament layer on the other
-- transparent cutouts between layers
+- simple sci-fi console or map overlay with transparent cutouts
 
 Key validation:
 - mixed-mode compositing
 - Graphic 3 covered fetch behavior
-- Scene design must avoid depending on undocumented lines `192-211`
+- scene design must avoid depending on undocumented lines `192-211`
 
 ### Scene 5: Sprite Capability Scene
 
 Purpose:
-- demonstrate sprite scale and compatibility work clearly
+- demonstrate sprite size, magnification, overlap, and covered limit behavior
 
 Suggested content:
-- side-by-side examples of 8x8, 16x16, and magnified sprites
-- overlapping sprites with deliberate priority
+- a small family of coherent generated sprites shown at 8x8, 16x16, and
+  magnified sizes
+- overlapping passes with deliberate ordering
 - controlled per-scanline load to expose visibility limits cleanly
 
 Key validation:
@@ -247,12 +331,12 @@ Key validation:
 ### Scene 6: Graphic 4 Command-Engine Scene
 
 Purpose:
-- show off the V9938 command engine rather than only static VRAM writes
+- verify V9938 command-engine activity rather than only static VRAM uploads
 
 Suggested content:
-- tile or panel reveals
-- blitted logo assembly
-- scripted wipes or object copies using covered commands
+- panel reveals
+- scripted logo assembly
+- block copies or wipes using covered Graphic 4 command paths
 
 Key validation:
 - Graphic 4 command-path correctness
@@ -264,9 +348,9 @@ Purpose:
 - demonstrate all three audio chips distinctly before mixing them together
 
 Suggested content:
-- YM2151 music phrase
-- AY lead/noise/SFX layer
-- MSM5205 short voice or percussion sample
+- short YM2151 phrase
+- AY tone/noise cue
+- MSM5205 short generated voice-like or percussion-like sample
 - combined playback pass
 
 Key validation:
@@ -284,7 +368,7 @@ Suggested content:
 - controller visualizer
 - timer or IRQ activity display
 - banked asset/page switch
-- optional DMA-fed content update if kept narrow and deterministic
+- optional DMA-fed content update only if kept narrow and deterministic
 
 Key validation:
 - active-low controller reads
@@ -299,7 +383,7 @@ as a presentation artifact.
 Planned regression surfaces:
 
 - frame hashes at selected known scene/frame checkpoints
-- audio hash across a fixed attract loop window
+- audio hash across a fixed attract-loop window
 - optional replay-backed controller inputs for interactive scenes
 - trace snapshots around boot, bank switch, and INT1-driven ADPCM playback
 - symbol-aware trace verification using the generated `.sym` file
@@ -308,6 +392,8 @@ The ROM should expose fixed checkpoints such as:
 
 - boot complete
 - first compositing scene
+- first tile-mode scene
+- first command-engine scene
 - first audio-only section
 - first bank switch
 - full-loop return to title
@@ -320,6 +406,7 @@ The ROM should expose fixed checkpoints such as:
 - choose ROM assembler conventions
 - define output filenames and build entry points
 - define symbol-export expectations
+- define asset provenance note format
 
 ### Phase 1: Bring-Up Skeleton
 
@@ -330,69 +417,58 @@ The ROM should expose fixed checkpoints such as:
 - one banked content page
 - one frame-hash checkpoint
 
-### Phase 2: Video Bring-Up Scenes
+### Phase 2: Minimal Coherent Visuals
+
+- establish logo, backdrop, sprite, and icon style guides
+- generate first-pass source assets that are readable rather than detailed
+- convert them into tile, sprite, and bitmap inputs
+- validate that scene composition remains inspection-friendly
+
+### Phase 3: Video Verification Scenes
 
 - title scene
 - compositing scene
 - tile-mode scene
 - mixed-mode scene
 - sprite scene
+- command-engine scene
 
-### Phase 3: Audio Bring-Up Scenes
+### Phase 4: Audio Verification Scenes
 
 - YM scene
 - AY scene
 - MSM scene
 - combined music/SFX scene
 
-### Phase 4: Regression Harness
+### Phase 5: Regression Harness
 
 - checkpoint manifest
 - headless commands for frame/audio hashes
 - replay scripts where needed
 - trace capture examples
 
-### Phase 5: Content Polish
+### Phase 6: Final Tightening
 
-- replace placeholder content with supplied real assets
-- tighten scene pacing and transitions
+- simplify any scene that hides failures behind too much detail
 - finalize bank layout and ROM size budgeting
-
-## Real Asset Intake Plan
-
-To avoid generated filler, request assets in a small first wave.
-
-Preferred first-wave assets:
-
-- one title/logo image
-- one background illustration for the compositing scene
-- one tile-friendly image or tileset
-- one sprite sheet
-- one short music reference or MIDI-equivalent source
-- one short mono WAV for MSM5205 preparation
-
-For each asset, capture:
-
-- source file
-- ownership/license status
-- intended scene
-- target conversion format
-- any palette restrictions or color priorities
+- freeze capture points and documented expected outputs
 
 ## Open Decisions To Resolve Before Implementation
 
 - final assembler invocation and build wrapper format
 - ROM bank layout strategy
 - symbol-file format expected from the assembler and any post-processing needed
-- whether DMA is included in the first showcase loop or deferred to a later pass
+- whether DMA is included in the first verification loop or deferred
 - exact checkpoint list for deterministic regression
+- how asset provenance notes are stored and reviewed
 
 ## Recommended Immediate Next Steps
 
 1. Create the minimal ROM build scaffold under `showcase/src/` and
    `showcase/tools/`.
-2. Build the plain bring-up cartridge before requesting large content drops.
-3. Define the first checkpointed scene list and bank budget.
-4. Request the first-wave real assets listed above.
-5. Add a small documented command set for building the ROM and validating it
-   with `vanguard8_headless`.
+2. Define a very small visual language for generated assets before producing
+   scene-specific content.
+3. Build the plain bring-up cartridge before investing in scene polish.
+4. Lock the first checkpointed scene list and bank budget.
+5. Add documented commands for building the ROM and validating it with
+   `vanguard8_headless`.

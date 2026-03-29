@@ -393,6 +393,7 @@ void Core::initialize_tables() {
     ed_opcodes_.assign(256, &Core::op_unimplemented);
 
     opcodes_[0x00] = &Core::op_nop;
+    opcodes_[0x18] = &Core::op_jr_e;
     opcodes_[0x21] = &Core::op_ld_hl_nn;
     opcodes_[0x22] = &Core::op_ld_mem_nn_hl;
     opcodes_[0x31] = &Core::op_ld_sp_nn;
@@ -400,9 +401,11 @@ void Core::initialize_tables() {
     opcodes_[0x3A] = &Core::op_ld_a_mem_nn;
     opcodes_[0x3E] = &Core::op_ld_a_n;
     opcodes_[0x76] = &Core::op_halt;
+    opcodes_[0xAF] = &Core::op_xor_a;
     opcodes_[0xC3] = &Core::op_jp_nn;
     opcodes_[0xC9] = &Core::op_ret;
     opcodes_[0xCD] = &Core::op_call_nn;
+    opcodes_[0xD3] = &Core::op_out_n_a;
     opcodes_[0xED] = &Core::op_ed_prefix;
     opcodes_[0xF3] = &Core::op_di;
     opcodes_[0xFB] = &Core::op_ei;
@@ -582,6 +585,11 @@ void Core::op_ld_a_mem_nn() { af_.bytes.hi = read_logical(fetch_word()); }
 
 void Core::op_ld_a_n() { af_.bytes.hi = fetch_byte(); }
 
+void Core::op_jr_e() {
+    const auto displacement = static_cast<std::int8_t>(fetch_byte());
+    pc_.value = static_cast<std::uint16_t>(pc_.value + displacement);
+}
+
 void Core::op_halt() {
     pc_.value = static_cast<std::uint16_t>(pc_.value - 1U);
     halted_ = true;
@@ -596,6 +604,13 @@ void Core::op_call_nn() {
     push_word(pc_.value);
     pc_.value = target;
 }
+
+void Core::op_xor_a() {
+    af_.bytes.hi = 0x00;
+    af_.bytes.lo = flag_zero | flag_parity_overflow;
+}
+
+void Core::op_out_n_a() { callbacks_.write_port(fetch_byte(), af_.bytes.hi); }
 
 void Core::op_di() { iff1_ = false; iff2_ = false; }
 

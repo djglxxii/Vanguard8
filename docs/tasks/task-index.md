@@ -102,3 +102,7 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 - `M14-T02` Add symbol loading and annotation support.
 - `M14-T03` Close the remaining selected non-essential gaps and deferral
   ledger.
+- `M14-T04` Execute CPU instructions inside the scheduled frame loop for ROM
+  bring-up.
+- `M14-T05` Reject unexpected positional CLI arguments in the desktop
+  frontend.

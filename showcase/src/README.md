@@ -1,11 +1,8 @@
 # Showcase ROM Source
 
-This directory is reserved for the showcase ROM source code and generated ROM-
-side data once implementation begins.
+This directory contains the showcase ROM source and ROM-side generated data.
 
-Planned contents:
-- boot/setup code
-- interrupt/vector setup
-- bank layout declarations
-- scene code
-- ROM-side data tables
+Current milestone-0 entry point:
+- `showcase.asm`
+  Minimal fixed-ROM bootstrap that programs VDP-A into a stable hello screen
+  without pulling in milestone-1 MMU/vector or scene-loop work.

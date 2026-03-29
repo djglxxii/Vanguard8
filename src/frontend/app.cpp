@@ -27,21 +27,6 @@ namespace vanguard8::frontend {
 
 namespace {
 
-struct RuntimeOptions {
-    bool help_requested = false;
-    bool debugger_visible = false;
-    bool list_recent = false;
-    std::optional<std::filesystem::path> rom_path;
-    std::optional<std::size_t> recent_index;
-    std::optional<int> scale;
-    std::optional<std::string> aspect;
-    std::optional<bool> fullscreen;
-    std::optional<bool> frame_pacing;
-    std::vector<std::string> pressed_keys;
-    std::vector<std::string> gamepad1_buttons;
-    std::vector<std::string> gamepad2_buttons;
-};
-
 auto parse_bool_option(const std::string& value) -> bool {
     if (value == "on" || value == "true" || value == "1") {
         return true;
@@ -52,36 +37,44 @@ auto parse_bool_option(const std::string& value) -> bool {
     throw std::invalid_argument("Expected on/off boolean option.");
 }
 
-auto parse_options(int argc, char** argv) -> RuntimeOptions {
-    RuntimeOptions options;
+}  // namespace
+
+auto parse_frontend_options(int argc, char** argv) -> FrontendRuntimeOptions {
+    FrontendRuntimeOptions options;
     for (int index = 1; index < argc; ++index) {
+        auto require_value = [&](const char* option_name) -> std::string {
+            if ((index + 1) >= argc) {
+                throw std::invalid_argument(std::string("Missing value for ") + option_name + '.');
+            }
+            return argv[++index];
+        };
         const std::string arg = argv[index];
         if (arg == "--debugger") {
             options.debugger_visible = true;
             continue;
         }
-        if (arg == "--rom" && (index + 1) < argc) {
-            options.rom_path = argv[++index];
+        if (arg == "--rom") {
+            options.rom_path = require_value("--rom");
             continue;
         }
-        if (arg == "--drop-rom" && (index + 1) < argc) {
-            options.rom_path = argv[++index];
+        if (arg == "--drop-rom") {
+            options.rom_path = require_value("--drop-rom");
             continue;
         }
-        if (arg == "--recent" && (index + 1) < argc) {
-            options.recent_index = static_cast<std::size_t>(std::stoull(argv[++index]));
+        if (arg == "--recent") {
+            options.recent_index = static_cast<std::size_t>(std::stoull(require_value("--recent")));
             continue;
         }
         if (arg == "--list-recent") {
             options.list_recent = true;
             continue;
         }
-        if (arg == "--scale" && (index + 1) < argc) {
-            options.scale = std::stoi(argv[++index]);
+        if (arg == "--scale") {
+            options.scale = std::stoi(require_value("--scale"));
             continue;
         }
-        if (arg == "--aspect" && (index + 1) < argc) {
-            options.aspect = argv[++index];
+        if (arg == "--aspect") {
+            options.aspect = require_value("--aspect");
             continue;
         }
         if (arg == "--fullscreen") {
@@ -92,29 +85,37 @@ auto parse_options(int argc, char** argv) -> RuntimeOptions {
             options.fullscreen = false;
             continue;
         }
-        if (arg == "--frame-pacing" && (index + 1) < argc) {
-            options.frame_pacing = parse_bool_option(argv[++index]);
+        if (arg == "--frame-pacing") {
+            options.frame_pacing = parse_bool_option(require_value("--frame-pacing"));
             continue;
         }
-        if (arg == "--press-key" && (index + 1) < argc) {
-            options.pressed_keys.emplace_back(argv[++index]);
+        if (arg == "--press-key") {
+            options.pressed_keys.emplace_back(require_value("--press-key"));
             continue;
         }
-        if (arg == "--gamepad1-button" && (index + 1) < argc) {
-            options.gamepad1_buttons.emplace_back(argv[++index]);
+        if (arg == "--gamepad1-button") {
+            options.gamepad1_buttons.emplace_back(require_value("--gamepad1-button"));
             continue;
         }
-        if (arg == "--gamepad2-button" && (index + 1) < argc) {
-            options.gamepad2_buttons.emplace_back(argv[++index]);
+        if (arg == "--gamepad2-button") {
+            options.gamepad2_buttons.emplace_back(require_value("--gamepad2-button"));
             continue;
         }
         if (arg == "--help") {
             options.help_requested = true;
             return options;
         }
+        if (!arg.empty() && arg.front() == '-') {
+            throw std::invalid_argument("Unknown frontend argument: " + arg);
+        }
+        throw std::invalid_argument(
+            "Unexpected positional argument '" + arg + "'. Use --rom <path> to launch a ROM."
+        );
     }
     return options;
 }
+
+namespace {
 
 void print_usage() {
     std::cout
@@ -123,7 +124,7 @@ void print_usage() {
            "[--frame-pacing on|off] [--press-key NAME] [--gamepad1-button NAME] [--gamepad2-button NAME]\n";
 }
 
-void apply_config_overrides(core::AppConfig& config, const RuntimeOptions& options) {
+void apply_config_overrides(core::AppConfig& config, const FrontendRuntimeOptions& options) {
     if (options.scale.has_value()) {
         config.display_scale = *options.scale;
     }
@@ -168,7 +169,7 @@ void print_runtime_banner(
     std::cout << "Runtime controls: Escape=quit, F11=fullscreen, F10=print status" << '\n';
 }
 
-void apply_cli_input(InputManager& input, const RuntimeOptions& options) {
+void apply_cli_input(InputManager& input, const FrontendRuntimeOptions& options) {
     for (const auto& key : options.pressed_keys) {
         (void)input.press_key(key);
     }
@@ -272,12 +273,12 @@ auto run_frontend_app(int argc, char** argv) -> int {
     const auto config_path = core::default_config_path();
     auto config = core::load_or_create_config(config_path);
 
-    RuntimeOptions options;
+    FrontendRuntimeOptions options;
     try {
-        options = parse_options(argc, argv);
+        options = parse_frontend_options(argc, argv);
     } catch (const std::exception& error) {
         std::cerr << "Frontend argument error: " << error.what() << '\n';
-        show_frontend_error_dialog("Vanguard 8 Frontend Error", error.what());
+        print_usage();
         return 2;
     }
 

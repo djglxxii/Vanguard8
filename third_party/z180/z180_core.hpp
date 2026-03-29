@@ -185,10 +185,13 @@ class Core {
     void op_ld_mem_nn_a();
     void op_ld_a_mem_nn();
     void op_ld_a_n();
+    void op_jr_e();
     void op_halt();
     void op_jp_nn();
     void op_ret();
     void op_call_nn();
+    void op_xor_a();
+    void op_out_n_a();
     void op_di();
     void op_ei();
     void op_ed_prefix();

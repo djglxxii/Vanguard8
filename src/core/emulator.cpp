@@ -12,7 +12,9 @@ namespace vanguard8::core {
 namespace {
 
 auto make_idle_rom() -> std::vector<std::uint8_t> {
-    return std::vector<std::uint8_t>(memory::CartridgeSlot::fixed_region_size, 0x00);
+    auto rom = std::vector<std::uint8_t>(memory::CartridgeSlot::fixed_region_size, 0x00);
+    rom[0x0000] = 0x76;
+    return rom;
 }
 
 }  // namespace
@@ -35,6 +37,7 @@ void Emulator::reset() {
     master_cycle_ = 0;
     cpu_tstates_ = 0;
     cpu_master_remainder_ = 0;
+    cpu_execution_budget_master_cycles_ = 0;
     completed_frames_ = 0;
     frame_start_cycle_ = 0;
     next_vclk_tick_ = 0;
@@ -50,6 +53,7 @@ void Emulator::load_rom_image(const std::vector<std::uint8_t>& rom_image) {
     master_cycle_ = 0;
     cpu_tstates_ = 0;
     cpu_master_remainder_ = 0;
+    cpu_execution_budget_master_cycles_ = 0;
     completed_frames_ = 0;
     frame_start_cycle_ = 0;
     next_vclk_tick_ = 0;
@@ -175,6 +179,7 @@ auto Emulator::state_snapshot(const std::uint32_t format_version) const -> Emula
         .master_cycle = master_cycle_,
         .cpu_tstates = cpu_tstates_,
         .cpu_master_remainder = cpu_master_remainder_,
+        .cpu_execution_budget_master_cycles = cpu_execution_budget_master_cycles_,
         .completed_frames = completed_frames_,
         .frame_start_cycle = frame_start_cycle_,
         .next_vclk_tick = next_vclk_tick_,
@@ -192,6 +197,7 @@ void Emulator::load_state(const EmulatorState& state) {
     master_cycle_ = state.master_cycle;
     cpu_tstates_ = state.cpu_tstates;
     cpu_master_remainder_ = state.cpu_master_remainder;
+    cpu_execution_budget_master_cycles_ = state.cpu_execution_budget_master_cycles;
     completed_frames_ = state.completed_frames;
     frame_start_cycle_ = state.frame_start_cycle;
     next_vclk_tick_ = state.next_vclk_tick;
@@ -305,6 +311,27 @@ void Emulator::run_cpu_until(const std::uint64_t target_master_cycle) {
     bus_.run_audio(delta);
     bus_.mutable_vdp_a().advance_command(delta);
     bus_.mutable_vdp_b().advance_command(delta);
+    cpu_execution_budget_master_cycles_ += delta;
+
+    while (cpu_execution_budget_master_cycles_ >= timing::cpu_divider) {
+        if (cpu_.halted() && !bus_.int0_asserted() && !bus_.int1_asserted()) {
+            break;
+        }
+
+        const auto step_tstates = cpu_.next_scheduled_tstates();
+        if (step_tstates == 0U) {
+            break;
+        }
+
+        const auto step_master_cycles = step_tstates * timing::cpu_divider;
+        if (step_master_cycles > cpu_execution_budget_master_cycles_) {
+            break;
+        }
+
+        (void)cpu_.step_scheduled_instruction();
+        cpu_execution_budget_master_cycles_ -= step_master_cycles;
+    }
+
     cpu_master_remainder_ += delta;
     const auto advanced_tstates = cpu_master_remainder_ / timing::cpu_divider;
     cpu_tstates_ += advanced_tstates;

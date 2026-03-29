@@ -119,6 +119,8 @@ class Z180Adapter {
     void out0(std::uint8_t port, std::uint8_t value);
     void execute_dma(DmaChannel channel);
     void advance_tstates(std::uint64_t tstates);
+    [[nodiscard]] auto next_scheduled_tstates() const -> std::uint64_t;
+    [[nodiscard]] auto step_scheduled_instruction() -> std::uint64_t;
 
     [[nodiscard]] auto translate_logical_address(std::uint16_t logical_address) const
         -> std::uint32_t;
@@ -172,6 +174,10 @@ class Z180Adapter {
     [[nodiscard]] auto dma_channel1_port() const -> std::uint16_t;
     [[nodiscard]] auto dma_channel1_length() const -> std::uint16_t;
     auto dma_mode_supported(DmaChannel channel) -> bool;
+    [[nodiscard]] auto next_interrupt_service_source() const -> std::optional<InterruptSource>;
+    [[nodiscard]] auto interrupt_service_tstates(InterruptSource source) const -> std::uint64_t;
+    [[nodiscard]] auto current_instruction_tstates() const -> std::uint64_t;
+    [[nodiscard]] auto ed_instruction_tstates(std::uint8_t opcode) const -> std::uint64_t;
     void record_breakpoint_hit(
         BreakpointType type,
         std::uint16_t address,

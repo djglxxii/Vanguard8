@@ -184,6 +184,7 @@ auto SaveState::serialize(const Emulator& emulator) -> std::vector<std::uint8_t>
     writer.pod(state.master_cycle);
     writer.pod(state.cpu_tstates);
     writer.pod(state.cpu_master_remainder);
+    writer.pod(state.cpu_execution_budget_master_cycles);
     writer.pod(state.completed_frames);
     writer.pod(state.frame_start_cycle);
     writer.pod(state.next_vclk_tick);
@@ -200,7 +201,7 @@ void SaveState::load(Emulator& emulator, const std::vector<std::uint8_t>& bytes)
     reader.expect_magic(magic);
 
     const auto version = reader.pod<std::uint32_t>();
-    if (version != format_version) {
+    if (version != 1 && version != format_version) {
         throw std::runtime_error("Unsupported save state version.");
     }
 
@@ -224,6 +225,9 @@ void SaveState::load(Emulator& emulator, const std::vector<std::uint8_t>& bytes)
     state.master_cycle = reader.pod<std::uint64_t>();
     state.cpu_tstates = reader.pod<std::uint64_t>();
     state.cpu_master_remainder = reader.pod<std::uint64_t>();
+    if (version >= 2) {
+        state.cpu_execution_budget_master_cycles = reader.pod<std::uint64_t>();
+    }
     state.completed_frames = reader.pod<std::uint64_t>();
     state.frame_start_cycle = reader.pod<std::uint64_t>();
     state.next_vclk_tick = reader.pod<std::uint64_t>();

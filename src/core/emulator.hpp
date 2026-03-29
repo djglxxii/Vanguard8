@@ -35,6 +35,7 @@ struct EmulatorState {
     std::uint64_t master_cycle = 0;
     std::uint64_t cpu_tstates = 0;
     std::uint64_t cpu_master_remainder = 0;
+    std::uint64_t cpu_execution_budget_master_cycles = 0;
     std::uint64_t completed_frames = 0;
     std::uint64_t frame_start_cycle = 0;
     std::uint64_t next_vclk_tick = 0;
@@ -78,7 +79,7 @@ class Emulator {
     [[nodiscard]] auto vdp_a() const -> const video::V9938&;
     [[nodiscard]] auto vdp_b() const -> const video::V9938&;
     [[nodiscard]] auto loaded_rom_size() const -> std::size_t;
-    [[nodiscard]] auto state_snapshot(std::uint32_t format_version = 1) const -> EmulatorState;
+    [[nodiscard]] auto state_snapshot(std::uint32_t format_version = 2) const -> EmulatorState;
     void load_state(const EmulatorState& state);
 
     [[nodiscard]] auto scheduler_size() const -> std::size_t;
@@ -94,6 +95,7 @@ class Emulator {
     std::uint64_t master_cycle_ = 0;
     std::uint64_t cpu_tstates_ = 0;
     std::uint64_t cpu_master_remainder_ = 0;
+    std::uint64_t cpu_execution_budget_master_cycles_ = 0;
     std::uint64_t completed_frames_ = 0;
     std::uint64_t frame_start_cycle_ = 0;
     std::uint64_t next_vclk_tick_ = 0;

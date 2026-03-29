@@ -60,6 +60,13 @@ auto decode_instruction(
     case 0x00:
         row.mnemonic = "NOP";
         break;
+    case 0x18: {
+        row.length = 2;
+        const auto displacement = static_cast<std::int8_t>(byte1);
+        const auto target = static_cast<std::uint16_t>(address + 2U + displacement);
+        row.mnemonic = "JR " + hex16(target);
+        break;
+    }
     case 0x21:
         row.length = 3;
         row.mnemonic = "LD HL," + hex16(static_cast<std::uint16_t>(byte1 | (byte2 << 8U)));
@@ -87,6 +94,9 @@ auto decode_instruction(
     case 0x76:
         row.mnemonic = "HALT";
         break;
+    case 0xAF:
+        row.mnemonic = "XOR A";
+        break;
     case 0xC3:
         row.length = 3;
         row.mnemonic = "JP " + hex16(static_cast<std::uint16_t>(byte1 | (byte2 << 8U)));
@@ -97,6 +107,10 @@ auto decode_instruction(
     case 0xCD:
         row.length = 3;
         row.mnemonic = "CALL " + hex16(static_cast<std::uint16_t>(byte1 | (byte2 << 8U)));
+        break;
+    case 0xD3:
+        row.length = 2;
+        row.mnemonic = "OUT (" + hex8(byte1) + "),A";
         break;
     case 0xED: {
         const auto ed = byte1;

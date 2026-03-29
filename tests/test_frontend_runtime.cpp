@@ -1,7 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
+#include "frontend/app.hpp"
 #include "frontend/runtime.hpp"
 
+#include <filesystem>
 #include <string>
 #include <utility>
 #include <vector>
@@ -54,6 +57,18 @@ class FakeWindowHost final : public WindowHost {
     void present() override { ++present_count; }
 
     void shutdown() override { shutdown_called = true; }
+};
+
+struct ArgvBuilder {
+    std::vector<std::string> storage;
+    std::vector<char*> argv;
+
+    explicit ArgvBuilder(std::initializer_list<std::string> args) : storage(args) {
+        argv.reserve(storage.size());
+        for (auto& arg : storage) {
+            argv.push_back(arg.data());
+        }
+    }
 };
 
 }  // namespace
@@ -169,4 +184,24 @@ TEST_CASE("window runtime reports startup hook failures after the host creates",
     REQUIRE(error == "startup failure");
     REQUIRE(host.create_called);
     REQUIRE(host.shutdown_called);
+}
+
+TEST_CASE("frontend CLI rejects unexpected positional ROM arguments", "[frontend]") {
+    ArgvBuilder args{"vanguard8_frontend", "build/showcase/showcase.rom"};
+
+    REQUIRE_THROWS_WITH(
+        vanguard8::frontend::parse_frontend_options(static_cast<int>(args.argv.size()), args.argv.data()),
+        Catch::Matchers::ContainsSubstring("Unexpected positional argument") &&
+            Catch::Matchers::ContainsSubstring("Use --rom <path>")
+    );
+}
+
+TEST_CASE("frontend CLI still accepts ROM paths behind --rom", "[frontend]") {
+    ArgvBuilder args{"vanguard8_frontend", "--rom", "build/showcase/showcase.rom"};
+
+    const auto options =
+        vanguard8::frontend::parse_frontend_options(static_cast<int>(args.argv.size()), args.argv.data());
+
+    REQUIRE(options.rom_path.has_value());
+    REQUIRE(*options.rom_path == std::filesystem::path("build/showcase/showcase.rom"));
 }

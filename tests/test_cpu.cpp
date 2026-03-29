@@ -208,6 +208,25 @@ TEST_CASE("HD64180 IN0 and OUT0 cover non-A register variants and non-MMU intern
     REQUIRE(result.registers.bbr == 0x12);
 }
 
+TEST_CASE("extracted CPU supports plain OUT XOR A and JR used by ROM bring-up", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0x3E, 0x0A,       // LD A,0x0A
+        0xD3, 0x50,       // OUT (0x50),A
+        0xAF,             // XOR A
+        0x18, 0x01,       // JR +1
+        0x00,             // NOP (skipped)
+        0x76,             // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+    cpu.run_until_halt(8);
+
+    REQUIRE(bus.ay8910().selected_register() == 0x0A);
+    REQUIRE(cpu.accumulator() == 0x00);
+    REQUIRE(cpu.halted());
+}
+
 TEST_CASE("Illegal BBR writes warn and alias the bank window into SRAM space", "[cpu]") {
     vanguard8::core::Bus bus{};
     vanguard8::core::cpu::Z180Adapter cpu{bus};

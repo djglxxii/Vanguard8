@@ -13,12 +13,17 @@ Current repo state:
 - A dedicated `showcase/` workspace is reserved for a ROM-side demonstration
   cartridge, asset pipeline, and showcase-specific regression work so that ROM
   authoring stays separate from the emulator implementation tree.
-- The current `vanguard8_frontend` binary is not yet a live desktop GUI
-  application. It prints frontend/debugger status to the terminal and can build
-  deterministic frame data, but it does not currently open an SDL/OpenGL window
-  or render an interactive Dear ImGui debugger on screen.
-- Desktop GUI implementation requirements and the milestone-12+ roadmap now
-  live in `docs/emulator/10-desktop-gui-audit.md` and
+- The current `vanguard8_frontend` binary is a live SDL/OpenGL desktop runtime.
+  It opens a persistent window, presents composited video, and can launch a ROM
+  directly with `--rom`.
+- When no ROM is supplied, `vanguard8_frontend` falls back to the built-in
+  dual-VDP fixture frame used for desktop bring-up. That output is a diagnostic
+  fixture, not a meaningful game scene.
+- The live desktop debugger UI is still incomplete: `--debugger` is currently a
+  status/debug flag and the repo does not yet render interactive Dear ImGui
+  panels on screen.
+- Remaining desktop debugger work and related roadmap notes now live in
+  `docs/emulator/10-desktop-gui-audit.md` and
   `docs/emulator/07-implementation-plan.md`.
 
 **Design constraint:** No custom silicon. Every chip was commercially available
@@ -99,12 +104,14 @@ Implemented headline properties:
 - YM2151, AY-3-8910, and MSM5205 audio via the libraries documented in
   `docs/emulator/05-audio.md`.
 
-Planned-but-not-yet-live desktop features:
+Current desktop status:
 
-- SDL2 desktop window and OpenGL presentation path.
-- Interactive Dear ImGui debugger rendering.
-- Live audio device playback and runtime desktop UX around ROM loading,
-  fullscreen, drag-and-drop, and overlays.
+- SDL2 desktop window and OpenGL presentation path are live.
+- Live audio device playback and narrow runtime UX around ROM launch,
+  fullscreen, and input/status controls are live.
+- Interactive Dear ImGui debugger rendering is still not live.
+- Broader desktop UX such as drag-and-drop and richer overlays remains future
+  work.
 
 ---
 

@@ -12,5 +12,5 @@ Execution rules:
 - Do not pull in later work after milestone `14` until the plan is explicitly
   revised.
 - Keep milestone `14` work inside `src/core/`, `src/debugger/`,
-  `src/frontend/`, `tests/`, and `docs/` unless the milestone contract changes
-  in the same edit.
+  `src/frontend/`, `tests/`, `docs/`, and narrow extracted-Z180 changes inside
+  `third_party/` as allowed by the milestone contract.

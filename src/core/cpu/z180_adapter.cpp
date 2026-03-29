@@ -1,5 +1,7 @@
 #include "core/cpu/z180_adapter.hpp"
 
+#include <sstream>
+
 namespace vanguard8::core::cpu {
 
 Z180Adapter::Z180Adapter(core::Bus& bus)
@@ -161,6 +163,32 @@ void Z180Adapter::out0(const std::uint8_t port, const std::uint8_t value) {
 
 void Z180Adapter::advance_tstates(const std::uint64_t tstates) { core_.advance_tstates(tstates); }
 
+auto Z180Adapter::next_scheduled_tstates() const -> std::uint64_t {
+    if (const auto interrupt = next_interrupt_service_source(); interrupt.has_value()) {
+        return interrupt_service_tstates(*interrupt);
+    }
+
+    if (halted()) {
+        return 0;
+    }
+
+    return current_instruction_tstates();
+}
+
+auto Z180Adapter::step_scheduled_instruction() -> std::uint64_t {
+    if (const auto service = service_pending_interrupt(); service.has_value()) {
+        return interrupt_service_tstates(service->source);
+    }
+
+    if (halted()) {
+        return 0;
+    }
+
+    const auto tstates = current_instruction_tstates();
+    step_instruction();
+    return tstates;
+}
+
 void Z180Adapter::execute_dma(const DmaChannel channel) {
     if (!dma_mode_supported(channel)) {
         return;
@@ -265,6 +293,110 @@ auto Z180Adapter::run_until_breakpoint_or_halt(const std::size_t max_instruction
     result.halted = halted();
     pending_breakpoint_hit_.reset();
     return result;
+}
+
+auto Z180Adapter::next_interrupt_service_source() const -> std::optional<InterruptSource> {
+    const auto registers = state_snapshot().registers;
+
+    if (bus_.int0_asserted() && registers.iff1 && registers.interrupt_mode == 1) {
+        return InterruptSource::int0;
+    }
+    if (bus_.int1_asserted() && registers.iff1 && (registers.itc & 0x02U) != 0U) {
+        return InterruptSource::int1;
+    }
+    if (registers.iff1 && (registers.tcr & 0x50U) == 0x50U) {
+        return InterruptSource::prt0;
+    }
+    if (registers.iff1 && (registers.tcr & 0xA0U) == 0xA0U) {
+        return InterruptSource::prt1;
+    }
+    return std::nullopt;
+}
+
+auto Z180Adapter::interrupt_service_tstates(const InterruptSource source) const -> std::uint64_t {
+    switch (source) {
+    case InterruptSource::int0:
+        return 13;
+    case InterruptSource::int1:
+    case InterruptSource::prt0:
+    case InterruptSource::prt1:
+        return 13;
+    }
+    return 13;
+}
+
+auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
+    const auto opcode = peek_logical(pc());
+
+    switch (opcode) {
+    case 0x00:
+    case 0xAF:
+    case 0xF3:
+    case 0xFB:
+        return 4;
+    case 0x18:
+        return 12;
+    case 0x21:
+    case 0x31:
+    case 0xC3:
+        return 10;
+    case 0x22:
+        return 16;
+    case 0x32:
+    case 0x3A:
+        return 13;
+    case 0x3E:
+        return 7;
+    case 0x76:
+        return 4;
+    case 0xC9:
+        return 10;
+    case 0xCD:
+        return 17;
+    case 0xD3:
+        return 11;
+    case 0xED:
+        return ed_instruction_tstates(peek_logical(static_cast<std::uint16_t>(pc() + 1U)));
+    default:
+        {
+            std::ostringstream stream;
+            stream << "Unsupported timed Z180 opcode 0x" << std::uppercase << std::hex
+                   << static_cast<int>(opcode) << " at PC 0x" << pc();
+            throw std::runtime_error(stream.str());
+        }
+    }
+}
+
+auto Z180Adapter::ed_instruction_tstates(const std::uint8_t opcode) const -> std::uint64_t {
+    switch (opcode) {
+    case 0x39:
+        return 12;
+    case 0x47:
+        return 9;
+    case 0x4D:
+        return 14;
+    case 0x64:
+        return 9;
+    default:
+        if ((opcode & 0xC7U) == 0x00U && ((opcode >> 3U) & 0x07U) != 0x06U) {
+            return 12;
+        }
+        if ((opcode & 0xC7U) == 0x01U && ((opcode >> 3U) & 0x07U) != 0x06U) {
+            return 12;
+        }
+        if ((opcode & 0xC7U) == 0x04U && ((opcode >> 3U) & 0x07U) != 0x06U) {
+            return 8;
+        }
+        if ((opcode & 0xCFU) == 0x4CU) {
+            return 17;
+        }
+        {
+            std::ostringstream stream;
+            stream << "Unsupported timed Z180 ED opcode 0x" << std::uppercase << std::hex
+                   << static_cast<int>(opcode) << " at PC 0x" << pc();
+            throw std::runtime_error(stream.str());
+        }
+    }
 }
 
 auto Z180Adapter::read_dma_register(const std::uint8_t port) const -> std::optional<std::uint8_t> {

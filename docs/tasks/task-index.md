@@ -106,3 +106,5 @@ Derived from `docs/emulator/07-implementation-plan.md`.
   bring-up.
 - `M14-T05` Reject unexpected positional CLI arguments in the desktop
   frontend.
+- `M14-T06` Restore documented desktop frame pacing fallback in the runtime
+  loop.

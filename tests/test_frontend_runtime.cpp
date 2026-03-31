@@ -6,6 +6,7 @@
 
 #include <filesystem>
 #include <string>
+#include <chrono>
 #include <utility>
 #include <vector>
 
@@ -90,6 +91,7 @@ TEST_CASE("window runtime creates pumps and shuts down through the host seam", "
             .logical_height = 212,
             .scale = 3,
             .fullscreen = true,
+            .frame_pacing = false,
         },
         RuntimeHooks{
             .on_frame = [&](std::string&) {
@@ -141,7 +143,7 @@ TEST_CASE("window runtime forwards input events to the callback hook", "[fronten
     std::string error;
     const auto result = vanguard8::frontend::run_window_runtime(
         host,
-        WindowConfig{},
+        WindowConfig{.frame_pacing = false},
         RuntimeHooks{
             .on_event =
                 [&](const RuntimeEvent& event) {
@@ -184,6 +186,75 @@ TEST_CASE("window runtime reports startup hook failures after the host creates",
     REQUIRE(error == "startup failure");
     REQUIRE(host.create_called);
     REQUIRE(host.shutdown_called);
+}
+
+TEST_CASE("window runtime applies the 59.94 Hz pacing fallback when enabled", "[frontend]") {
+    using Clock = vanguard8::frontend::RuntimeTimingHooks::Clock;
+
+    FakeWindowHost host;
+    host.event_batches = {
+        {},
+        {RuntimeEvent{.type = RuntimeEventType::quit}},
+    };
+
+    int frame_count = 0;
+    Clock::time_point now{};
+    std::vector<Clock::duration> sleep_calls;
+    std::string error;
+    const auto result = vanguard8::frontend::run_window_runtime(
+        host,
+        WindowConfig{.frame_pacing = true},
+        RuntimeHooks{
+            .on_frame = [&](std::string&) {
+                ++frame_count;
+                return true;
+            },
+        },
+        vanguard8::frontend::RuntimeTimingHooks{
+            .now = [&] { return now; },
+            .sleep_for =
+                [&](const Clock::duration duration) {
+                    sleep_calls.push_back(duration);
+                    now += duration;
+                },
+        },
+        error
+    );
+
+    REQUIRE(result == 0);
+    REQUIRE(error.empty());
+    REQUIRE(frame_count == 2);
+    REQUIRE(sleep_calls.size() == 1);
+    REQUIRE(sleep_calls.front() == std::chrono::nanoseconds{16'683'333});
+}
+
+TEST_CASE("window runtime skips the pacing fallback when disabled", "[frontend]") {
+    using Clock = vanguard8::frontend::RuntimeTimingHooks::Clock;
+
+    FakeWindowHost host;
+    host.event_batches = {
+        {},
+        {RuntimeEvent{.type = RuntimeEventType::quit}},
+    };
+
+    std::vector<Clock::duration> sleep_calls;
+    std::string error;
+    const auto result = vanguard8::frontend::run_window_runtime(
+        host,
+        WindowConfig{.frame_pacing = false},
+        RuntimeHooks{
+            .on_frame = [](std::string&) { return true; },
+        },
+        vanguard8::frontend::RuntimeTimingHooks{
+            .now = [] { return Clock::time_point{}; },
+            .sleep_for = [&](const Clock::duration duration) { sleep_calls.push_back(duration); },
+        },
+        error
+    );
+
+    REQUIRE(result == 0);
+    REQUIRE(error.empty());
+    REQUIRE(sleep_calls.empty());
 }
 
 TEST_CASE("frontend CLI rejects unexpected positional ROM arguments", "[frontend]") {

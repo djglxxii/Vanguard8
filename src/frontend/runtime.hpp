@@ -1,5 +1,6 @@
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <string>
 #include <string_view>
@@ -28,6 +29,7 @@ struct WindowConfig {
     int scale = 4;
     bool fullscreen = false;
     bool hidden = false;
+    bool frame_pacing = true;
 };
 
 class WindowHost {
@@ -49,6 +51,22 @@ struct RuntimeHooks {
     std::function<bool(std::string&)> on_frame{};
     std::function<void()> on_shutdown{};
 };
+
+struct RuntimeTimingHooks {
+    using Clock = std::chrono::steady_clock;
+
+    std::function<Clock::time_point()> now{};
+    std::function<void(Clock::duration)> sleep_for{};
+    Clock::duration frame_period = std::chrono::nanoseconds{16'683'333};
+};
+
+[[nodiscard]] auto run_window_runtime(
+    WindowHost& window_host,
+    const WindowConfig& config,
+    const RuntimeHooks& hooks,
+    const RuntimeTimingHooks& timing_hooks,
+    std::string& error
+) -> int;
 
 [[nodiscard]] auto run_window_runtime(
     WindowHost& window_host,

@@ -15,9 +15,9 @@ The CPU runs at master ÷ 2 (7.15909 MHz), so one CPU T-state = 2 master cycles.
 Current frontend note:
 - The scheduler and frame-production model are implemented and verified through
   the core/headless paths.
-- The live desktop loop that continuously presents frames in a visible window
-  is still future work tracked by `docs/emulator/10-desktop-gui-audit.md` and
-  milestones 12 through 14.
+- The live desktop loop exists in `src/frontend/runtime.*` and now honors the
+  documented `frame_pacing` toggle by applying a software 59.94 Hz fallback
+  limiter when the host is not otherwise pacing presentation.
 
 ---
 

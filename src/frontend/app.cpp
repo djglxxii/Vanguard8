@@ -343,6 +343,7 @@ auto run_frontend_app(int argc, char** argv) -> int {
         .logical_height = 212,
         .scale = config.display_scale,
         .fullscreen = config.fullscreen,
+        .frame_pacing = config.frame_pacing,
     };
 
     RuntimeHooks hooks;

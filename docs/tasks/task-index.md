@@ -108,3 +108,8 @@ Derived from `docs/emulator/07-implementation-plan.md`.
   frontend.
 - `M14-T06` Restore documented desktop frame pacing fallback in the runtime
   loop.
+
+## Milestone 15
+
+- `M15-T01` Fix the timed `INT1` audio bring-up path blocking the showcase
+  milestone-5 ROM scene.

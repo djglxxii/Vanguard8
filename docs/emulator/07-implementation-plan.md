@@ -84,6 +84,7 @@ Workflow:
 | 12 | Deliver a playable desktop frontend baseline for ROM bring-up |
 | 13 | Close critical pre-GUI audit items that block real ROM testing |
 | 14 | Add lightweight bring-up tooling and selected non-essential closure |
+| 15 | Patch the timed HD64180 ROM path for INT1-driven audio bring-up |
 
 ## Milestones
 
@@ -481,6 +482,41 @@ Exit criteria:
   lightweight diagnostic output without needing a full live debugger UI
 - Remaining omissions are narrow, deliberate, and documented
 
+### Milestone 15 — Timed HD64180 INT1 Audio Bring-Up Patch
+
+Objective:
+- Close the narrow timed-CPU compatibility gap that blocks the first real
+  ROM-driven audio scene: vectored `INT1` dispatch during scheduled execution
+  plus the minimal additional opcode surface needed for documented YM2151 busy
+  polling and MSM5205 nibble-feed state handling.
+
+Deliverables:
+- Reproducing regression coverage for the timed `INT1` real-ROM failure path
+- A fix for the timed extracted-Z180 vectored `INT1` execution path when ROM
+- driven code enables the documented audio flow
+- The smallest additional timed opcode coverage proven necessary by the
+  failing ROM-driven audio scene
+- Documentation tying the fix back to the blocked showcase milestone-5 task
+  without implementing the showcase scene inside the emulator milestone
+
+Milestone-15 closure rule:
+- Keep this as a compatibility patch milestone, not a general “complete the
+  CPU” effort. Add only the interrupt/path corrections and opcode coverage that
+  real ROM bring-up proves necessary.
+
+Tests:
+- Timed CPU regression coverage reproducing the pre-fix `INT1` vectored failure
+- Normal emulator-runtime coverage proving ROM execution survives the first
+  audio-window transition without falling into the vector-table pointer
+- Focused opcode tests for any newly supported instructions
+
+Exit criteria:
+- The emulator no longer aborts on the blocked milestone-5 ROM audio bring-up
+  path because of timed `INT1` dispatch or the newly required covered opcode
+  surface
+- The showcase milestone-5 blocker can be cleared to resume ROM-side audio
+  work, with any remaining limitations narrow and documented
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:
@@ -556,6 +592,16 @@ Meaning:
   non-essential closures that proved necessary during ROM bring-up, without
   requiring a full live debugger project.
 
+### Gate I — First Real-ROM Audio Bring-Up Closure
+
+Required milestones:
+- 0 through 15
+
+Meaning:
+- The emulator can execute the first ROM-driven INT1/audio compatibility path
+  needed to resume showcase-ROM audio verification work without falling over in
+  the timed CPU core.
+
 ## Recommended Order of Work Inside the Repo
 
 1. Build and test scaffolding
@@ -572,6 +618,7 @@ Meaning:
 12. Playable desktop ROM bring-up baseline
 13. Critical real-ROM compatibility closure
 14. Lightweight tooling and selected non-essential closure
+15. Timed HD64180 INT1 audio compatibility patch
 
 ## Definition of Done for Each Milestone
 

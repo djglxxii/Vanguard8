@@ -1,6 +1,6 @@
 # SR05-T01 — Add the Audio Verification Scene and Deterministic Audio Checkpoints
 
-Status: `planned`
+Status: `active`
 Milestone: `5`
 Depends on: `SR04-T01`
 
@@ -25,4 +25,3 @@ Done when:
 
 Completion summary:
 - Pending. Append before moving to `showcase/tasks/completed/`.
-

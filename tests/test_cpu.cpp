@@ -227,6 +227,63 @@ TEST_CASE("extracted CPU supports plain OUT XOR A and JR used by ROM bring-up", 
     REQUIRE(cpu.halted());
 }
 
+TEST_CASE("extracted CPU covers ROM audio nibble-fetch opcodes", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0x31, 0x00, 0xFF,             // LD SP,0xFF00
+        0xF5,                         // PUSH AF
+        0x2A, 0x00, 0x80,             // LD HL,(0x8000)
+        0x7E,                         // LD A,(HL)
+        0xE6, 0xF0,                   // AND 0xF0
+        0x0F, 0x0F, 0x0F, 0x0F,       // RRCA x4
+        0x23,                         // INC HL
+        0x22, 0x00, 0x80,             // LD (0x8000),HL
+        0xF1,                         // POP AF
+        0x76,                         // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    state.registers.af = 0x1234;
+    state.registers.cbar = 0x48;
+    state.registers.cbr = 0xF0;
+    state.registers.bbr = 0x04;
+    bus.write_memory(0xF0000, 0x10);
+    bus.write_memory(0xF0001, 0x80);
+    bus.write_memory(0xF0010, 0xB0);
+    cpu.load_state_snapshot(state);
+
+    cpu.run_until_halt(32);
+    const auto final_state = cpu.state_snapshot();
+
+    REQUIRE(final_state.registers.af == 0x1234);
+    REQUIRE(final_state.registers.hl == 0x8011);
+    REQUIRE(bus.read_memory(0xF0000) == 0x11);
+    REQUIRE(bus.read_memory(0xF0001) == 0x80);
+}
+
+TEST_CASE("extracted CPU covers YM status polling branch opcodes used by ROM audio bring-up", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0xDB, 0x00,                   // IN A,(0x00)
+        0xED, 0x64, 0x80,             // TST 0x80
+        0x20, 0x02,                   // JR NZ,+2
+        0x3E, 0x11,                   // LD A,0x11 (skipped)
+        0x76,                         // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+    bus.mutable_controller_ports().load_state(
+        vanguard8::core::io::ControllerPortsState{.port_state = {0xFF, 0xFF}}
+    );
+
+    cpu.run_until_halt(16);
+
+    REQUIRE(cpu.accumulator() == 0xFF);
+    REQUIRE(cpu.halted());
+}
+
 TEST_CASE("Illegal BBR writes warn and alias the bank window into SRAM space", "[cpu]") {
     vanguard8::core::Bus bus{};
     vanguard8::core::cpu::Z180Adapter cpu{bus};

@@ -4,6 +4,12 @@
 
 namespace vanguard8::core::cpu {
 
+namespace {
+
+constexpr std::uint8_t flag_zero = 0x40;
+
+}
+
 Z180Adapter::Z180Adapter(core::Bus& bus)
     : bus_(bus),
       core_(third_party::z180::Callbacks{
@@ -330,33 +336,45 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
 
     switch (opcode) {
     case 0x00:
+    case 0x0F:
     case 0xAF:
     case 0xF3:
     case 0xFB:
         return 4;
     case 0x18:
         return 12;
+    case 0x20:
+        return (core_.register_snapshot().af & flag_zero) == 0U ? 12 : 7;
     case 0x21:
+    case 0x2A:
     case 0x31:
     case 0xC3:
         return 10;
+    case 0x23:
+        return 6;
     case 0x22:
         return 16;
     case 0x32:
     case 0x3A:
         return 13;
     case 0x3E:
+    case 0x7E:
+    case 0xE6:
         return 7;
     case 0x76:
         return 4;
     case 0xC9:
+    case 0xF1:
         return 10;
     case 0xCD:
         return 17;
     case 0xD3:
+    case 0xDB:
         return 11;
     case 0xED:
         return ed_instruction_tstates(peek_logical(static_cast<std::uint16_t>(pc() + 1U)));
+    case 0xF5:
+        return 11;
     default:
         {
             std::ostringstream stream;

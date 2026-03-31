@@ -1,6 +1,6 @@
 # M15-T01 — Fix the Timed INT1 Audio Bring-Up Path
 
-Status: `planned`
+Status: `completed`
 Milestone: `15`
 Depends on: `M14-T06`
 
@@ -31,4 +31,15 @@ Done when:
   what remains intentionally deferred.
 
 Completion summary:
-- Pending. Append before moving to `docs/tasks/completed/`.
+- Reproduced the blocked runtime path with new integration coverage and found
+  that vectored `INT1` dispatch was already landing at the real handler PC in
+  the normal frame loop; the blocker was the timed opcode surface still being
+  too narrow for the first ROM-driven audio window, not a remaining vector-table
+  jump bug.
+- Extended the extracted HD64180 subset and timed-cycle table only for the
+  first documented audio bring-up path: `RRCA`, `JR NZ`, `INC HL`, `LD HL,(nn)`,
+  `LD A,(HL)`, `AND n`, `IN A,(n)`, `POP AF`, and `PUSH AF`.
+- Added focused CPU coverage for the new opcode surface plus an integration ROM
+  that busy-polls YM2151 status, enables MSM5205 `/VCLK`, and feeds the first
+  ADPCM nibble through `INT1`, so the showcase milestone-5 audio task can
+  resume without another emulator-plan change.

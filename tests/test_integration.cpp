@@ -1,4 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
+#include <catch2/matchers/catch_matchers_exception.hpp>
+#include <catch2/matchers/catch_matchers_string.hpp>
 
 #include "core/emulator.hpp"
 #include "core/memory/cartridge.hpp"
@@ -40,6 +42,94 @@ auto make_frame_loop_rom() -> std::vector<std::uint8_t> {
     rom[0x0011] = 0x3E; rom[0x0012] = 0x87;  // LD A,0x87
     rom[0x0013] = 0xD3; rom[0x0014] = 0x81;  // OUT (0x81),A
     rom[0x0015] = 0xC3; rom[0x0016] = 0x15; rom[0x0017] = 0x00;  // JP 0x0015
+
+    return rom;
+}
+
+auto make_int1_runtime_rom(const std::uint8_t first_handler_opcode) -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xF3;                                     // DI
+    rom[0x0001] = 0x3E; rom[0x0002] = 0x48;                // LD A,0x48
+    rom[0x0003] = 0xED; rom[0x0004] = 0x39; rom[0x0005] = 0x3A;  // OUT0 (0x3A),A
+    rom[0x0006] = 0x3E; rom[0x0007] = 0xF0;                // LD A,0xF0
+    rom[0x0008] = 0xED; rom[0x0009] = 0x39; rom[0x000A] = 0x38;  // OUT0 (0x38),A
+    rom[0x000B] = 0x3E; rom[0x000C] = 0x04;                // LD A,0x04
+    rom[0x000D] = 0xED; rom[0x000E] = 0x39; rom[0x000F] = 0x39;  // OUT0 (0x39),A
+    rom[0x0010] = 0x3E; rom[0x0011] = 0x80;                // LD A,0x80
+    rom[0x0012] = 0xED; rom[0x0013] = 0x47;                // LD I,A
+    rom[0x0014] = 0x3E; rom[0x0015] = 0xE0;                // LD A,0xE0
+    rom[0x0016] = 0xED; rom[0x0017] = 0x39; rom[0x0018] = 0x33;  // OUT0 (0x33),A
+    rom[0x0019] = 0x3E; rom[0x001A] = 0x02;                // LD A,0x02
+    rom[0x001B] = 0xED; rom[0x001C] = 0x39; rom[0x001D] = 0x34;  // OUT0 (0x34),A
+    rom[0x001E] = 0x21; rom[0x001F] = 0x5A; rom[0x0020] = 0x00;  // LD HL,0x005A
+    rom[0x0021] = 0x22; rom[0x0022] = 0xE0; rom[0x0023] = 0x80;  // LD (0x80E0),HL
+    rom[0x0024] = 0xFB;                                     // EI
+    rom[0x0025] = 0xC3; rom[0x0026] = 0x25; rom[0x0027] = 0x00;  // JP 0x0025
+
+    rom[0x005A] = first_handler_opcode;
+    rom[0x005B] = 0x3E; rom[0x005C] = 0x55;                // LD A,0x55
+    rom[0x005D] = 0x32; rom[0x005E] = 0x02; rom[0x005F] = 0x81;  // LD (0x8102),A
+    rom[0x0060] = 0xFB;                                     // EI
+    rom[0x0061] = 0xED; rom[0x0062] = 0x4D;                // RETI
+
+    return rom;
+}
+
+auto make_audio_window_runtime_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xF3;                                     // DI
+    rom[0x0001] = 0x31; rom[0x0002] = 0x00; rom[0x0003] = 0xFF;  // LD SP,0xFF00
+    rom[0x0004] = 0x3E; rom[0x0005] = 0x48;                // LD A,0x48
+    rom[0x0006] = 0xED; rom[0x0007] = 0x39; rom[0x0008] = 0x3A;  // OUT0 (0x3A),A
+    rom[0x0009] = 0x3E; rom[0x000A] = 0xF0;                // LD A,0xF0
+    rom[0x000B] = 0xED; rom[0x000C] = 0x39; rom[0x000D] = 0x38;  // OUT0 (0x38),A
+    rom[0x000E] = 0x3E; rom[0x000F] = 0x04;                // LD A,0x04
+    rom[0x0010] = 0xED; rom[0x0011] = 0x39; rom[0x0012] = 0x39;  // OUT0 (0x39),A
+    rom[0x0013] = 0x3E; rom[0x0014] = 0x80;                // LD A,0x80
+    rom[0x0015] = 0xED; rom[0x0016] = 0x47;                // LD I,A
+    rom[0x0017] = 0x3E; rom[0x0018] = 0xE0;                // LD A,0xE0
+    rom[0x0019] = 0xED; rom[0x001A] = 0x39; rom[0x001B] = 0x33;  // OUT0 (0x33),A
+    rom[0x001C] = 0x3E; rom[0x001D] = 0x02;                // LD A,0x02
+    rom[0x001E] = 0xED; rom[0x001F] = 0x39; rom[0x0020] = 0x34;  // OUT0 (0x34),A
+    rom[0x0021] = 0x21; rom[0x0022] = 0x60; rom[0x0023] = 0x00;  // LD HL,0x0060
+    rom[0x0024] = 0x22; rom[0x0025] = 0xE0; rom[0x0026] = 0x80;  // LD (0x80E0),HL
+    rom[0x0027] = 0x21; rom[0x0028] = 0x20; rom[0x0029] = 0x01;  // LD HL,0x0120
+    rom[0x002A] = 0x22; rom[0x002B] = 0x08; rom[0x002C] = 0x81;  // LD (0x8108),HL
+    rom[0x002D] = 0x3E; rom[0x002E] = 0x20;                // LD A,0x20
+    rom[0x002F] = 0xD3; rom[0x0030] = 0x40;                // OUT (0x40),A
+    rom[0x0031] = 0xDB; rom[0x0032] = 0x40;                // IN A,(0x40)
+    rom[0x0033] = 0xED; rom[0x0034] = 0x64; rom[0x0035] = 0x80;  // TST 0x80
+    rom[0x0036] = 0x20; rom[0x0037] = 0xF9;                // JR NZ,0x0031
+    rom[0x0038] = 0x3E; rom[0x0039] = 0xC0;                // LD A,0xC0
+    rom[0x003A] = 0xD3; rom[0x003B] = 0x41;                // OUT (0x41),A
+    rom[0x003C] = 0x3E; rom[0x003D] = 0xCC;                // LD A,0xCC
+    rom[0x003E] = 0x32; rom[0x003F] = 0x04; rom[0x0040] = 0x81;  // LD (0x8104),A
+    rom[0x0041] = 0x3E; rom[0x0042] = 0x02;                // LD A,0x02
+    rom[0x0043] = 0xD3; rom[0x0044] = 0x60;                // OUT (0x60),A
+    rom[0x0045] = 0xFB;                                     // EI
+    rom[0x0046] = 0xC3; rom[0x0047] = 0x46; rom[0x0048] = 0x00;  // JP 0x0046
+
+    rom[0x0060] = 0xF5;                                     // PUSH AF
+    rom[0x0061] = 0x2A; rom[0x0062] = 0x08; rom[0x0063] = 0x81;  // LD HL,(0x8108)
+    rom[0x0064] = 0x7E;                                     // LD A,(HL)
+    rom[0x0065] = 0xE6; rom[0x0066] = 0xF0;                // AND 0xF0
+    rom[0x0067] = 0x0F;                                     // RRCA
+    rom[0x0068] = 0x0F;                                     // RRCA
+    rom[0x0069] = 0x0F;                                     // RRCA
+    rom[0x006A] = 0x0F;                                     // RRCA
+    rom[0x006B] = 0xD3; rom[0x006C] = 0x61;                // OUT (0x61),A
+    rom[0x006D] = 0x32; rom[0x006E] = 0x02; rom[0x006F] = 0x81;  // LD (0x8102),A
+    rom[0x0070] = 0x23;                                     // INC HL
+    rom[0x0071] = 0x22; rom[0x0072] = 0x08; rom[0x0073] = 0x81;  // LD (0x8108),HL
+    rom[0x0074] = 0x3E; rom[0x0075] = 0x83;                // LD A,0x83
+    rom[0x0076] = 0xD3; rom[0x0077] = 0x60;                // OUT (0x60),A
+    rom[0x0078] = 0xF1;                                     // POP AF
+    rom[0x0079] = 0xFB;                                     // EI
+    rom[0x007A] = 0xED; rom[0x007B] = 0x4D;                // RETI
+
+    rom[0x0120] = 0xA0;                                     // First packed nibble = 0x0A
 
     return rom;
 }
@@ -177,4 +267,43 @@ TEST_CASE("frame loop executes ROM instructions and reaches ROM-driven VDP state
     const auto frame = Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b());
     REQUIRE_FALSE(frame.empty());
     REQUIRE(std::array<std::uint8_t, 3>{frame[0], frame[1], frame[2]} == emulator.vdp_a().palette_entry_rgb(1));
+}
+
+TEST_CASE("frame loop can service a ROM-driven INT1 handler through the normal runtime path", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_int1_runtime_rom(0x00));
+    emulator.set_vclk_rate(VclkRate::hz_8000);
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(emulator.mutable_cpu().peek_logical(0x8102) == 0x55);
+    REQUIRE(emulator.bus().msm5205().vclk_count() > 0U);
+}
+
+TEST_CASE("frame loop executes the first blocked audio window through YM polling and INT1 nibble feed", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_audio_window_runtime_rom());
+    emulator.set_vclk_rate(VclkRate::hz_8000);
+
+    REQUIRE_NOTHROW(emulator.run_frames(2));
+    REQUIRE(emulator.mutable_cpu().peek_logical(0x8104) == 0xCC);
+    REQUIRE(emulator.mutable_cpu().peek_logical(0x8102) == 0x0A);
+    REQUIRE(emulator.mutable_cpu().peek_logical(0x8108) == 0x21);
+    REQUIRE(emulator.mutable_cpu().peek_logical(0x8109) == 0x01);
+    REQUIRE(emulator.bus().msm5205().latched_nibble() == 0x0A);
+    REQUIRE(emulator.bus().msm5205().vclk_count() > 0U);
+    REQUIRE(emulator.bus().ym2151().latched_address() == 0x20);
+}
+
+TEST_CASE("unsupported handler opcodes are reported at the handler PC after INT1 dispatch", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_int1_runtime_rom(0xDD));
+    emulator.set_vclk_rate(VclkRate::hz_8000);
+
+    REQUIRE_THROWS_MATCHES(
+        emulator.run_frames(1),
+        std::runtime_error,
+        Catch::Matchers::MessageMatches(
+            Catch::Matchers::ContainsSubstring("PC 0x5a", Catch::CaseSensitive::No)
+        )
+    );
 }

@@ -45,6 +45,7 @@ struct RegisterSnapshot {
     std::uint8_t interrupt_mode = 0;
     bool iff1 = false;
     bool iff2 = false;
+    std::uint8_t ei_delay = 0;
     bool halted = false;
     std::uint8_t tcr = 0;
     std::uint16_t tmdr0 = 0;
@@ -141,6 +142,7 @@ class Core {
     std::uint8_t interrupt_mode_ = 0x00;
     bool iff1_ = false;
     bool iff2_ = false;
+    std::uint8_t ei_delay_ = 0;
     bool halted_ = false;
     struct TimerChannel {
         Pair tmdr{};

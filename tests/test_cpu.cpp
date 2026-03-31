@@ -347,6 +347,39 @@ TEST_CASE("INT1 uses the HD64180 I IL vectored path independent of IM mode", "[c
     REQUIRE(service->handler_address == 0x1234);
 }
 
+TEST_CASE("EI defers vectored interrupt acceptance until after the following instruction", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0xFB,  // EI
+        0x00,  // NOP
+        0x76,  // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    cpu.out0(0x3A, 0x48);
+    cpu.out0(0x38, 0xF0);
+    cpu.out0(0x33, 0xE0);
+    cpu.out0(0x34, 0x02);
+    cpu.set_register_i(0x80);
+
+    bus.write_memory(0xF00E0, 0x34);
+    bus.write_memory(0xF00E1, 0x12);
+    bus.set_int1(true);
+
+    cpu.step_instruction();
+    REQUIRE(cpu.pc() == 0x0001);
+    REQUIRE_FALSE(cpu.service_pending_interrupt().has_value());
+
+    cpu.step_instruction();
+    REQUIRE(cpu.pc() == 0x0002);
+
+    const auto service = cpu.service_pending_interrupt();
+    REQUIRE(service.has_value());
+    REQUIRE(service->source == vanguard8::core::cpu::InterruptSource::int1);
+    REQUIRE(service->handler_address == 0x1234);
+}
+
 TEST_CASE("PRT0 decrements every 20 CPU clocks and sets TIF0 on timeout", "[cpu]") {
     vanguard8::core::Bus bus{};
     vanguard8::core::cpu::Z180Adapter cpu{bus};

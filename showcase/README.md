@@ -58,3 +58,11 @@ Milestone 2 review surfaces:
   `showcase/tests/milestone-02-checkpoints.md`
 - Contract run:
   `python3 showcase/tools/package/run_showcase_headless.py --frames 480 --trace build/showcase/m2.trace --hash-frame 479 --symbols build/showcase/showcase.sym`
+
+Milestone 3 review surfaces:
+- Provenance note:
+  `showcase/assets/provenance/milestone-03-scenes.md`
+- Headless checkpoint notes:
+  `showcase/tests/milestone-03-checkpoints.md`
+- Contract run:
+  `python3 showcase/tools/package/run_showcase_headless.py --frames 720 --trace build/showcase/m3.trace --hash-frame 719 --symbols build/showcase/showcase.sym`

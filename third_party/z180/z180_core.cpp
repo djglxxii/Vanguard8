@@ -68,6 +68,7 @@ void Core::reset() {
     interrupt_mode_ = 0x00;
     iff1_ = false;
     iff2_ = false;
+    ei_delay_ = 0;
     halted_ = false;
     prt0_ = {};
     prt1_ = {};
@@ -126,6 +127,7 @@ auto Core::register_snapshot() const -> RegisterSnapshot {
         .interrupt_mode = interrupt_mode_,
         .iff1 = iff1_,
         .iff2 = iff2_,
+        .ei_delay = ei_delay_,
         .halted = halted_,
         .tcr = tcr_,
         .tmdr0 = prt0_.tmdr.value,
@@ -158,6 +160,7 @@ void Core::load_register_snapshot(const RegisterSnapshot& state) {
     interrupt_mode_ = state.interrupt_mode;
     iff1_ = state.iff1;
     iff2_ = state.iff2;
+    ei_delay_ = state.ei_delay;
     halted_ = state.halted;
     tcr_ = state.tcr;
     prt0_.tmdr.value = state.tmdr0;
@@ -456,6 +459,13 @@ void Core::execute_one() {
     ++r_;
     const auto opcode = fetch_byte();
     (this->*opcodes_[opcode])();
+    if (ei_delay_ > 0U) {
+        --ei_delay_;
+        if (ei_delay_ == 0U) {
+            iff1_ = true;
+            iff2_ = true;
+        }
+    }
 }
 
 void Core::maybe_warn_illegal_bbr() {
@@ -612,9 +622,13 @@ void Core::op_xor_a() {
 
 void Core::op_out_n_a() { callbacks_.write_port(fetch_byte(), af_.bytes.hi); }
 
-void Core::op_di() { iff1_ = false; iff2_ = false; }
+void Core::op_di() {
+    iff1_ = false;
+    iff2_ = false;
+    ei_delay_ = 0;
+}
 
-void Core::op_ei() { iff1_ = true; iff2_ = true; }
+void Core::op_ei() { ei_delay_ = 2; }
 
 void Core::op_ed_prefix() {
     const auto opcode = fetch_byte();

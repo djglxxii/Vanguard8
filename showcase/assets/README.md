@@ -19,3 +19,8 @@ Current milestone-2 provenance note:
 - `provenance/milestone-02-scenes.md`
   Documents the assembly-authored Graphic 4 title and compositing assets now
   used by the ROM.
+- `provenance/milestone-03-scenes.md`
+  Documents the tile-mode and sprite-scene procedural assets used by the ROM.
+- `provenance/milestone-04-scenes.md`
+  Documents the mixed-mode and command-scene procedural assets plus the banked
+  packaging note needed for the current ROM layout.

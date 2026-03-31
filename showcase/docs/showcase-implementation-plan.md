@@ -27,6 +27,10 @@ Traceability:
   them.
 - Do not silently broaden scope into emulator-core work, CI polish, or later
   showcase scenes before the active milestone is accepted.
+- If a showcase task exposes an emulator-core defect, stop and record it as a
+  blocked showcase task. Resolve the defect through the main emulator
+  milestone/task flow first, then resume the showcase task after the emulator
+  verification passes.
 
 ## Explicit Deferrals
 
@@ -181,6 +185,12 @@ Exit criteria:
 - The ROM covers the planned mixed-mode and command-engine validation paths
   without relying on unresolved scroll or Graphic 3 line-fetch behavior.
 
+Implementation note:
+- Milestone 4 originally exposed a timed-HD64180 `EI` handling bug plus a
+  packaged bank-layout split in the current `sjasmplus --raw` output above the
+  `0x18000` region. The current repo carries both fixes and the milestone-4
+  checkpoint artifacts needed for review.
+
 ### Milestone 5 — Audio Verification Scene and Audio Checkpoints
 
 Objective:
@@ -212,4 +222,3 @@ Deliverables:
 Exit criteria:
 - The full loop can be rebuilt, run headlessly, and reviewed by a human using
   only the documented showcase commands and manifests.
-

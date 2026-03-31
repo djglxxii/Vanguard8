@@ -39,3 +39,10 @@ Milestone-2 application:
 - The compositing scene uses a VDP-A frame/badge overlay with color-0
   transparency over VDP-B blue reveal panels.
 - No external bitmap or audio source files are required for this milestone.
+
+Milestone-3 application:
+- Tile-mode scenes stay assembly-authored and use a small reusable pattern set
+  in Graphic 2 rather than imported tilesheets or text-mode glyphs.
+- Sprite scenes use simple geometric sprite families with obvious footprints so
+  size, magnification, overlap, and scanline-limit behavior remain readable
+  from a single capture.

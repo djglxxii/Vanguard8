@@ -1,14 +1,16 @@
 # Current Showcase Milestone Lock
 
-- Active milestone: `2`
-- Title: `Generated Asset Conventions, Title, and Dual-VDP Compositing`
-- Status: `accepted`
+- Active milestone: `4`
+- Title: `Mixed-Mode and Graphic 4 Command-Engine Verification Scenes`
+- Status: `ready_for_verification`
 - Locked on plan: `showcase/docs/showcase-implementation-plan.md`
-- Contract file: `showcase/docs/milestones/02.md`
+- Contract file: `showcase/docs/milestones/04.md`
 
 Execution rules:
-- Only milestone `2` task files may be present in `showcase/tasks/active/`.
-- Do not promote milestone `3` work until milestone `2` is marked `accepted`
+- Only milestone `4` task files may be present in `showcase/tasks/active/`.
+- Milestone `3` was accepted after human review using `showcase/docs/milestone-acceptance-checklist.md`.
+- Do not promote milestone `5` work until milestone `4` is marked `accepted`
   using `showcase/docs/milestone-acceptance-checklist.md`.
-- After the active task is completed, append the completion summary, move it to
-  `showcase/tasks/completed/`, and stop until a human reviews the summary.
+- Milestone `4` verification is ready for human review; do not promote
+  milestone `5` work or mark milestone `4` `accepted` until the acceptance
+  checklist is satisfied.

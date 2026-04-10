@@ -227,6 +227,53 @@ TEST_CASE("extracted CPU supports plain OUT XOR A and JR used by ROM bring-up", 
     REQUIRE(cpu.halted());
 }
 
+TEST_CASE("scheduled CPU covers LD B,n used by the Pac-Man boot path", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0x06, 0x12,  // LD B,0x12
+        0x76,        // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    REQUIRE(cpu.peek_logical(cpu.pc()) == 0x06);
+    REQUIRE(cpu.next_scheduled_tstates() == 7);
+    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.bc >> 8U) == 0x12);
+    REQUIRE(cpu.pc() == 0x0002);
+}
+
+TEST_CASE("scheduled CPU covers IM 1 and keeps INT1 mode-independent", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0xED, 0x56,  // IM 1
+        0x76,        // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    cpu.out0(0x3A, 0x48);
+    cpu.out0(0x38, 0xF0);
+    cpu.out0(0x33, 0xE0);
+    cpu.out0(0x34, 0x02);
+    cpu.set_register_i(0x80);
+    cpu.set_iff1(true);
+
+    REQUIRE(cpu.interrupt_mode() == 0);
+    REQUIRE(cpu.next_scheduled_tstates() == 8);
+    REQUIRE(cpu.step_scheduled_instruction() == 8);
+    REQUIRE(cpu.interrupt_mode() == 1);
+
+    bus.write_memory(0xF00E0, 0x34);
+    bus.write_memory(0xF00E1, 0x12);
+    bus.set_int1(true);
+
+    const auto service = cpu.service_pending_interrupt();
+    REQUIRE(service.has_value());
+    REQUIRE(service->source == vanguard8::core::cpu::InterruptSource::int1);
+    REQUIRE(service->handler_address == 0x1234);
+}
+
 TEST_CASE("extracted CPU covers ROM audio nibble-fetch opcodes", "[cpu]") {
     const auto rom = make_instruction_test_rom({
         0x31, 0x00, 0xFF,             // LD SP,0xFF00

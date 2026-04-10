@@ -127,3 +127,8 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 ## Milestone 18
 
 - `M18-T01` Make headless frame dumps match actual runtime compositor output.
+
+## Milestone 19
+
+- `M19-T01` Cover the missing timed HD64180 boot opcodes needed by the
+  Pac-Man background bring-up path.

@@ -85,6 +85,10 @@ Workflow:
 | 13 | Close critical pre-GUI audit items that block real ROM testing |
 | 14 | Add lightweight bring-up tooling and selected non-essential closure |
 | 15 | Patch the timed HD64180 ROM path for INT1-driven audio bring-up |
+| 16 | Add Graphic 6 renderer and mixed-mode HUD compatibility |
+| 17 | Fix full-range VDP CPU VRAM addressing compatibility |
+| 18 | Make headless runtime frame dumps match compositor output |
+| 19 | Cover the timed HD64180 boot opcode gap exposed by Pac-Man |
 
 ## Milestones
 
@@ -633,6 +637,42 @@ Exit criteria:
 - Any preserved fixture-dump behavior is explicit and no longer confused with
   runtime capture
 
+### Milestone 19 — Timed HD64180 Boot Opcode Compatibility
+
+Objective:
+- Close the next narrow timed-CPU compatibility gap exposed by the Pac-Man
+  boot/background bring-up: the extracted timed HD64180 runtime is still
+  missing `LD B,n` (`0x06`) and `IM 1` (`ED 0x56`).
+
+Deliverables:
+- Reproducing regression coverage for the Pac-Man boot/background blocker
+  captured under
+  `/home/djglxxii/src/pacman/vanguard8_port/tests/evidence/T002-boot-background/`
+- Timed opcode coverage for `LD B,n` and `IM 1` in the existing extracted
+  HD64180 runtime path
+- Focused direct CPU tests that pin the documented semantics of the newly
+  covered instructions without broadening into full opcode completion
+- Documentation tying the fix to the observed ROM bring-up PCs `0x0140` and
+  `0x0314`
+
+Milestone-19 closure rule:
+- Keep this as a compatibility patch milestone, not a general “finish the Z80”
+  effort. Add only the timed opcode support and the narrow interrupt-mode
+  handling proven necessary by the blocked boot/background path.
+
+Tests:
+- Focused timed CPU coverage for `LD B,n`
+- Focused timed CPU coverage for `IM 1`, including the already documented
+  split between `INT0` mode handling and mode-independent `INT1`
+- Runtime/integration coverage proving the blocked Pac-Man boot/background path
+  no longer aborts on the observed missing-opcode PCs
+
+Exit criteria:
+- The emulator no longer aborts on the Pac-Man boot/background path because the
+  timed core is missing `0x06` or `ED 0x56`
+- The newly supported opcode surface is documented and regression-covered
+- Remaining CPU opcode gaps stay narrow and explicitly deferred
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:
@@ -718,6 +758,15 @@ Meaning:
   needed to resume showcase-ROM audio verification work without falling over in
   the timed CPU core.
 
+### Gate J — First Pac-Man Boot/Background CPU Bring-Up
+
+Required milestones:
+- 0 through 19
+
+Meaning:
+- The timed CPU runtime can clear the first Pac-Man boot/background bring-up
+  blocker without broadening into full Z80/Z180 opcode completion.
+
 ## Recommended Order of Work Inside the Repo
 
 1. Build and test scaffolding
@@ -735,6 +784,7 @@ Meaning:
 13. Critical real-ROM compatibility closure
 14. Lightweight tooling and selected non-essential closure
 15. Timed HD64180 INT1 audio compatibility patch
+16. Timed HD64180 boot opcode compatibility
 
 ## Definition of Done for Each Milestone
 

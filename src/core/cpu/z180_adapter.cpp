@@ -358,6 +358,7 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0x3A:
         return 13;
     case 0x3E:
+    case 0x06:
     case 0x7E:
     case 0xE6:
         return 7;
@@ -393,6 +394,8 @@ auto Z180Adapter::ed_instruction_tstates(const std::uint8_t opcode) const -> std
         return 9;
     case 0x4D:
         return 14;
+    case 0x56:
+        return 8;
     case 0x64:
         return 9;
     default:

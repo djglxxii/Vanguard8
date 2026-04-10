@@ -181,6 +181,7 @@ class Core {
     [[noreturn]] void unsupported_ed_opcode(std::uint8_t opcode);
     void op_unimplemented();
     void op_nop();
+    void op_ld_b_n();
     void op_rrca();
     void op_inc_hl();
     void op_jr_nz_e();
@@ -212,6 +213,7 @@ class Core {
     void op_ed_tst_n();
     void op_ed_mlt_rr(std::uint8_t pair_code);
     void op_ed_out0_n_a();
+    void op_ed_im_1();
     void op_ed_ld_i_a();
     void op_ed_reti();
 };

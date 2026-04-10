@@ -396,6 +396,7 @@ void Core::initialize_tables() {
     ed_opcodes_.assign(256, &Core::op_unimplemented);
 
     opcodes_[0x00] = &Core::op_nop;
+    opcodes_[0x06] = &Core::op_ld_b_n;
     opcodes_[0x0F] = &Core::op_rrca;
     opcodes_[0x18] = &Core::op_jr_e;
     opcodes_[0x20] = &Core::op_jr_nz_e;
@@ -425,6 +426,7 @@ void Core::initialize_tables() {
     ed_opcodes_[0x39] = &Core::op_ed_out0_n_a;
     ed_opcodes_[0x47] = &Core::op_ed_ld_i_a;
     ed_opcodes_[0x4D] = &Core::op_ed_reti;
+    ed_opcodes_[0x56] = &Core::op_ed_im_1;
 }
 
 auto Core::fetch_byte() -> std::uint8_t {
@@ -592,6 +594,8 @@ void Core::op_unimplemented() { unsupported_opcode(read_logical(static_cast<std:
 // Extracted and adapted from MAME z180op.hxx milestone-2 opcode subset.
 void Core::op_nop() {}
 
+void Core::op_ld_b_n() { bc_.bytes.hi = fetch_byte(); }
+
 void Core::op_rrca() {
     const auto value = af_.bytes.hi;
     const auto carry = static_cast<std::uint8_t>(value & 0x01U);
@@ -728,6 +732,8 @@ void Core::op_ed_mlt_rr(const std::uint8_t pair_code) {
 }
 
 void Core::op_ed_out0_n_a() { out0(fetch_byte(), af_.bytes.hi); }
+
+void Core::op_ed_im_1() { interrupt_mode_ = 0x01; }
 
 void Core::op_ed_ld_i_a() { i_ = af_.bytes.hi; }
 

@@ -191,6 +191,20 @@ auto make_audio_window_runtime_rom() -> std::vector<std::uint8_t> {
     return rom;
 }
 
+auto make_pacman_boot_background_blocker_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xC3; rom[0x0001] = 0x40; rom[0x0002] = 0x01;  // JP 0x0140
+
+    rom[0x0140] = 0x06; rom[0x0141] = 0x12;                      // LD B,0x12
+    rom[0x0142] = 0xC3; rom[0x0143] = 0x14; rom[0x0144] = 0x03;  // JP 0x0314
+
+    rom[0x0314] = 0xED; rom[0x0315] = 0x56;                      // IM 1
+    rom[0x0316] = 0x76;                                          // HALT
+
+    return rom;
+}
+
 auto read_binary_file(const std::filesystem::path& path) -> std::vector<std::uint8_t> {
     std::ifstream input(path, std::ios::binary);
     return std::vector<std::uint8_t>(
@@ -383,6 +397,17 @@ TEST_CASE("frame loop executes the first blocked audio window through YM polling
     REQUIRE(emulator.bus().msm5205().latched_nibble() == 0x0A);
     REQUIRE(emulator.bus().msm5205().vclk_count() > 0U);
     REQUIRE(emulator.bus().ym2151().latched_address() == 0x20);
+}
+
+TEST_CASE("frame loop clears the Pac-Man boot-background opcode blockers at PCs 0x0140 and 0x0314", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacman_boot_background_blocker_rom());
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(static_cast<std::uint8_t>(emulator.cpu().state_snapshot().registers.bc >> 8U) == 0x12);
+    REQUIRE(emulator.cpu().interrupt_mode() == 1);
+    REQUIRE(emulator.cpu().pc() == 0x0316);
+    REQUIRE(emulator.cpu().halted());
 }
 
 TEST_CASE("unsupported handler opcodes are reported at the handler PC after INT1 dispatch", "[integration]") {

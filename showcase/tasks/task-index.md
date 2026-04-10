@@ -35,3 +35,7 @@ Derived from `showcase/docs/showcase-implementation-plan.md`.
 - `SR06-T01` Add the system validation scene, regression manifests, and final
   review handoff.
 
+## Milestone 7
+
+- `SR07-T01` Add a scrolling-starfield scene with a `Graphic 6` HUD overlay
+  and freeze the new late-loop checkpoints.

@@ -517,6 +517,122 @@ Exit criteria:
 - The showcase milestone-5 blocker can be cleared to resume ROM-side audio
   work, with any remaining limitations narrow and documented
 
+### Milestone 16 — Graphic 6 Renderer and Mixed-Mode HUD Compatibility
+
+Objective:
+- Add the narrow V9938 `Graphic 6` (`Screen 7`, `512x212`, `4bpp`) rendering
+  path needed for a real mixed-mode showcase scene: a fixed high-resolution HUD
+  on one VDP composited over a vertically scrolling `Graphic 4` background on
+  the other.
+
+Deliverables:
+- A `Graphic 6` scanline renderer driven by the documented mode bits and pixel
+  packing in `docs/spec/02-video.md`
+- Regression coverage for `Graphic 6` framebuffer addressing and palette output
+- Mixed-mode runtime coverage proving `VDP-A Graphic 6` compositing over
+  `VDP-B Graphic 4` without silent mode fallback
+- The smallest display/upload seam needed to expose a `512x212` composed frame
+  through the existing runtime and headless readback paths
+- Documentation that narrows the supported `Graphic 6` surface to the needs of
+  the follow-on showcase milestone
+
+Milestone-16 closure rule:
+- Keep this as a renderer-compatibility milestone, not a general
+  high-resolution V9938 completion pass. Add only the `Graphic 6` background
+  path and the narrow mixed-mode coverage required by the planned showcase HUD
+  scene.
+
+Tests:
+- Dedicated `Graphic 6` pixel-addressing and palette rendering tests
+- A mixed-mode compositor regression for `VDP-A Graphic 6` over
+  `VDP-B Graphic 4`
+- Display upload/readback coverage for `512x212` composed frames
+- Headless/runtime coverage proving unsupported `Graphic 6` use no longer falls
+  back to backdrop output for the planned scene shape
+
+Exit criteria:
+- The emulator can render a documented `Graphic 6` framebuffer deterministically
+  with the correct `512x212` nibble packing
+- A ROM can place a fixed `Graphic 6` HUD layer over a scrolling `Graphic 4`
+  background without new emulator-side shortcuts
+- Remaining `Graphic 5`/`Graphic 7` and mode-specific command-engine gaps stay
+  explicitly deferred
+
+### Milestone 17 — Full-Range VDP CPU VRAM Addressing Compatibility
+
+Objective:
+- Complete the covered V9938 CPU-side VRAM addressing path across the full
+  64 KB VRAM space so high-address `Graphic 4`/`Graphic 6` content written
+  through the VDP data/control ports no longer wraps into the low address
+  window.
+
+Deliverables:
+- Full-range CPU VRAM address handling for the existing VDP data/control-port
+  path, including the already covered read/write behavior needed by current
+  ROMs
+- Focused regression coverage for CPU-visible VRAM access above `0x3FFF`
+- A runtime compatibility check proving mixed-mode HUD content that spans the
+  later `Graphic 6` address range is stable and does not alias into the top of
+  VRAM
+- Documentation that narrows the supported 64 KB CPU VRAM-addressing surface
+  without broadening into new VDP mode work
+
+Milestone-17 closure rule:
+- Keep this as a VDP CPU-addressing compatibility pass, not a general V9938
+  reimplementation. Add only the high-address VRAM behavior and tests needed by
+  the currently planned ROM content.
+
+Tests:
+- Direct VDP CPU write coverage proving addresses below and above `0x3FFF`
+  land in distinct VRAM locations
+- Direct VDP CPU read coverage for the same high-address path, including the
+  existing dummy-read semantics already covered by the repo
+- Runtime/integration coverage proving the late mixed-mode HUD scene no longer
+  loses lower-screen `Graphic 6` content because of CPU-visible VRAM wrapping
+
+Exit criteria:
+- CPU-driven VRAM writes can reach the full documented 64 KB address space
+  without aliasing the upper region into low VRAM
+- Covered ROM/runtime paths that depend on high-address `Graphic 6` content
+  render deterministically through the existing compositor
+- Remaining unimplemented VDP features stay explicitly deferred rather than
+  being bundled into the same milestone
+
+### Milestone 18 — Headless Runtime Frame-Dump Parity
+
+Objective:
+- Make the headless frame-dump path reflect actual runtime output so desktop
+  and headless inspection of mixed-width scenes matches the compositor state
+  being hashed and tested.
+
+Deliverables:
+- A headless runtime frame-dump path that captures the current composed ROM
+  frame after the requested frame count instead of the built-in fixture image
+- Regression coverage proving dumped frame dimensions and pixels match the
+  runtime compositor output for both `256x212` and `512x212` cases
+- Documentation for the supported dump workflow and any preserved fixture-only
+  path if one remains necessary
+
+Milestone-18 closure rule:
+- Keep this as a runtime-inspection correctness milestone. Do not broaden it
+  into general frontend refactoring, new capture formats, or debugger feature
+  work.
+
+Tests:
+- Headless regression coverage proving `--dump-frame` with a ROM and frame
+  count emits the actual runtime frame rather than the fixture
+- Coverage proving the dumped PPM dimensions match the composed frame width for
+  both standard and mixed-width scenes
+- A narrow parity check between the dumped frame bytes and the compositor frame
+  used for hashing in the same runtime
+
+Exit criteria:
+- Headless frame dumps from a running ROM are trustworthy inspection artifacts
+- Mixed-width scenes dump at `512x212` when the compositor resolves to the
+  wider grid
+- Any preserved fixture-dump behavior is explicit and no longer confused with
+  runtime capture
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:

@@ -34,8 +34,8 @@ struct RuntimeOptions {
     bool start_paused = false;
     bool step_one_frame = false;
     core::VclkRate vclk_rate = core::VclkRate::stopped;
-    bool dump_fixture = false;
-    std::filesystem::path dump_path;
+    std::optional<std::filesystem::path> dump_frame_path;
+    std::optional<std::filesystem::path> dump_fixture_path;
     std::optional<std::filesystem::path> rom_path;
     std::optional<std::size_t> recent_index;
     std::optional<std::filesystem::path> replay_path;
@@ -83,6 +83,26 @@ auto normalize_hex(std::string value) -> std::string {
     return value;
 }
 
+struct FrameDumpSummary {
+    std::uint64_t digest = 0;
+    int width = 0;
+    int height = 0;
+};
+
+auto dump_rgb_frame(
+    const std::vector<std::uint8_t>& rgb_frame,
+    const std::filesystem::path& output_path
+) -> FrameDumpSummary {
+    Display display;
+    display.upload_frame(rgb_frame);
+    display.dump_ppm_file(output_path);
+    return FrameDumpSummary{
+        .digest = display.frame_digest(),
+        .width = display.frame_width(),
+        .height = display.uploaded_frame_height(),
+    };
+}
+
 auto parse_options(int argc, char** argv) -> RuntimeOptions {
     RuntimeOptions options;
     for (int index = 1; index < argc; ++index) {
@@ -104,8 +124,11 @@ auto parse_options(int argc, char** argv) -> RuntimeOptions {
             continue;
         }
         if (arg == "--dump-frame" && (index + 1) < argc) {
-            options.dump_fixture = true;
-            options.dump_path = argv[++index];
+            options.dump_frame_path = argv[++index];
+            continue;
+        }
+        if (arg == "--dump-fixture" && (index + 1) < argc) {
+            options.dump_fixture_path = argv[++index];
             continue;
         }
         if (arg == "--rom" && (index + 1) < argc) {
@@ -167,6 +190,9 @@ auto parse_options(int argc, char** argv) -> RuntimeOptions {
         }
         throw std::invalid_argument("Unsupported headless option: " + arg);
     }
+    if (options.dump_frame_path.has_value() && options.dump_fixture_path.has_value()) {
+        throw std::invalid_argument("Use either --dump-frame or --dump-fixture, not both.");
+    }
     return options;
 }
 
@@ -188,6 +214,7 @@ auto run_headless_app(int argc, char** argv) -> int {
         std::cout
             << "Usage: vanguard8_headless [--rom path] [--recent index] [--frames N] [--paused] "
                "[--step-frame] [--replay file.v8r] [--vclk off|4000|6000|8000] [--dump-frame path.ppm] "
+               "[--dump-fixture path.ppm] "
                "[--hash-frame N] [--expect-frame-hash N HASH] [--hash-audio] [--expect-audio-hash HASH] "
                "[--trace path.log] [--trace-instructions N] [--symbols path.sym] "
                "[--press-key NAME] [--gamepad1-button NAME] [--gamepad2-button NAME]\n";
@@ -301,18 +328,16 @@ auto run_headless_app(int argc, char** argv) -> int {
     core::log(core::LogLevel::info, "Launching deterministic headless runtime.");
     std::cout << emulator.build_summary() << '\n';
 
-    if (options.dump_fixture) {
+    if (options.dump_fixture_path.has_value()) {
         build_dual_vdp_fixture_frame(
             emulator.mutable_bus().mutable_vdp_a(),
             emulator.mutable_bus().mutable_vdp_b()
         );
-        Display display;
-        display.upload_frame(core::video::Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b()));
-        display.dump_ppm_file(options.dump_path);
-        std::cout << "Headless status: frame dump complete" << '\n';
-        if (loaded_rom.has_value()) {
-            std::cout << "ROM path: " << loaded_rom->path.string() << '\n';
-        }
+        const auto dump = dump_rgb_frame(
+            core::video::Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b()),
+            *options.dump_fixture_path
+        );
+        std::cout << "Headless status: fixture frame dump complete" << '\n';
         const auto p1 = emulator.bus().controller_ports().read(core::io::Player::one);
         const auto p2 = emulator.bus().controller_ports().read(core::io::Player::two);
         std::cout << "Controller 1 port: 0x" << std::hex << std::uppercase
@@ -320,9 +345,11 @@ auto run_headless_app(int argc, char** argv) -> int {
         std::cout << "Controller 2 port: 0x" << std::hex << std::uppercase
                   << static_cast<int>(p2) << '\n';
         std::cout << std::dec;
-        std::cout << "Frame dump path: " << options.dump_path.string() << '\n';
-        std::cout << "Frame dump digest: " << display.frame_digest() << '\n';
-        return 0;
+        std::cout << "Frame dump source: fixture" << '\n';
+        std::cout << "Frame dump path: " << options.dump_fixture_path->string() << '\n';
+        std::cout << "Frame dump size: " << dump.width << "x" << dump.height << '\n';
+        std::cout << "Frame dump digest: " << dump.digest << '\n';
+        return static_cast<int>(ExitCode::success);
     }
 
     const auto frame_hash_target = options.expect_frame_hash.has_value()
@@ -364,6 +391,7 @@ auto run_headless_app(int argc, char** argv) -> int {
         (options.hash_audio || options.expect_audio_hash.has_value())
             ? digest_hex(core::sha256(emulator.bus().audio_mixer().output_bytes()))
             : std::string{};
+    std::optional<FrameDumpSummary> runtime_dump;
 
     if (options.expect_frame_hash.has_value() &&
         normalize_hex(options.expect_frame_hash->second) != normalize_hex(frame_hash_hex)) {
@@ -375,6 +403,13 @@ auto run_headless_app(int argc, char** argv) -> int {
         normalize_hex(*options.expect_audio_hash) != normalize_hex(audio_hash_hex)) {
         std::cerr << "Audio hash mismatch." << '\n';
         return static_cast<int>(ExitCode::hash_mismatch);
+    }
+
+    if (options.dump_frame_path.has_value()) {
+        runtime_dump = dump_rgb_frame(
+            core::video::Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b()),
+            *options.dump_frame_path
+        );
     }
 
     std::cout << "Headless status: deterministic runtime" << '\n';
@@ -400,7 +435,13 @@ auto run_headless_app(int argc, char** argv) -> int {
     if (options.hash_audio || options.expect_audio_hash.has_value()) {
         std::cout << "Audio SHA-256: " << audio_hash_hex << '\n';
     }
-    return 0;
+    if (runtime_dump.has_value()) {
+        std::cout << "Frame dump source: runtime" << '\n';
+        std::cout << "Frame dump path: " << options.dump_frame_path->string() << '\n';
+        std::cout << "Frame dump size: " << runtime_dump->width << "x" << runtime_dump->height << '\n';
+        std::cout << "Frame dump digest: " << runtime_dump->digest << '\n';
+    }
+    return static_cast<int>(ExitCode::success);
 }
 
 }  // namespace vanguard8::frontend

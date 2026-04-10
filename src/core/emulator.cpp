@@ -281,6 +281,10 @@ void Emulator::populate_scheduler_for_frame() {
     }
 
     const auto frame_end = frame_start_cycle_ + timing::master_per_frame;
+    while (vclk_due_cycle(next_vclk_tick_ + 1U) <= master_cycle_) {
+        ++next_vclk_tick_;
+    }
+
     while (vclk_due_cycle(next_vclk_tick_ + 1U) <= frame_end) {
         ++next_vclk_tick_;
         scheduler_.schedule(EventType::vclk, vclk_due_cycle(next_vclk_tick_));

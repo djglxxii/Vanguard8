@@ -37,13 +37,18 @@ Traceability:
 These areas stay out of scope unless the spec or this plan is revised first:
 
 - Text 1 or Text 2 showcase scenes
-- Graphic 5, Graphic 6, or Graphic 7 showcase scenes
+- Graphic 5 or Graphic 7 showcase scenes
 - Horizontal scroll via `R#26`/`R#27`
 - Per-line horizontal parallax built on unverified scroll behavior
 - Any invented Graphic 3 `LN=1` background fetch behavior for lines `192-211`
 - 4-player expansion behavior
 - Battery-backed cartridge SRAM mapping details
 - Showcase-only emulator features added just for polish
+
+Revised-plan note:
+- A post-freeze `Graphic 6` scene may be added only through an explicit follow-
+  on showcase milestone after the matching emulator `Graphic 6` compatibility
+  milestone is accepted.
 
 ## Milestone Control Files
 
@@ -98,6 +103,7 @@ Workflow:
 | 4 | Add mixed-mode and Graphic 4 command-engine verification scenes |
 | 5 | Add the audio verification scene and deterministic audio checkpointing |
 | 6 | Add the system-validation scene, regression manifests, and freeze docs |
+| 7 | Add a mixed-mode attract tableau with a scrolling starfield and 512-wide HUD overlay |
 
 ## Milestones
 
@@ -222,3 +228,23 @@ Deliverables:
 Exit criteria:
 - The full loop can be rebuilt, run headlessly, and reviewed by a human using
   only the documented showcase commands and manifests.
+
+### Milestone 7 — Scrolling Starfield and Graphic 6 HUD Overlay
+
+Objective:
+- Extend the accepted showcase ROM with one additional attract-style scene that
+  demonstrates mixed-mode dual-VDP compositing using a vertically scrolling
+  `Graphic 4` starfield behind a fixed `Graphic 6` high-resolution HUD overlay.
+
+Deliverables:
+- A new banked final scene using `VDP-B Graphic 4` for the scrolling starfield
+- A compact bitmap font/icon set rendered into a `VDP-A Graphic 6` HUD layer
+- Updated checkpoint manifests and review notes for the new late-loop scene
+
+Exit criteria:
+- A reviewer can rebuild the ROM, run the late-loop command, and confirm that
+  the background scrolls while the `Graphic 6` HUD remains fixed and readable.
+
+Dependency note:
+- Do not begin milestone `7` until the matching emulator `Graphic 6`
+  compatibility milestone is accepted.

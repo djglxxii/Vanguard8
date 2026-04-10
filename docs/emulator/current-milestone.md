@@ -1,15 +1,19 @@
 # Current Milestone Lock
 
-- Active milestone: `15`
-- Title: `Timed HD64180 INT1 Audio Bring-Up Patch`
+- Active milestone: `18`
+- Title: `Headless Runtime Frame-Dump Parity`
 - Status: `accepted`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
-- Contract file: `docs/emulator/milestones/15.md`
+- Contract file: `docs/emulator/milestones/18.md`
 
 Execution rules:
-- Only milestone `15` task files present in `docs/tasks/active/` may be
+- Only milestone `18` task files present in `docs/tasks/active/` may be
   executed.
-- Milestone `14` is accepted.
-- Keep milestone `15` work inside `src/core/`, `tests/`, `docs/`, and narrow
-  extracted-Z180 changes inside `third_party/` as allowed by the milestone
-  contract.
+- Milestone `17` is accepted.
+- Keep milestone `18` work inside `src/frontend/`, `tests/`, and `docs/` as
+  allowed by the milestone contract.
+- Milestone `18` is the narrow headless/runtime parity pass so `--dump-frame`
+  reflects the active ROM session rather than the built-in fixture image.
+- Milestone `18` was accepted after human review of runtime `--dump-frame`
+  parity for both `256x212` and `512x212` output plus the explicit
+  fixture-only dump path.

@@ -82,6 +82,13 @@ combinations include:
 - **VDP-B in Graphic 4, VDP-A in Graphic 3:** VDP-B provides a bitmap background;
   VDP-A provides a tile-based foreground with Sprite Mode 2.
 
+Mixed-width rule:
+- When a **512-pixel-wide mode** (Graphic 5 or Graphic 6) is composited against
+  a **256-pixel-wide mode**, the combined output is resolved on the 512-pixel
+  horizontal grid. The 256-pixel-wide layer contributes one pixel value across
+  two adjacent horizontal output pixels, while the 512-pixel-wide layer
+  contributes one value per output pixel.
+
 **Scanline synchronization:** Both VDPs run from the same master clock and
 generate identical pixel timing. Configure both chips to the same active-line
 count (R#9 LN bit) to keep V-blank timing aligned. Mismatched LN settings will
@@ -309,6 +316,11 @@ pair      = (x mod 4); bits 7:6 = pixel 0, bits 5:4 = pixel 1,
 54,272 bytes total framebuffer. This mode delivers the highest resolution with
 full 4bpp color, at the cost of consuming most of the available 64 KB VRAM for
 the framebuffer alone.
+
+Verified mode flags:
+```
+M5=1, M4=0, M3=1, M2=0, M1=0
+```
 
 VRAM layout must be planned carefully. With 54,272 bytes for the framebuffer,
 only ~10 KB remains for sprite tables and pattern storage.
@@ -755,6 +767,7 @@ Write R#15 = 0:   OUT (0x81), 0x00 ; OUT (0x81), 0x8F
 | R#8      | Bit 5: TP — color 0 transparent (set for VDP-A compositing); other flags  |
 | R#9      | Bit 7: LN — 1 = 212 lines, 0 = 192 lines                                 |
 | R#11     | Sprite attribute table base, bits 15:14 (required for 64 KB VRAM)        |
+| R#14     | CPU VRAM address high bits `A15:A14` for data-port reads and writes       |
 
 ### Scroll
 
@@ -764,6 +777,14 @@ Write R#15 = 0:   OUT (0x81), 0x00 ; OUT (0x81), 0x8F
 | R#23     | Vertical scroll offset (Graphic 3–7; verify others) |
 | R#26     | Horizontal scroll coarse — verify vs. databook      |
 | R#27     | Horizontal scroll fine — verify vs. databook        |
+
+CPU-visible VRAM port access:
+- The two-byte control-port address latch supplies VRAM address bits `A13:A0`.
+- `R#14` supplies CPU VRAM address bits `A15:A14` for port-driven VRAM reads
+  and writes.
+- Data-port auto-increment advances the full CPU-visible VRAM pointer, so
+  sequential accesses can cross `0x3FFF -> 0x4000` and `0x7FFF -> 0x8000`
+  without wrapping into the low 16 KB window.
 
 ### Status Registers (selected via R#15, read via port 0x81 / 0x85)
 

@@ -8,6 +8,8 @@
 #include "core/video/v9938.hpp"
 
 #include <array>
+#include <filesystem>
+#include <fstream>
 #include <vector>
 
 namespace {
@@ -43,6 +45,61 @@ auto make_frame_loop_rom() -> std::vector<std::uint8_t> {
     rom[0x0013] = 0xD3; rom[0x0014] = 0x81;  // OUT (0x81),A
     rom[0x0015] = 0xC3; rom[0x0016] = 0x15; rom[0x0017] = 0x00;  // JP 0x0015
 
+    return rom;
+}
+
+auto make_high_address_graphic6_runtime_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+    std::size_t pc = 0;
+
+    auto emit = [&](const std::initializer_list<std::uint8_t> bytes) {
+        for (const auto byte : bytes) {
+            rom[pc++] = byte;
+        }
+    };
+    auto emit_out_immediate = [&](const std::uint8_t port, const std::uint8_t value) {
+        emit({0x3E, value, 0xD3, port});
+    };
+    auto emit_vdp_register_write = [&](const std::uint8_t control_port,
+                                       const std::uint8_t reg,
+                                       const std::uint8_t value) {
+        emit_out_immediate(control_port, value);
+        emit_out_immediate(control_port, static_cast<std::uint8_t>(0x80U | reg));
+    };
+    auto emit_vram_write = [&](const std::uint8_t control_port,
+                               const std::uint8_t data_port,
+                               const std::uint16_t address,
+                               const std::uint8_t value) {
+        emit_out_immediate(control_port, static_cast<std::uint8_t>(address & 0x00FFU));
+        emit_out_immediate(
+            control_port,
+            static_cast<std::uint8_t>(0x40U | ((address >> 8U) & 0x3FU))
+        );
+        emit_out_immediate(data_port, value);
+    };
+
+    emit({0xF3});  // DI
+
+    emit_vdp_register_write(0x81, 0, V9938::graphic6_mode_r0);
+    emit_vdp_register_write(0x81, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U));
+    emit_vdp_register_write(0x81, 8, 0x20);
+    emit_vdp_register_write(0x81, 14, 0x01);
+
+    emit_vdp_register_write(0x85, 0, V9938::graphic4_mode_r0);
+    emit_vdp_register_write(0x85, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U));
+
+    emit_out_immediate(0x82, 0x04);
+    emit_out_immediate(0x82, 0x70);
+    emit_out_immediate(0x82, 0x00);
+
+    emit_out_immediate(0x86, 0x02);
+    emit_out_immediate(0x86, 0x07);
+    emit_out_immediate(0x86, 0x00);
+
+    emit_vram_write(0x85, 0x84, 0x3200, 0x22);
+    emit_vram_write(0x81, 0x80, 0x2400, 0x40);
+
+    emit({0xC3, static_cast<std::uint8_t>(pc & 0x00FFU), static_cast<std::uint8_t>(pc >> 8U)});
     return rom;
 }
 
@@ -132,6 +189,14 @@ auto make_audio_window_runtime_rom() -> std::vector<std::uint8_t> {
     rom[0x0120] = 0xA0;                                     // First packed nibble = 0x0A
 
     return rom;
+}
+
+auto read_binary_file(const std::filesystem::path& path) -> std::vector<std::uint8_t> {
+    std::ifstream input(path, std::ios::binary);
+    return std::vector<std::uint8_t>(
+        (std::istreambuf_iterator<char>(input)),
+        std::istreambuf_iterator<char>()
+    );
 }
 
 void write_vdp_register(
@@ -269,6 +334,32 @@ TEST_CASE("frame loop executes ROM instructions and reaches ROM-driven VDP state
     REQUIRE(std::array<std::uint8_t, 3>{frame[0], frame[1], frame[2]} == emulator.vdp_a().palette_entry_rgb(1));
 }
 
+TEST_CASE("frame loop writes high-address Graphic 6 HUD data without aliasing into low VRAM", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_high_address_graphic6_runtime_rom());
+    emulator.run_frames(1);
+
+    REQUIRE(emulator.vdp_a().vram()[0x6400] == 0x40);
+    REQUIRE(emulator.vdp_a().vram()[0x2400] == 0x00);
+
+    const auto frame = Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b());
+    const auto pixel0_base = static_cast<std::size_t>(((100 * V9938::max_visible_width) + 0) * 3);
+    const auto pixel1_base = static_cast<std::size_t>(((100 * V9938::max_visible_width) + 1) * 3);
+    const auto pixel0 = std::array<std::uint8_t, 3>{
+        frame[pixel0_base + 0],
+        frame[pixel0_base + 1],
+        frame[pixel0_base + 2],
+    };
+    const auto pixel1 = std::array<std::uint8_t, 3>{
+        frame[pixel1_base + 0],
+        frame[pixel1_base + 1],
+        frame[pixel1_base + 2],
+    };
+
+    REQUIRE(pixel0 == emulator.vdp_a().palette_entry_rgb(4));
+    REQUIRE(pixel1 == emulator.vdp_b().palette_entry_rgb(2));
+}
+
 TEST_CASE("frame loop can service a ROM-driven INT1 handler through the normal runtime path", "[integration]") {
     Emulator emulator;
     emulator.load_rom_image(make_int1_runtime_rom(0x00));
@@ -306,4 +397,30 @@ TEST_CASE("unsupported handler opcodes are reported at the handler PC after INT1
             Catch::Matchers::ContainsSubstring("PC 0x5a", Catch::CaseSensitive::No)
         )
     );
+}
+
+TEST_CASE("showcase milestone 7 late loop leaves VDP-A in Graphic 6 and produces a 512 wide frame", "[integration]") {
+    const auto rom_path =
+        std::filesystem::path(__FILE__).parent_path().parent_path() / "build/showcase/showcase.rom";
+    if (!std::filesystem::is_regular_file(rom_path)) {
+        SKIP("showcase ROM not built");
+    }
+
+    Emulator emulator;
+    emulator.load_rom_image(read_binary_file(rom_path));
+    emulator.run_frames(1800);
+
+    INFO("VDP-A R0=" << static_cast<int>(emulator.vdp_a().register_value(0)));
+    INFO("VDP-A R1=" << static_cast<int>(emulator.vdp_a().register_value(1)));
+    INFO("VDP-A R8=" << static_cast<int>(emulator.vdp_a().register_value(8)));
+    INFO("VDP-B R0=" << static_cast<int>(emulator.vdp_b().register_value(0)));
+    INFO("VDP-B R23=" << static_cast<int>(emulator.vdp_b().register_value(23)));
+
+    const auto frame = Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b());
+    REQUIRE(emulator.vdp_a().register_value(0) == V9938::graphic6_mode_r0);
+    REQUIRE(emulator.vdp_a().register_value(1) == 0x40);
+    REQUIRE(emulator.vdp_a().register_value(8) == 0x20);
+    REQUIRE(emulator.vdp_b().register_value(0) == V9938::graphic4_mode_r0);
+    REQUIRE(frame.size() ==
+            static_cast<std::size_t>(V9938::max_visible_width * V9938::visible_height * 3));
 }

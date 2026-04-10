@@ -16,6 +16,7 @@ OUTPUT_DIR = REPO_ROOT / "build" / "showcase"
 ROM_PATH = OUTPUT_DIR / "showcase.rom"
 SYM_PATH = OUTPUT_DIR / "showcase.sym"
 SYMBOL_PATTERN = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*):\s+EQU\s+0x([0-9A-Fa-f]+)\s*$")
+CARTRIDGE_PAGE_SIZE = 0x4000
 
 
 def run_command(argv: list[str]) -> None:
@@ -56,6 +57,17 @@ def convert_sjasm_symbols(raw_symbol_path: pathlib.Path, output_symbol_path: pat
     return len(entries)
 
 
+def pad_cartridge_image(rom_path: pathlib.Path) -> int:
+    rom_bytes = rom_path.read_bytes()
+    remainder = len(rom_bytes) % CARTRIDGE_PAGE_SIZE
+    if remainder == 0:
+        return len(rom_bytes)
+
+    padded_size = len(rom_bytes) + (CARTRIDGE_PAGE_SIZE - remainder)
+    rom_path.write_bytes(rom_bytes.ljust(padded_size, b"\x00"))
+    return padded_size
+
+
 def main() -> int:
     if not SOURCE_PATH.is_file():
         raise FileNotFoundError(f"Showcase source file not found: {SOURCE_PATH}")
@@ -81,12 +93,14 @@ def main() -> int:
                 str(SOURCE_PATH),
             ]
         )
+        padded_size = pad_cartridge_image(ROM_PATH)
         symbol_count = convert_sjasm_symbols(raw_symbol_path, SYM_PATH)
     finally:
         raw_symbol_path.unlink(missing_ok=True)
 
     print(f"ROM image: {ROM_PATH.relative_to(REPO_ROOT)}")
     print(f"Symbol file: {SYM_PATH.relative_to(REPO_ROOT)}")
+    print(f"ROM size: {padded_size} bytes")
     print(f"Symbol count: {symbol_count}")
     return 0
 

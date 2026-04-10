@@ -113,3 +113,17 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 
 - `M15-T01` Fix the timed `INT1` audio bring-up path blocking the showcase
   milestone-5 ROM scene.
+
+## Milestone 16
+
+- `M16-T01` Add the narrow `Graphic 6` renderer and mixed-mode compositor
+  coverage needed for a high-resolution HUD overlay scene.
+
+## Milestone 17
+
+- `M17-T01` Fix the full-range VDP CPU VRAM addressing path needed for 64 KB
+  high-address `Graphic 4`/`Graphic 6` compatibility.
+
+## Milestone 18
+
+- `M18-T01` Make headless frame dumps match actual runtime compositor output.

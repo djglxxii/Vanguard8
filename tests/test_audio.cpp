@@ -97,3 +97,45 @@ TEST_CASE("repeated runs produce stable INT1 cadence and deterministic audio has
     REQUIRE(first.audio_output_sample_count() == second.audio_output_sample_count());
     REQUIRE(first.audio_output_digest() == second.audio_output_digest());
 }
+
+TEST_CASE("ROM-style MSM5205 enable after stopped frames resynchronizes VCLK scheduling", "[audio]") {
+    vanguard8::core::Emulator emulator;
+    emulator.run_frames(2);
+
+    const auto prior_master_cycle = emulator.master_cycle();
+    emulator.clear_event_log();
+    emulator.mutable_bus().write_port(0x60, 0x02);
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+
+    const auto vclks = collect_type(emulator.event_log(), vanguard8::core::EventType::vclk);
+    REQUIRE_FALSE(vclks.empty());
+    REQUIRE(vclks.front().master_cycle > prior_master_cycle);
+    REQUIRE(emulator.bus().msm5205().vclk_count() > 0U);
+}
+
+TEST_CASE("ROM-style MSM5205 rate changes stay monotonic across scheduled frames", "[audio]") {
+    vanguard8::core::Emulator emulator;
+    emulator.mutable_bus().write_port(0x60, 0x01);
+    emulator.run_frames(2);
+
+    const auto first_transition_master_cycle = emulator.master_cycle();
+    emulator.clear_event_log();
+    emulator.mutable_bus().write_port(0x60, 0x02);
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+
+    auto vclks = collect_type(emulator.event_log(), vanguard8::core::EventType::vclk);
+    REQUIRE_FALSE(vclks.empty());
+    REQUIRE(vclks.front().master_cycle > first_transition_master_cycle);
+
+    const auto second_transition_master_cycle = emulator.master_cycle();
+    emulator.clear_event_log();
+    emulator.mutable_bus().write_port(0x60, 0x01);
+
+    REQUIRE_NOTHROW(emulator.run_frames(2));
+
+    vclks = collect_type(emulator.event_log(), vanguard8::core::EventType::vclk);
+    REQUIRE_FALSE(vclks.empty());
+    REQUIRE(vclks.front().master_cycle > second_transition_master_cycle);
+}

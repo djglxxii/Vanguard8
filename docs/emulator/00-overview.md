@@ -237,7 +237,7 @@ Vanguard8/
 - `vanguard8_headless` binary: full emulator core without SDL/OpenGL/ImGui
 - Run for N frames or until replay ends
 - Framebuffer and audio SHA-256 hash verification with nonzero exit on mismatch
-- Dump frame to PNG, dump audio to WAV
+- Dump the current runtime frame to binary PPM, with an explicit fixture-only dump path
 - `--expect-frame-hash` / `--expect-audio-hash` for CI regression gating
 - ctest integration via replay files in `tests/replays/`
 

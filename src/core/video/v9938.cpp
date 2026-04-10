@@ -48,7 +48,7 @@ void V9938::reset() {
 auto V9938::read_data() -> std::uint8_t {
     const auto value = read_ahead_latch_;
     read_ahead_latch_ = vram_[vram_addr_];
-    vram_addr_ = static_cast<std::uint16_t>(vram_addr_ + 1U);
+    increment_vram_addr();
     return value;
 }
 
@@ -59,7 +59,7 @@ void V9938::write_data(const std::uint8_t value) {
     }
 
     vram_[vram_addr_] = value;
-    vram_addr_ = static_cast<std::uint16_t>(vram_addr_ + 1U);
+    increment_vram_addr();
 }
 
 auto V9938::read_status() -> std::uint8_t {
@@ -90,18 +90,17 @@ void V9938::write_control(const std::uint8_t value) {
         return;
     }
 
-    const auto address =
-        static_cast<std::uint16_t>(control_latch_ | (static_cast<std::uint16_t>(value & 0x3FU) << 8));
+    const auto address = cpu_vram_address_from_latch(value);
     if ((value & 0x40U) == 0U) {
         // VRAM reads are one access behind the address latch. Loading a read address
         // changes the source address for the next read-ahead refill but preserves the
         // previously buffered byte, so the first read after an address load is the
         // required dummy read.
-        vram_addr_ = address;
+        set_vram_addr(address);
         return;
     }
 
-    vram_addr_ = address;
+    set_vram_addr(address);
 }
 
 void V9938::write_palette(const std::uint8_t value) {
@@ -143,13 +142,15 @@ void V9938::advance_command(const std::uint64_t master_cycles) {
 }
 
 void V9938::tick_scanline(const int line) {
+    const auto mode = current_display_mode();
+    const auto width = current_visible_width();
     status_[0] = static_cast<std::uint8_t>(status_[0] & ~0x40U);
     if (!display_enabled()) {
         background_line_buffer_.fill(backdrop_color());
         sprite_line_buffer_.fill(transparent_sprite_pixel);
         line_buffer_.fill(backdrop_color());
     } else {
-        switch (current_display_mode()) {
+        switch (mode) {
         case DisplayMode::graphic1:
             render_graphic1_background_scanline(line);
             break;
@@ -162,11 +163,14 @@ void V9938::tick_scanline(const int line) {
         case DisplayMode::graphic4:
             render_graphic4_background_scanline(line);
             break;
+        case DisplayMode::graphic6:
+            render_graphic6_background_scanline(line);
+            break;
         case DisplayMode::unsupported:
             background_line_buffer_.fill(backdrop_color());
             break;
         }
-        switch (current_display_mode()) {
+        switch (mode) {
         case DisplayMode::graphic1:
         case DisplayMode::graphic2:
             render_mode1_sprites_for_scanline(line);
@@ -175,15 +179,19 @@ void V9938::tick_scanline(const int line) {
         case DisplayMode::graphic4:
             render_mode2_sprites_for_scanline(line);
             break;
+        case DisplayMode::graphic6:
         case DisplayMode::unsupported:
             sprite_line_buffer_.fill(transparent_sprite_pixel);
             break;
         }
 
-        for (int x = 0; x < visible_width; ++x) {
+        for (int x = 0; x < width; ++x) {
             line_buffer_[x] =
                 sprite_line_buffer_[x] == transparent_sprite_pixel ? background_line_buffer_[x]
                                                                    : sprite_line_buffer_[x];
+        }
+        for (int x = width; x < max_visible_width; ++x) {
+            line_buffer_[x] = backdrop_color();
         }
     }
 
@@ -194,13 +202,14 @@ void V9938::tick_scanline(const int line) {
 }
 
 auto V9938::render_graphic4_frame() -> Framebuffer {
-    Framebuffer frame(static_cast<std::size_t>(visible_width * visible_height * 3), 0x00);
+    const auto width = current_visible_width();
+    Framebuffer frame(static_cast<std::size_t>(width * visible_height * 3), 0x00);
 
     for (int line = 0; line < visible_height; ++line) {
         tick_scanline(line);
-        for (int x = 0; x < visible_width; ++x) {
+        for (int x = 0; x < width; ++x) {
             const auto rgb = current_palette_rgb(line_buffer_[x]);
-            const auto base = static_cast<std::size_t>((line * visible_width + x) * 3);
+            const auto base = static_cast<std::size_t>((line * width + x) * 3);
             frame[base + 0] = rgb[0];
             frame[base + 1] = rgb[1];
             frame[base + 2] = rgb[2];
@@ -325,16 +334,43 @@ void V9938::write_register_value(const std::uint8_t index, const std::uint8_t va
     }
 
     reg_[index] = value;
+    if (index == 14) {
+        set_vram_addr(static_cast<std::uint16_t>(
+            (vram_addr_ & 0x3FFFU) | ((static_cast<std::uint16_t>(value) & 0x03U) << 14U)
+        ));
+    }
     if (index == 15) {
         status_reg_select_ = static_cast<std::uint8_t>(value % status_.size());
     }
     update_int_state();
 }
 
+void V9938::set_vram_addr(const std::uint16_t address) {
+    vram_addr_ = address;
+    reg_[14] = static_cast<std::uint8_t>((reg_[14] & ~0x03U) | ((address >> 14U) & 0x03U));
+}
+
+void V9938::increment_vram_addr() { set_vram_addr(static_cast<std::uint16_t>(vram_addr_ + 1U)); }
+
+auto V9938::cpu_vram_address_from_latch(const std::uint8_t high_control) const -> std::uint16_t {
+    const auto low_14 = static_cast<std::uint16_t>(
+        control_latch_ | (static_cast<std::uint16_t>(high_control & 0x3FU) << 8U)
+    );
+    return static_cast<std::uint16_t>(
+        (low_14 & 0x3FFFU) | ((static_cast<std::uint16_t>(reg_[14]) & 0x03U) << 14U)
+    );
+}
+
 auto V9938::graphic4_byte_address(const int line, const int x) const -> std::uint16_t {
     const auto scrolled_line =
         static_cast<std::uint16_t>((static_cast<unsigned>(line) + vertical_scroll()) & 0xFFU);
     return static_cast<std::uint16_t>(scrolled_line * bytes_per_scanline + (x / 2));
+}
+
+auto V9938::graphic6_byte_address(const int line, const int x) const -> std::uint16_t {
+    const auto scrolled_line =
+        static_cast<std::uint16_t>((static_cast<unsigned>(line) + vertical_scroll()) & 0xFFU);
+    return static_cast<std::uint16_t>(scrolled_line * graphic6_bytes_per_scanline + (x / 2));
 }
 
 auto V9938::vertical_scroll() const -> std::uint8_t { return reg_[23]; }
@@ -774,6 +810,8 @@ auto V9938::current_display_mode() const -> DisplayMode {
         return DisplayMode::graphic3;
     case 0x0C:
         return DisplayMode::graphic4;
+    case 0x14:
+        return DisplayMode::graphic6;
     default:
         return DisplayMode::unsupported;
     }
@@ -782,6 +820,10 @@ auto V9938::current_display_mode() const -> DisplayMode {
 auto V9938::display_enabled() const -> bool { return (reg_[1] & 0x40U) != 0U; }
 
 auto V9938::backdrop_color() const -> std::uint8_t { return static_cast<std::uint8_t>(reg_[7] & 0x0FU); }
+
+auto V9938::current_visible_width() const -> int {
+    return current_display_mode() == DisplayMode::graphic6 ? max_visible_width : visible_width;
+}
 
 auto V9938::pattern_name_base() const -> std::uint16_t {
     return static_cast<std::uint16_t>(reg_[2] << 10U);
@@ -875,6 +917,18 @@ void V9938::render_graphic4_background_scanline(const int line) {
         background_line_buffer_[x] =
             static_cast<std::uint8_t>((x % 2) == 0 ? (byte >> 4) : (byte & 0x0FU));
     }
+    for (int x = visible_width; x < max_visible_width; ++x) {
+        background_line_buffer_[x] = backdrop_color();
+    }
+}
+
+void V9938::render_graphic6_background_scanline(const int line) {
+    for (int x = 0; x < max_visible_width; ++x) {
+        const auto address = graphic6_byte_address(line, x);
+        const auto byte = vram_[address];
+        background_line_buffer_[x] =
+            static_cast<std::uint8_t>((x % 2) == 0 ? (byte >> 4) : (byte & 0x0FU));
+    }
 }
 
 void V9938::render_graphic3_background_scanline(const int line) {
@@ -917,7 +971,7 @@ void V9938::render_mode1_sprites_for_scanline(const int line) {
         return;
     }
 
-    std::array<int, visible_width> first_owner{};
+    std::array<int, max_visible_width> first_owner{};
     first_owner.fill(-1);
 
     int visible_sprite_count = 0;
@@ -1003,7 +1057,7 @@ void V9938::render_mode2_sprites_for_scanline(const int line) {
         return;
     }
 
-    std::array<int, visible_width> first_owner{};
+    std::array<int, max_visible_width> first_owner{};
     first_owner.fill(-1);
 
     int visible_sprite_count = 0;

@@ -59,6 +59,11 @@ void set_graphic3_mode(V9938& vdp) {
     );
 }
 
+void set_graphic6_mode(V9938& vdp) {
+    write_register(vdp, 0, V9938::graphic6_mode_r0);
+    write_register(vdp, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U));
+}
+
 void set_graphic1_mode(V9938& vdp) {
     write_register(vdp, 0, 0x00);
     write_register(vdp, 1, static_cast<std::uint8_t>(V9938::graphic_mode_r1 | 0x40U));
@@ -98,6 +103,13 @@ void seek_vram_read(V9938& vdp, const std::uint16_t address) {
 
 void write_graphic4_byte(V9938& vdp, const int line, const int byte_index, const std::uint8_t value) {
     const auto address = static_cast<std::uint16_t>(line * V9938::bytes_per_scanline + byte_index);
+    seek_vram_write(vdp, address);
+    vdp.write_data(value);
+}
+
+void write_graphic6_byte(V9938& vdp, const int line, const int byte_index, const std::uint8_t value) {
+    const auto address =
+        static_cast<std::uint16_t>(line * V9938::graphic6_bytes_per_scanline + byte_index);
     seek_vram_write(vdp, address);
     vdp.write_data(value);
 }
@@ -231,6 +243,41 @@ TEST_CASE("VRAM reads follow the V9938 read-ahead latch behavior", "[video]") {
     REQUIRE(vdp.read_data() == 0xBB);
 }
 
+TEST_CASE("VDP CPU writes can reach VRAM above 0x3FFF without aliasing into low VRAM", "[video]") {
+    V9938 vdp;
+
+    write_register(vdp, 14, 0x01);
+    seek_vram_write(vdp, 0x0012);
+    vdp.write_data(0xAB);
+
+    REQUIRE(vdp.vram()[0x4012] == 0xAB);
+    REQUIRE(vdp.vram()[0x0012] == 0x00);
+
+    write_register(vdp, 14, 0x00);
+    seek_vram_write(vdp, 0x3FFF);
+    vdp.write_data(0x12);
+    vdp.write_data(0x34);
+
+    REQUIRE(vdp.vram()[0x3FFF] == 0x12);
+    REQUIRE(vdp.vram()[0x4000] == 0x34);
+    REQUIRE((vdp.register_value(14) & 0x03U) == 0x01);
+}
+
+TEST_CASE("VDP CPU reads can reach VRAM above 0x3FFF without aliasing into low VRAM", "[video]") {
+    V9938 vdp;
+
+    vdp.poke_vram(0x4012, 0xA5);
+    vdp.poke_vram(0x4013, 0x5C);
+    vdp.poke_vram(0x0012, 0x11);
+    vdp.poke_vram(0x0013, 0x22);
+
+    write_register(vdp, 14, 0x01);
+    seek_vram_read(vdp, 0x0012);
+    REQUIRE(vdp.read_data() == 0x00);
+    REQUIRE(vdp.read_data() == 0xA5);
+    REQUIRE(vdp.read_data() == 0x5C);
+}
+
 TEST_CASE("Palette decoding expands 3 bit RGB channels correctly", "[video]") {
     V9938 vdp;
 
@@ -290,6 +337,44 @@ TEST_CASE("R#23 vertical scroll wraps within the VRAM page", "[video]") {
     write_register(vdp, 23, 0xFF);
     vdp.tick_scanline(1);
     REQUIRE(vdp.background_line_buffer()[0] == 0x00);
+}
+
+TEST_CASE("Graphic 6 rendering follows the documented 512 wide VRAM addressing", "[video]") {
+    V9938 vdp;
+
+    set_graphic6_mode(vdp);
+    write_graphic6_byte(vdp, 0, 0, 0x12);
+    write_graphic6_byte(vdp, 1, 0, 0x34);
+
+    vdp.tick_scanline(0);
+    REQUIRE(vdp.background_line_buffer()[0] == 0x01);
+    REQUIRE(vdp.background_line_buffer()[1] == 0x02);
+
+    vdp.tick_scanline(1);
+    REQUIRE(vdp.background_line_buffer()[0] == 0x03);
+    REQUIRE(vdp.background_line_buffer()[1] == 0x04);
+}
+
+TEST_CASE("Graphic 6 single VDP composition produces a 512 wide RGB frame", "[video]") {
+    V9938 vdp;
+
+    set_graphic6_mode(vdp);
+    vdp.write_palette(0x01);
+    vdp.write_palette(0x70);
+    vdp.write_palette(0x00);
+    vdp.write_palette(0x02);
+    vdp.write_palette(0x07);
+    vdp.write_palette(0x00);
+    write_graphic6_byte(vdp, 0, 0, 0x12);
+
+    const auto frame = Compositor::compose_single_vdp(vdp);
+    REQUIRE(frame.size() ==
+            static_cast<std::size_t>(V9938::max_visible_width * V9938::visible_height * 3));
+
+    const auto pixel0 = std::array<std::uint8_t, 3>{frame[0], frame[1], frame[2]};
+    const auto pixel1 = std::array<std::uint8_t, 3>{frame[3], frame[4], frame[5]};
+    REQUIRE(pixel0 == vdp.palette_entry_rgb(1));
+    REQUIRE(pixel1 == vdp.palette_entry_rgb(2));
 }
 
 TEST_CASE("R#1 bit 6 blanks the display to the backdrop color", "[video]") {
@@ -823,6 +908,40 @@ TEST_CASE("Graphic 3 on VDP-A composes over Graphic 4 on VDP-B through color zer
 
     REQUIRE(pixel0 == vdp_a.palette_entry_rgb(4));
     REQUIRE(pixel1 == vdp_b.palette_entry_rgb(2));
+}
+
+TEST_CASE("Graphic 6 on VDP-A composes over Graphic 4 on VDP-B on a 512 pixel grid", "[video]") {
+    V9938 vdp_a;
+    V9938 vdp_b;
+    set_graphic6_mode(vdp_a);
+    set_graphic4_mode(vdp_b);
+
+    vdp_a.write_palette(0x00);
+    vdp_a.write_palette(0x00);
+    vdp_a.write_palette(0x00);
+    vdp_a.write_palette(0x04);
+    vdp_a.write_palette(0x70);
+    vdp_a.write_palette(0x00);
+    write_register(vdp_a, 8, 0x20);
+    write_graphic6_byte(vdp_a, 0, 0, 0x04);
+
+    vdp_b.write_palette(0x00);
+    vdp_b.write_palette(0x00);
+    vdp_b.write_palette(0x00);
+    vdp_b.write_palette(0x02);
+    vdp_b.write_palette(0x07);
+    vdp_b.write_palette(0x00);
+    write_graphic4_byte(vdp_b, 0, 0, 0x22);
+
+    const auto frame = Compositor::compose_dual_vdp(vdp_a, vdp_b);
+    REQUIRE(frame.size() ==
+            static_cast<std::size_t>(V9938::max_visible_width * V9938::visible_height * 3));
+
+    const auto pixel0 = std::array<std::uint8_t, 3>{frame[0], frame[1], frame[2]};
+    const auto pixel1 = std::array<std::uint8_t, 3>{frame[3], frame[4], frame[5]};
+
+    REQUIRE(pixel0 == vdp_b.palette_entry_rgb(2));
+    REQUIRE(pixel1 == vdp_a.palette_entry_rgb(4));
 }
 
 TEST_CASE("Headless and display upload paths match for a known dual-VDP frame", "[video]") {

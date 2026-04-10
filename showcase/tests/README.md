@@ -19,3 +19,12 @@ Current contents:
 - `milestone-04-checkpoints.md`
   Mixed-mode and Graphic 4 command-engine review checkpoints for showcase
   milestone 4.
+- `milestone-05-checkpoints.md`
+  Audio-scene development probes and final acceptance guidance for showcase
+  milestone 5.
+- `milestone-06-checkpoints.md`
+  Final full-loop system-validation checkpoint and frozen review surface for
+  showcase milestone 6.
+- `milestone-07-checkpoints.md`
+  Final mixed-mode `Graphic 4` plus `Graphic 6` attract-scene checkpoint for
+  showcase milestone 7.

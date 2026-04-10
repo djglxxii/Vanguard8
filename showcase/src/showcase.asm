@@ -1,8 +1,9 @@
-; Vanguard 8 showcase ROM milestone 4 title, compositing, tile, sprite,
-; mixed-mode, and Graphic 4 command-engine scenes.
+; Vanguard 8 showcase ROM milestone 7 title, compositing, tile, sprite,
+; mixed-mode, command-engine, audio, system-validation, and final starfield HUD
+; scenes.
 ; Implemented against docs/spec/00-overview.md, docs/spec/01-cpu.md,
-; docs/spec/02-video.md, docs/spec/04-io.md,
-; showcase/docs/showcase-rom-plan.md, and showcase/docs/milestones/04.md.
+; docs/spec/02-video.md, docs/spec/03-audio.md, docs/spec/04-io.md,
+; showcase/docs/showcase-rom-plan.md, and showcase/docs/milestones/07.md.
 
         ORG 0x0000
 
@@ -77,6 +78,12 @@
         ENDR
     ENDM
 
+    MACRO FILL_A_G6_RECT y, x_byte, width_bytes, height, value
+        REPT height, row
+            VDP_A_FILL ((((y) + row) * 256) + (x_byte)), width_bytes, value
+        ENDR
+    ENDM
+
     MACRO VDP_A_WRITE address, value
         ld a, (address) & 0xFF
         out (0x81), a
@@ -93,6 +100,28 @@
         out (0x85), a
         ld a, value
         out (0x84), a
+    ENDM
+
+    MACRO STARFIELD_REPEAT_ROW y_offset, value, x0, x1, x2, x3, x4
+        REPT 16, band
+            VDP_B_WRITE ((((y_offset) + (band * 16)) * 128) + (x0)), value
+            VDP_B_WRITE ((((y_offset) + (band * 16)) * 128) + (x1)), value
+            VDP_B_WRITE ((((y_offset) + (band * 16)) * 128) + (x2)), value
+            VDP_B_WRITE ((((y_offset) + (band * 16)) * 128) + (x3)), value
+            VDP_B_WRITE ((((y_offset) + (band * 16)) * 128) + (x4)), value
+        ENDR
+    ENDM
+
+    MACRO DRAW_G6_GLYPH y, x_byte, glyph_label
+        ld hl, glyph_label
+        ld bc, (((y) * 256) + (x_byte))
+        call draw_g6_glyph
+    ENDM
+
+    MACRO DRAW_G6_GLYPH_BANKED y, x_byte, glyph_label, bank_base
+        ld hl, 0x4000 + ((glyph_label) - (bank_base))
+        ld bc, (((y) * 256) + (x_byte))
+        call draw_g6_glyph
     ENDM
 
     MACRO G2_A_PATTERN_ALL_BANKS pattern, row0, row1, row2, row3, row4, row5, row6, row7
@@ -163,6 +192,11 @@
         VDP_REG_A 46, 0xC0
     ENDM
 
+    MACRO VDP_CMD_A_HMMV_WAIT x, y, width_bytes, height, value
+        VDP_CMD_A_HMMV x, y, width_bytes, height, value
+        call wait_vdp_a_command_clear
+    ENDM
+
     MACRO VDP_CMD_B_HMMV x, y, width_bytes, height, value
         VDP_REG_B 36, ((x) & 0xFF)
         VDP_REG_B 37, (((x) >> 8) & 0x03)
@@ -175,6 +209,11 @@
         VDP_REG_B 44, value
         VDP_REG_B 45, 0x00
         VDP_REG_B 46, 0xC0
+    ENDM
+
+    MACRO VDP_CMD_B_HMMV_WAIT x, y, width_bytes, height, value
+        VDP_CMD_B_HMMV x, y, width_bytes, height, value
+        call wait_vdp_b_command_clear
     ENDM
 
     MACRO VDP_CMD_A_HMMM sx, sy, dx, dy, width_bytes, height
@@ -194,9 +233,37 @@
         VDP_REG_A 46, 0xD0
     ENDM
 
+    MACRO YM_WRITE reg, value
+        call ym_wait_ready
+        ld a, reg
+        out (0x40), a
+        call ym_wait_ready
+        ld a, value
+        out (0x41), a
+    ENDM
+
+    MACRO AY_WRITE reg, value
+        ld a, reg
+        out (0x50), a
+        ld a, value
+        out (0x51), a
+    ENDM
+
     MACRO PRT0_CHAIN_HANDLER label_name, next_label, marker
 label_name:
         call clear_prt0_flag
+        ld hl, next_label
+        ld (0x80E4), hl
+        ld a, marker
+        ld (0x8120), a
+        ei
+        db 0xED, 0x4D
+    ENDM
+
+    MACRO PRT0_SCROLL_HANDLER label_name, next_label, scroll_value, marker
+label_name:
+        call clear_prt0_flag
+        VDP_REG_B 23, scroll_value
         ld hl, next_label
         ld (0x80E4), hl
         ld a, marker
@@ -218,12 +285,18 @@ reset_entry:
         ; INT1 / PRT vector table in SRAM at 0x80E0-0x80FF.
         ld a, 0x80
         db 0xED, 0x47              ; LD I,A
-        ld hl, int1_handler
+        ld hl, 0x8018
         ld (0x80E0), hl
         ld hl, prt0_stage_0
         ld (0x80E4), hl
         ld hl, prt1_handler
         ld (0x80E6), hl
+        ld a, 0xC3
+        ld (0x8018), a
+        ld (0x8062), a
+        ld hl, int1_handler_rom
+        ld (0x8019), hl
+        ld (0x8063), hl
         OUT0_A 0x33, 0xE0          ; IL
         OUT0_A 0x34, 0x02          ; ITC (ITE1)
 
@@ -240,6 +313,7 @@ reset_entry:
         ; Bank 0 = title / identity scene.
         OUT0_A 0x39, 0x04
         call 0x4000
+        call audio_prime_registers
 
         ; Enable PRT0 interrupt + down-count.
         OUT0_A 0x10, 0x11
@@ -271,9 +345,70 @@ wait_vdp_b_command_clear:
         VDP_REG_B 15, 0x00
         ret
 
-int1_handler:
-        ld a, 0x55
+ym_wait_ready:
+        in a, (0x40)
+        db 0xED, 0x64, 0x80        ; TST 0x80
+        jr nz, ym_wait_ready
+        ret
+
+audio_silence_all:
+        YM_WRITE 0x08, 0x00
+
+        AY_WRITE 0x08, 0x00
+        AY_WRITE 0x09, 0x00
+        AY_WRITE 0x0A, 0x00
+
+        ld a, 0x83
+        out (0x60), a
+        xor a
         ld (0x8102), a
+        ret
+
+audio_prime_registers:
+        YM_WRITE 0x20, 0xC7
+        YM_WRITE 0x40, 0x01
+        YM_WRITE 0x60, 0x08
+        YM_WRITE 0x80, 0x1F
+        YM_WRITE 0xE0, 0x0F
+
+        AY_WRITE 0x00, 0x34
+        AY_WRITE 0x01, 0x01
+        AY_WRITE 0x06, 0x04
+        AY_WRITE 0x07, 0x3E
+        ret
+
+audio_program_ym_voice_a:
+        YM_WRITE 0x28, 0x4A
+        YM_WRITE 0x08, 0x08
+        ret
+
+audio_program_ym_voice_b:
+        YM_WRITE 0x28, 0x46
+        YM_WRITE 0x08, 0x08
+        ret
+
+audio_program_ay_voice:
+        AY_WRITE 0x08, 0x0F
+        AY_WRITE 0x09, 0x00
+        AY_WRITE 0x0A, 0x00
+        ret
+
+int1_handler_rom:
+        push af
+        ld (0x8132), hl
+        ld hl, (0x8130)
+        ld a, (hl)
+        and 0xF0
+        rrca
+        rrca
+        rrca
+        rrca
+        out (0x61), a
+        ld (0x8102), a
+        inc hl
+        ld (0x8130), hl
+        ld hl, (0x8132)
+        pop af
         ei
         db 0xED, 0x4D
 
@@ -388,7 +523,7 @@ prt0_stage_40:
 prt0_stage_41:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
-        OUT0_A 0x39, 0x14
+        OUT0_A 0x39, 0x24
         call 0x6000
         OUT0_A 0x10, 0x11
         ld hl, prt0_stage_42
@@ -401,7 +536,7 @@ prt0_stage_41:
 prt0_stage_42:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
-        OUT0_A 0x39, 0x14
+        OUT0_A 0x39, 0x24
         call 0x7000
         OUT0_A 0x10, 0x11
         ld hl, prt0_stage_43
@@ -414,7 +549,7 @@ prt0_stage_42:
 prt0_stage_43:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
-        OUT0_A 0x39, 0x14
+        OUT0_A 0x39, 0x24
         call 0x7800
         OUT0_A 0x10, 0x11
         ld hl, prt0_stage_44
@@ -435,11 +570,11 @@ prt0_stage_50:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
 
-        OUT0_A 0x39, 0x28
-        call 0x4000
+        OUT0_A 0x39, 0x38
+        call 0x6800
 
         OUT0_A 0x10, 0x11
-        ld hl, prt0_stage_51
+        ld hl, prt0_stage_61
         ld (0x80E4), hl
         ld a, 0x62
         ld (0x8120), a
@@ -447,11 +582,6 @@ prt0_stage_50:
         db 0xED, 0x4D
 
 prt0_stage_51:
-        call clear_prt0_flag
-        OUT0_A 0x10, 0x00
-        OUT0_A 0x39, 0x38
-        call 0x4400
-        OUT0_A 0x10, 0x11
         ld hl, prt0_stage_52
         ld (0x80E4), hl
         ld a, 0x63
@@ -459,115 +589,235 @@ prt0_stage_51:
         ei
         db 0xED, 0x4D
 
-prt0_stage_52:
+        PRT0_CHAIN_HANDLER prt0_stage_52, prt0_stage_53, 0x64
+        PRT0_CHAIN_HANDLER prt0_stage_53, prt0_stage_54, 0x65
+        PRT0_CHAIN_HANDLER prt0_stage_54, prt0_stage_55, 0x66
+        PRT0_CHAIN_HANDLER prt0_stage_55, prt0_stage_56, 0x67
+        PRT0_CHAIN_HANDLER prt0_stage_56, prt0_stage_57, 0x68
+        PRT0_CHAIN_HANDLER prt0_stage_57, prt0_stage_58, 0x69
+        PRT0_CHAIN_HANDLER prt0_stage_58, prt0_stage_59, 0x6A
+        PRT0_CHAIN_HANDLER prt0_stage_59, prt0_stage_60, 0x6B
+
+prt0_stage_60:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
         OUT0_A 0x39, 0x38
-        call 0x4800
+        call 0x6800
         OUT0_A 0x10, 0x11
-        ld hl, prt0_stage_53
+        ld hl, prt0_stage_61
         ld (0x80E4), hl
-        ld a, 0x64
+        ld a, 0x6C
         ld (0x8120), a
         ei
         db 0xED, 0x4D
 
-prt0_stage_53:
+prt0_stage_61:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
         OUT0_A 0x39, 0x38
-        call 0x4C00
+        call 0x7000
         OUT0_A 0x10, 0x11
-
-        ld hl, prt0_stage_54
+        ld hl, prt0_stage_62
         ld (0x80E4), hl
-        ld a, 0x65
+        ld a, 0x6D
         ld (0x8120), a
         ei
         db 0xED, 0x4D
 
-prt0_stage_54:
+prt0_stage_62:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
         OUT0_A 0x39, 0x38
-        call 0x5000
+        call 0x7400
         OUT0_A 0x10, 0x11
-
-        ld hl, prt0_stage_55
+        ld hl, prt0_stage_63
         ld (0x80E4), hl
-        ld a, 0x66
+        ld a, 0x6E
         ld (0x8120), a
         ei
         db 0xED, 0x4D
 
-prt0_stage_55:
+prt0_stage_63:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
         OUT0_A 0x39, 0x38
-        call 0x5400
+        call 0x7400
         OUT0_A 0x10, 0x11
-
-        ld hl, prt0_stage_56
+        ld hl, prt0_stage_64
         ld (0x80E4), hl
-        ld a, 0x67
+        ld a, 0x6F
         ld (0x8120), a
         ei
         db 0xED, 0x4D
 
-prt0_stage_56:
+prt0_stage_64:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
         OUT0_A 0x39, 0x38
-        call 0x5800
+        call 0x7800
         OUT0_A 0x10, 0x11
-
-        ld hl, prt0_stage_57
+        ld hl, prt0_stage_65
         ld (0x80E4), hl
-        ld a, 0x68
+        ld a, 0x70
         ld (0x8120), a
         ei
         db 0xED, 0x4D
 
-prt0_stage_57:
+prt0_stage_65:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
         OUT0_A 0x39, 0x38
-        call 0x5C00
+        call 0x7800
         OUT0_A 0x10, 0x11
-
-        ld hl, prt0_stage_58
+        ld hl, prt0_stage_66
         ld (0x80E4), hl
-        ld a, 0x69
+        ld a, 0x71
         ld (0x8120), a
         ei
         db 0xED, 0x4D
 
-prt0_stage_58:
+prt0_stage_66:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
         OUT0_A 0x39, 0x38
-        call 0x6000
+        call 0x7C00
         OUT0_A 0x10, 0x11
-
-        ld hl, prt0_stage_59
+        ld hl, prt0_stage_67
         ld (0x80E4), hl
-        ld a, 0x6A
+        ld a, 0x72
         ld (0x8120), a
         ei
         db 0xED, 0x4D
 
-prt0_stage_59:
+prt0_stage_67:
         call clear_prt0_flag
         OUT0_A 0x10, 0x00
         OUT0_A 0x39, 0x38
-        call 0x6400
-
-        ld hl, prt0_idle
+        call 0x7C00
+        OUT0_A 0x10, 0x11
+        ld hl, prt0_stage_68
         ld (0x80E4), hl
-        ld a, 0x6B
+        ld a, 0x73
         ld (0x8120), a
         ei
         db 0xED, 0x4D
+
+prt0_stage_68:
+        call clear_prt0_flag
+        OUT0_A 0x10, 0x00
+        OUT0_A 0x39, 0x38
+        call 0x7C00
+        OUT0_A 0x10, 0x11
+        ld hl, prt0_stage_69
+        ld (0x80E4), hl
+        ld a, 0x74
+        ld (0x8120), a
+        ei
+        db 0xED, 0x4D
+
+prt0_stage_69:
+        call clear_prt0_flag
+        OUT0_A 0x10, 0x00
+        OUT0_A 0x39, 0x38
+        call 0x7C00
+        OUT0_A 0x10, 0x11
+        ld hl, prt0_stage_70
+        ld (0x80E4), hl
+        ld a, 0x75
+        ld (0x8120), a
+        ei
+        db 0xED, 0x4D
+
+prt0_stage_70:
+        call clear_prt0_flag
+        OUT0_A 0x10, 0x00
+        OUT0_A 0x39, 0x38
+        call 0x7C00
+        OUT0_A 0x10, 0x11
+        ld hl, prt0_stage_71
+        ld (0x80E4), hl
+        ld a, 0x76
+        ld (0x8120), a
+        ei
+        db 0xED, 0x4D
+
+prt0_stage_71:
+        call clear_prt0_flag
+        OUT0_A 0x10, 0x00
+        OUT0_A 0x39, 0x38
+        call 0x7C00
+        OUT0_A 0x10, 0x11
+        ld hl, prt0_stage_72
+        ld (0x80E4), hl
+        ld a, 0x77
+        ld (0x8120), a
+        ei
+        db 0xED, 0x4D
+
+prt0_stage_72:
+        call clear_prt0_flag
+        OUT0_A 0x10, 0x00
+        OUT0_A 0x39, 0x38
+        call 0x7C00
+        OUT0_A 0x10, 0x11
+        ld hl, prt0_stage_73
+        ld (0x80E4), hl
+        ld a, 0x78
+        ld (0x8120), a
+        ei
+        db 0xED, 0x4D
+
+prt0_stage_73:
+        call clear_prt0_flag
+        OUT0_A 0x10, 0x00
+        OUT0_A 0x39, 0x38
+        call 0x7C00
+        OUT0_A 0x10, 0x11
+        ld hl, prt0_stage_74
+        ld (0x80E4), hl
+        ld a, 0x79
+        ld (0x8120), a
+        ei
+        db 0xED, 0x4D
+
+prt0_stage_74:
+        call clear_prt0_flag
+        OUT0_A 0x10, 0x00
+        OUT0_A 0x39, 0x3C
+        call 0x4000
+        OUT0_A 0x10, 0x11
+        ld hl, prt0_stage_75
+        ld (0x80E4), hl
+        ld a, 0x7A
+        ld (0x8120), a
+        ei
+        db 0xED, 0x4D
+
+prt0_stage_75:
+        call clear_prt0_flag
+        OUT0_A 0x10, 0x00
+        OUT0_A 0x39, 0x50
+        call 0x4000
+        OUT0_A 0x10, 0x11
+        ld hl, prt0_starfield_tick_0
+        ld (0x80E4), hl
+        ld a, 0x7B
+        ld (0x8120), a
+        ei
+        db 0xED, 0x4D
+
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_0,  prt0_starfield_tick_1,  0x04, 0x7C
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_1,  prt0_starfield_tick_2,  0x08, 0x7D
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_2,  prt0_starfield_tick_3,  0x0C, 0x7E
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_3,  prt0_starfield_tick_4,  0x10, 0x7F
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_4,  prt0_starfield_tick_5,  0x14, 0x80
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_5,  prt0_starfield_tick_6,  0x18, 0x81
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_6,  prt0_starfield_tick_7,  0x1C, 0x82
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_7,  prt0_starfield_tick_8,  0x20, 0x83
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_8,  prt0_starfield_tick_9,  0x24, 0x84
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_9,  prt0_starfield_tick_10, 0x28, 0x85
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_10, prt0_starfield_tick_11, 0x2C, 0x86
+        PRT0_SCROLL_HANDLER prt0_starfield_tick_11, prt0_starfield_tick_0,  0x30, 0x87
 
 prt0_idle:
         call clear_prt0_flag
@@ -575,6 +825,93 @@ prt0_idle:
         ld (0x8120), a
         ei
         db 0xED, 0x4D
+
+vdp_a_seek_write_bc:
+        ld a, c
+        out (0x81), a
+        ld a, b
+        and 0x3F
+        or 0x40
+        out (0x81), a
+        ret
+
+vdp_b_seek_write_bc:
+        ld a, c
+        out (0x85), a
+        ld a, b
+        and 0x3F
+        or 0x40
+        out (0x85), a
+        ret
+
+fill_vdp_a_bytes:
+        ld l, a
+        ld a, d
+        or e
+        ret z
+        call vdp_a_seek_write_bc
+.loop:
+        ld a, l
+        out (0x80), a
+        dec de
+        ld a, d
+        or e
+        jr nz, .loop
+        ret
+
+fill_vdp_b_bytes:
+        ld l, a
+        ld a, d
+        or e
+        ret z
+        call vdp_b_seek_write_bc
+.loop:
+        ld a, l
+        out (0x84), a
+        dec de
+        ld a, d
+        or e
+        jr nz, .loop
+        ret
+
+copy_vdp_a_bytes:
+        ld a, d
+        or e
+        ret z
+        call vdp_a_seek_write_bc
+.loop:
+        ld a, (hl)
+        out (0x80), a
+        inc hl
+        dec de
+        ld a, d
+        or e
+        jr nz, .loop
+        ret
+
+draw_g6_glyph:
+        ld a, 8
+.row:
+        push af
+        push bc
+        ld de, 4
+        call copy_vdp_a_bytes
+        pop bc
+        inc b
+        pop af
+        dec a
+        jr nz, .row
+        ret
+
+msm_sample_solo:
+        REPT 128
+            db 0xF0, 0xC0, 0x90, 0x60, 0x30, 0x10, 0x20, 0x50
+        ENDR
+
+msm_sample_mix:
+        REPT 128
+            db 0x80, 0xA0, 0xD0, 0xB0, 0x70, 0x40, 0x20, 0x30
+        ENDR
 
 tile_scene_init_fixed:
         ld a, 0x43
@@ -1175,7 +1512,16 @@ command_scene_step0_bank5:
         VDP_A_WRITE 0x7C00, 0xD0
         VDP_B_WRITE 0x7C00, 0xD0
 
-        VDP_CMD_A_HMMV 0, 0, 128, 212, 0x11
+        VDP_CMD_A_HMMV_WAIT 0, 0, 128, 212, 0x11
+        VDP_CMD_A_HMMV_WAIT 8, 12, 112, 16, 0x22
+        VDP_CMD_A_HMMV_WAIT 8, 44, 112, 52, 0x12
+        VDP_CMD_A_HMMV_WAIT 8, 52, 8, 16, 0x22
+        VDP_CMD_A_HMMV_WAIT 32, 52, 8, 16, 0x22
+        VDP_CMD_A_HMMV_WAIT 56, 52, 8, 16, 0x22
+        VDP_CMD_A_HMMV_WAIT 8, 112, 112, 52, 0x12
+        VDP_CMD_A_HMMV_WAIT 8, 120, 8, 16, 0x44
+        VDP_CMD_A_HMMV_WAIT 32, 120, 8, 16, 0x44
+        VDP_CMD_A_HMMV_WAIT 56, 120, 8, 16, 0x44
         ret
 
         defs 0x18400 - $, 0x00
@@ -1232,4 +1578,384 @@ command_scene_step9_bank5:
         VDP_CMD_A_HMMV 56, 120, 8, 16, 0x44
         ret
 
+        defs 0x1A800 - $, 0x00
+
+audio_scene_init_bank5:
+        ld a, 0x47
+        ld (0x8127), a
+
+        VDP_REG_A 0, 0x06
+        VDP_REG_A 1, 0x00
+        VDP_REG_A 7, 0x02
+        VDP_REG_A 8, 0x00
+
+        VDP_REG_B 0, 0x06
+        VDP_REG_B 1, 0x00
+        VDP_REG_B 8, 0x00
+
+        VDP_PALETTE_A 0x00, 0x00, 0x00
+        VDP_PALETTE_A 0x01, 0x02, 0x04
+        VDP_PALETTE_A 0x02, 0x03, 0x07
+        VDP_PALETTE_A 0x03, 0x06, 0x03
+        VDP_PALETTE_A 0x04, 0x07, 0x01
+        VDP_PALETTE_A 0x05, 0x07, 0x07
+
+        jp 0x7000
+
+        defs 0x1B000 - $, 0x00
+
+audio_phase_ym_bank5:
+        call audio_silence_all
+        ld a, 0x51
+        ld (0x8127), a
+        VDP_REG_A 7, 0x02
+
+        call audio_program_ym_voice_a
+        ret
+
+        defs 0x1B400 - $, 0x00
+
+audio_phase_ay_bank5:
+        call audio_silence_all
+        ld a, 0x52
+        ld (0x8127), a
+        VDP_REG_A 7, 0x03
+
+        call audio_program_ay_voice
+        ret
+
+        defs 0x1B800 - $, 0x00
+
+audio_phase_msm_bank5:
+        call audio_silence_all
+        ld a, 0x53
+        ld (0x8127), a
+        VDP_REG_A 7, 0x04
+
+        ld hl, msm_sample_solo
+        ld (0x8130), hl
+        ld a, 0x02
+        out (0x60), a
+        ret
+
+        defs 0x1BC00 - $, 0x00
+
+audio_phase_mix_bank5:
+        call audio_silence_all
+        ld a, 0x54
+        ld (0x8127), a
+        VDP_REG_A 7, 0x05
+
+        call audio_program_ym_voice_b
+        call audio_program_ay_voice
+        ld hl, msm_sample_mix
+        ld (0x8130), hl
+        ld a, 0x01
+        out (0x60), a
+        ret
+
         defs 0x1C000 - $, 0x00
+
+; Bank 6 page, mapped at logical 0x4000 when BBR=0x3C.
+        ORG 0x1C000
+system_validation_scene_bank6:
+        ld a, 0x56
+        ld (0x8128), a
+        ld a, 0x55
+        ld (0x8127), a
+
+        ; Preserve mixed audio and switch the display to a final Graphic 4
+        ; system tableau with VDP-A transparency and Mode 2 sprites.
+        VDP_REG_A 0, 0x06
+        VDP_REG_A 1, 0x40
+        VDP_REG_A 5, 0xF8
+        VDP_REG_A 6, 0x07
+        VDP_REG_A 7, 0x00
+        VDP_REG_A 8, 0x20
+        VDP_REG_A 11, 0x00
+
+        VDP_REG_B 0, 0x06
+        VDP_REG_B 1, 0x40
+        VDP_REG_B 8, 0x00
+
+        VDP_PALETTE_A 0x00, 0x00, 0x00
+        VDP_PALETTE_A 0x01, 0x02, 0x04
+        VDP_PALETTE_A 0x02, 0x07, 0x07
+        VDP_PALETTE_A 0x03, 0x07, 0x01
+        VDP_PALETTE_A 0x04, 0x03, 0x07
+        VDP_PALETTE_A 0x05, 0x07, 0x02
+
+        VDP_PALETTE_B 0x00, 0x00, 0x00
+        VDP_PALETTE_B 0x01, 0x01, 0x03
+        VDP_PALETTE_B 0x02, 0x03, 0x06
+        VDP_PALETTE_B 0x03, 0x06, 0x03
+        VDP_PALETTE_B 0x04, 0x07, 0x01
+        VDP_PALETTE_B 0x05, 0x07, 0x07
+
+        VDP_CMD_A_HMMV_WAIT 0, 0, 128, 212, 0x00
+        VDP_CMD_B_HMMV_WAIT 0, 0, 128, 212, 0x11
+
+        ; Rear layer: validation bays and lower status deck.
+        VDP_CMD_B_HMMV_WAIT 8, 12, 24, 40, 0x22
+        VDP_CMD_B_HMMV_WAIT 40, 12, 24, 40, 0x33
+        VDP_CMD_B_HMMV_WAIT 72, 12, 24, 40, 0x44
+        VDP_CMD_B_HMMV_WAIT 104, 12, 16, 40, 0x55
+        VDP_CMD_B_HMMV_WAIT 12, 64, 104, 20, 0x21
+        VDP_CMD_B_HMMV_WAIT 12, 88, 104, 28, 0x12
+        VDP_CMD_B_HMMV_WAIT 20, 96, 8, 8, 0x44
+        VDP_CMD_B_HMMV_WAIT 44, 96, 8, 8, 0x33
+        VDP_CMD_B_HMMV_WAIT 68, 96, 8, 8, 0x55
+        VDP_CMD_B_HMMV_WAIT 92, 96, 8, 8, 0x22
+
+        ; Foreground frame and divider bars.
+        VDP_CMD_A_HMMV_WAIT 6, 8, 116, 2, 0x22
+        VDP_CMD_A_HMMV_WAIT 6, 102, 116, 2, 0x22
+        VDP_CMD_A_HMMV_WAIT 6, 8, 2, 96, 0x22
+        VDP_CMD_A_HMMV_WAIT 120, 8, 2, 96, 0x22
+        VDP_CMD_A_HMMV_WAIT 6, 58, 116, 2, 0x11
+        VDP_CMD_A_HMMV_WAIT 6, 84, 116, 2, 0x11
+        VDP_CMD_A_HMMV_WAIT 30, 12, 2, 36, 0x33
+        VDP_CMD_A_HMMV_WAIT 62, 12, 2, 36, 0x33
+        VDP_CMD_A_HMMV_WAIT 94, 12, 2, 36, 0x33
+
+        ; A compact pair of Mode 2 foreground sprites for the final state.
+        VDP_A_WRITE 0x7000, 0x18
+        VDP_A_WRITE 0x7001, 0x3C
+        VDP_A_WRITE 0x7002, 0x7E
+        VDP_A_WRITE 0x7003, 0xFF
+        VDP_A_WRITE 0x7004, 0xFF
+        VDP_A_WRITE 0x7005, 0x7E
+        VDP_A_WRITE 0x7006, 0x3C
+        VDP_A_WRITE 0x7007, 0x18
+        VDP_A_WRITE 0x7008, 0x10
+        VDP_A_WRITE 0x7009, 0x38
+        VDP_A_WRITE 0x700A, 0x7C
+        VDP_A_WRITE 0x700B, 0xFE
+        VDP_A_WRITE 0x700C, 0x7C
+        VDP_A_WRITE 0x700D, 0x38
+        VDP_A_WRITE 0x700E, 0x10
+        VDP_A_WRITE 0x700F, 0x00
+
+        VDP_A_FILL 0x7A00, 8, 0x05
+        VDP_A_FILL 0x7A10, 8, 0x04
+        VDP_A_WRITE 0x7C00, 24
+        VDP_A_WRITE 0x7C01, 32
+        VDP_A_WRITE 0x7C02, 0x00
+        VDP_A_WRITE 0x7C03, 0x00
+        VDP_A_FILL  0x7C04, 4, 0x00
+        VDP_A_WRITE 0x7C08, 24
+        VDP_A_WRITE 0x7C09, 176
+        VDP_A_WRITE 0x7C0A, 0x01
+        VDP_A_WRITE 0x7C0B, 0x00
+        VDP_A_FILL  0x7C0C, 4, 0x00
+        VDP_A_WRITE 0x7C10, 0xD0
+        ret
+
+        defs 0x20000 - $, 0x00
+
+; Late scene page, mapped at logical 0x4000 when BBR=0x50.
+starfield_hud_scene_bank7:
+        ld a, 0x58
+        ld (0x8128), a
+        ld a, 0x57
+        ld (0x8127), a
+
+        call audio_silence_all
+
+        ; Mixed-mode final scene: a scrolling Graphic 4 starfield on VDP-B
+        ; under a fixed Graphic 6 HUD on VDP-A.
+        VDP_REG_A 0, 0x0A
+        VDP_REG_A 1, 0x40
+        VDP_REG_A 7, 0x00
+        VDP_REG_A 8, 0x20
+        VDP_REG_A 23, 0x00
+
+        VDP_REG_B 0, 0x06
+        VDP_REG_B 1, 0x40
+        VDP_REG_B 7, 0x00
+        VDP_REG_B 8, 0x00
+        VDP_REG_B 23, 0x00
+
+        VDP_PALETTE_A 0x00, 0x00, 0x00
+        VDP_PALETTE_A 0x01, 0x01, 0x02
+        VDP_PALETTE_A 0x02, 0x03, 0x07
+        VDP_PALETTE_A 0x03, 0x07, 0x07
+        VDP_PALETTE_A 0x04, 0x01, 0x06
+        VDP_PALETTE_A 0x05, 0x07, 0x02
+
+        VDP_PALETTE_B 0x00, 0x00, 0x00
+        VDP_PALETTE_B 0x01, 0x00, 0x02
+        VDP_PALETTE_B 0x02, 0x02, 0x05
+        VDP_PALETTE_B 0x03, 0x06, 0x07
+        VDP_PALETTE_B 0x04, 0x07, 0x03
+
+        VDP_CMD_A_HMMV_WAIT 0, 0, 256, 212, 0x00
+        VDP_CMD_B_HMMV_WAIT 0, 0, 128, 212, 0x00
+
+        ; Repeated star rows across the full 256-line scroll domain so R#23
+        ; wrap remains stable after the late-loop timer ticks start.
+        STARFIELD_REPEAT_ROW 0,  0x33, 4, 28, 54, 82, 108
+        STARFIELD_REPEAT_ROW 2,  0x44, 20, 42, 70, 96, 118
+        STARFIELD_REPEAT_ROW 5,  0x22, 12, 38, 66, 94, 120
+        STARFIELD_REPEAT_ROW 7,  0x33, 6, 30, 58, 86, 114
+        STARFIELD_REPEAT_ROW 9,  0x11, 14, 40, 62, 90, 122
+        STARFIELD_REPEAT_ROW 11, 0x44, 8, 24, 48, 76, 112
+        STARFIELD_REPEAT_ROW 14, 0x11, 18, 46, 72, 98, 124
+        STARFIELD_REPEAT_ROW 15, 0x22, 2, 34, 60, 88, 116
+
+        ; Fixed transparent HUD overlay built directly in Graphic 6 VRAM.
+        FILL_A_G6_RECT 6, 4,   74, 1, 0x33
+        FILL_A_G6_RECT 7, 4,    1, 16, 0x33
+        FILL_A_G6_RECT 7, 5,   72, 16, 0x11
+        FILL_A_G6_RECT 7, 77,   1, 16, 0x33
+        FILL_A_G6_RECT 23, 4,  74, 1, 0x33
+
+        FILL_A_G6_RECT 6, 90,  68, 1, 0x33
+        FILL_A_G6_RECT 7, 90,   1, 16, 0x33
+        FILL_A_G6_RECT 7, 91,  66, 16, 0x11
+        FILL_A_G6_RECT 7, 157,  1, 16, 0x33
+        FILL_A_G6_RECT 23, 90, 68, 1, 0x33
+
+        FILL_A_G6_RECT 6, 170, 74, 1, 0x33
+        FILL_A_G6_RECT 7, 170,  1, 16, 0x33
+        FILL_A_G6_RECT 7, 171, 72, 16, 0x11
+        FILL_A_G6_RECT 7, 243,  1, 16, 0x33
+        FILL_A_G6_RECT 23, 170, 74, 1, 0x33
+
+        FILL_A_G6_RECT 8,  96, 56, 2, 0x22
+        FILL_A_G6_RECT 11, 96,  8, 8, 0x44
+        FILL_A_G6_RECT 11, 106, 8, 8, 0x44
+        FILL_A_G6_RECT 11, 116, 8, 8, 0x44
+        FILL_A_G6_RECT 11, 126, 8, 8, 0x44
+        FILL_A_G6_RECT 11, 136, 8, 8, 0x55
+        FILL_A_G6_RECT 11, 146, 8, 8, 0x55
+
+        ; SCORE
+        FILL_A_G6_RECT 10, 8,  4, 1, 0x22
+        FILL_A_G6_RECT 11, 8,  1, 2, 0x22
+        FILL_A_G6_RECT 13, 8,  4, 1, 0x22
+        FILL_A_G6_RECT 14, 11, 1, 2, 0x22
+        FILL_A_G6_RECT 16, 8,  4, 1, 0x22
+
+        FILL_A_G6_RECT 10, 14, 4, 1, 0x22
+        FILL_A_G6_RECT 11, 14, 1, 6, 0x22
+        FILL_A_G6_RECT 16, 14, 4, 1, 0x22
+
+        FILL_A_G6_RECT 10, 20, 4, 1, 0x22
+        FILL_A_G6_RECT 11, 20, 1, 6, 0x22
+        FILL_A_G6_RECT 11, 23, 1, 6, 0x22
+        FILL_A_G6_RECT 16, 20, 4, 1, 0x22
+
+        FILL_A_G6_RECT 10, 26, 4, 1, 0x22
+        FILL_A_G6_RECT 11, 26, 1, 6, 0x22
+        FILL_A_G6_RECT 11, 29, 1, 2, 0x22
+        FILL_A_G6_RECT 13, 26, 4, 1, 0x22
+        FILL_A_G6_RECT 14, 28, 1, 1, 0x22
+        FILL_A_G6_RECT 15, 29, 1, 2, 0x22
+
+        FILL_A_G6_RECT 10, 32, 4, 1, 0x22
+        FILL_A_G6_RECT 11, 32, 1, 6, 0x22
+        FILL_A_G6_RECT 13, 32, 3, 1, 0x22
+        FILL_A_G6_RECT 16, 32, 4, 1, 0x22
+
+        ; 123450
+        FILL_A_G6_RECT 10, 40, 1, 7, 0x22
+        FILL_A_G6_RECT 10, 39, 1, 1, 0x22
+        FILL_A_G6_RECT 16, 39, 3, 1, 0x22
+
+        FILL_A_G6_RECT 10, 44, 4, 1, 0x22
+        FILL_A_G6_RECT 11, 47, 1, 2, 0x22
+        FILL_A_G6_RECT 13, 44, 4, 1, 0x22
+        FILL_A_G6_RECT 14, 44, 1, 2, 0x22
+        FILL_A_G6_RECT 16, 44, 4, 1, 0x22
+
+        FILL_A_G6_RECT 10, 50, 4, 1, 0x22
+        FILL_A_G6_RECT 11, 53, 1, 2, 0x22
+        FILL_A_G6_RECT 13, 50, 4, 1, 0x22
+        FILL_A_G6_RECT 14, 53, 1, 2, 0x22
+        FILL_A_G6_RECT 16, 50, 4, 1, 0x22
+
+        FILL_A_G6_RECT 10, 56, 1, 4, 0x22
+        FILL_A_G6_RECT 13, 56, 4, 1, 0x22
+        FILL_A_G6_RECT 10, 59, 1, 7, 0x22
+
+        FILL_A_G6_RECT 10, 62, 4, 1, 0x22
+        FILL_A_G6_RECT 11, 62, 1, 2, 0x22
+        FILL_A_G6_RECT 13, 62, 4, 1, 0x22
+        FILL_A_G6_RECT 14, 65, 1, 2, 0x22
+        FILL_A_G6_RECT 16, 62, 4, 1, 0x22
+
+        FILL_A_G6_RECT 10, 68, 4, 1, 0x22
+        FILL_A_G6_RECT 11, 68, 1, 6, 0x22
+        FILL_A_G6_RECT 11, 71, 1, 6, 0x22
+        FILL_A_G6_RECT 16, 68, 4, 1, 0x22
+
+        ; LIVES
+        FILL_A_G6_RECT 10, 174, 1, 7, 0x22
+        FILL_A_G6_RECT 16, 174, 4, 1, 0x22
+
+        FILL_A_G6_RECT 10, 181, 1, 7, 0x22
+        FILL_A_G6_RECT 10, 180, 3, 1, 0x22
+        FILL_A_G6_RECT 16, 180, 3, 1, 0x22
+
+        FILL_A_G6_RECT 10, 186, 1, 6, 0x22
+        FILL_A_G6_RECT 10, 189, 1, 6, 0x22
+        FILL_A_G6_RECT 16, 187, 2, 1, 0x22
+
+        FILL_A_G6_RECT 10, 192, 4, 1, 0x22
+        FILL_A_G6_RECT 11, 192, 1, 6, 0x22
+        FILL_A_G6_RECT 13, 192, 3, 1, 0x22
+        FILL_A_G6_RECT 16, 192, 4, 1, 0x22
+
+        FILL_A_G6_RECT 10, 198, 4, 1, 0x22
+        FILL_A_G6_RECT 11, 198, 1, 2, 0x22
+        FILL_A_G6_RECT 13, 198, 4, 1, 0x22
+        FILL_A_G6_RECT 14, 201, 1, 2, 0x22
+        FILL_A_G6_RECT 16, 198, 4, 1, 0x22
+
+        ; Three ship icons.
+        FILL_A_G6_RECT 11, 206, 1, 2, 0x55
+        FILL_A_G6_RECT 12, 205, 3, 1, 0x55
+        FILL_A_G6_RECT 13, 206, 1, 3, 0x55
+        FILL_A_G6_RECT 14, 205, 3, 1, 0x55
+
+        FILL_A_G6_RECT 11, 213, 1, 2, 0x55
+        FILL_A_G6_RECT 12, 212, 3, 1, 0x55
+        FILL_A_G6_RECT 13, 213, 1, 3, 0x55
+        FILL_A_G6_RECT 14, 212, 3, 1, 0x55
+
+        FILL_A_G6_RECT 11, 220, 1, 2, 0x55
+        FILL_A_G6_RECT 12, 219, 3, 1, 0x55
+        FILL_A_G6_RECT 13, 220, 1, 3, 0x55
+        FILL_A_G6_RECT 14, 219, 3, 1, 0x55
+
+        ; Lower flight deck.
+        FILL_A_G6_RECT 178, 12, 232, 1, 0x33
+        FILL_A_G6_RECT 179, 12, 1, 24, 0x33
+        FILL_A_G6_RECT 179, 13, 230, 24, 0x11
+        FILL_A_G6_RECT 179, 243, 1, 24, 0x33
+        FILL_A_G6_RECT 203, 12, 232, 1, 0x33
+
+        FILL_A_G6_RECT 182, 20, 60, 16, 0x22
+        FILL_A_G6_RECT 182, 90, 76, 16, 0x22
+        FILL_A_G6_RECT 182, 176, 56, 16, 0x22
+
+        FILL_A_G6_RECT 186, 26, 48, 2, 0x44
+        FILL_A_G6_RECT 190, 26, 36, 2, 0x55
+        FILL_A_G6_RECT 194, 26, 24, 2, 0x33
+
+        FILL_A_G6_RECT 186, 98, 4, 12, 0x44
+        FILL_A_G6_RECT 186, 108, 4, 12, 0x44
+        FILL_A_G6_RECT 186, 118, 4, 12, 0x44
+        FILL_A_G6_RECT 186, 128, 4, 12, 0x55
+        FILL_A_G6_RECT 186, 138, 4, 12, 0x55
+        FILL_A_G6_RECT 186, 148, 4, 12, 0x33
+        FILL_A_G6_RECT 186, 158, 4, 12, 0x33
+
+        FILL_A_G6_RECT 186, 184, 42, 2, 0x55
+        FILL_A_G6_RECT 190, 184, 28, 2, 0x44
+        FILL_A_G6_RECT 194, 184, 14, 2, 0x33
+
+        ret
+
+        defs 0x58000 - $, 0x00

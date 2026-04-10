@@ -81,7 +81,7 @@ TEST_CASE("OpenGL display presenter readback matches the uploaded frame through 
     if (!window_host.create(
         vanguard8::frontend::WindowConfig{
             .title = "Presenter test",
-            .logical_width = vanguard8::frontend::Display::frame_width,
+            .logical_width = vanguard8::frontend::Display::default_frame_width,
             .logical_height = vanguard8::frontend::Display::frame_height,
             .scale = 1,
             .hidden = true,
@@ -114,6 +114,51 @@ TEST_CASE("OpenGL display presenter readback matches the uploaded frame through 
     window_host.shutdown();
 }
 
+TEST_CASE("OpenGL display presenter readback preserves a 512 wide uploaded frame", "[frontend]") {
+    vanguard8::frontend::SdlWindowHost window_host;
+    std::string error;
+    if (!window_host.create(
+        vanguard8::frontend::WindowConfig{
+            .title = "Presenter wide test",
+            .logical_width = vanguard8::frontend::Display::default_frame_width,
+            .logical_height = vanguard8::frontend::Display::frame_height,
+            .scale = 1,
+            .hidden = true,
+        },
+        error
+    )) {
+        SKIP("SDL/OpenGL backend unavailable for wide presenter test: " << error);
+    }
+
+    vanguard8::frontend::OpenGlDisplayPresenter presenter;
+    REQUIRE(presenter.initialize(error));
+
+    std::vector<std::uint8_t> frame(
+        static_cast<std::size_t>(
+            vanguard8::core::video::V9938::max_visible_width *
+            vanguard8::frontend::Display::frame_height * 3
+        ),
+        0x00
+    );
+    for (std::size_t index = 0; index < frame.size(); ++index) {
+        frame[index] = static_cast<std::uint8_t>(index & 0xFFU);
+    }
+
+    vanguard8::frontend::Display display;
+    display.upload_frame(frame);
+
+    int drawable_width = 0;
+    int drawable_height = 0;
+    window_host.drawable_size(drawable_width, drawable_height);
+    REQUIRE(presenter.present(display, drawable_width, drawable_height, error));
+
+    const auto readback = presenter.readback_rgb_frame(error);
+    REQUIRE(readback == frame);
+
+    presenter.shutdown();
+    window_host.shutdown();
+}
+
 TEST_CASE("SDL audio output device opens queues and closes against the dummy driver", "[frontend]") {
     SDL_setenv("SDL_AUDIODRIVER", "dummy", 1);
 
@@ -125,6 +170,23 @@ TEST_CASE("SDL audio output device opens queues and closes against the dummy dri
 
     device.close();
     REQUIRE(device.queued_bytes() == 0);
+}
+
+TEST_CASE("Display accepts 512 wide RGB frames and emits the matching PPM header", "[frontend]") {
+    vanguard8::frontend::Display display;
+    std::vector<std::uint8_t> frame(
+        static_cast<std::size_t>(
+            vanguard8::core::video::V9938::max_visible_width *
+            vanguard8::frontend::Display::frame_height * 3
+        ),
+        0x5A
+    );
+
+    display.upload_frame(frame);
+
+    REQUIRE(display.frame_width() == vanguard8::core::video::V9938::max_visible_width);
+    REQUIRE(display.uploaded_frame_height() == vanguard8::frontend::Display::frame_height);
+    REQUIRE(display.dump_ppm_string().rfind("P6\n512 212\n255\n", 0) == 0);
 }
 
 TEST_CASE("SDL window host maps key and close events through the runtime seam", "[frontend]") {

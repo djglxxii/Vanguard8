@@ -37,18 +37,9 @@ auto OpenGlDisplayPresenter::initialize(std::string& error) -> bool {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexImage2D(
-        GL_TEXTURE_2D,
-        0,
-        GL_RGB8,
-        Display::frame_width,
-        Display::frame_height,
-        0,
-        GL_RGB,
-        GL_UNSIGNED_BYTE,
-        nullptr
-    );
     initialized_ = true;
+    texture_width_ = 0;
+    texture_height_ = 0;
     return true;
 }
 
@@ -72,13 +63,28 @@ auto OpenGlDisplayPresenter::present(
     glClear(GL_COLOR_BUFFER_BIT);
 
     glBindTexture(GL_TEXTURE_2D, texture_id_);
+    if (texture_width_ != display.frame_width() || texture_height_ != display.uploaded_frame_height()) {
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_RGB8,
+            display.frame_width(),
+            display.uploaded_frame_height(),
+            0,
+            GL_RGB,
+            GL_UNSIGNED_BYTE,
+            nullptr
+        );
+        texture_width_ = display.frame_width();
+        texture_height_ = display.uploaded_frame_height();
+    }
     glTexSubImage2D(
         GL_TEXTURE_2D,
         0,
         0,
         0,
-        Display::frame_width,
-        Display::frame_height,
+        texture_width_,
+        texture_height_,
         GL_RGB,
         GL_UNSIGNED_BYTE,
         display.uploaded_frame().data()
@@ -101,7 +107,15 @@ auto OpenGlDisplayPresenter::readback_rgb_frame(std::string& error) const -> std
         return {};
     }
 
-    std::vector<std::uint8_t> frame(static_cast<std::size_t>(Display::frame_width * Display::frame_height * 3), 0x00);
+    if (texture_width_ == 0 || texture_height_ == 0) {
+        error = "OpenGL presenter has no uploaded frame.";
+        return {};
+    }
+
+    std::vector<std::uint8_t> frame(
+        static_cast<std::size_t>(texture_width_ * texture_height_ * 3),
+        0x00
+    );
     glBindTexture(GL_TEXTURE_2D, texture_id_);
     glGetTexImage(GL_TEXTURE_2D, 0, GL_RGB, GL_UNSIGNED_BYTE, frame.data());
     return frame;
@@ -113,6 +127,8 @@ void OpenGlDisplayPresenter::shutdown() {
         texture_id_ = 0;
     }
     initialized_ = false;
+    texture_width_ = 0;
+    texture_height_ = 0;
 }
 
 }  // namespace vanguard8::frontend

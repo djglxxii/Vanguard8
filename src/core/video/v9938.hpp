@@ -10,9 +10,11 @@ namespace vanguard8::core::video {
 class V9938 {
   public:
     static constexpr int visible_width = 256;
+    static constexpr int max_visible_width = 512;
     static constexpr int visible_height = 212;
     static constexpr int vram_size = 65'536;
     static constexpr int bytes_per_scanline = 128;
+    static constexpr int graphic6_bytes_per_scanline = 256;
     static constexpr std::uint8_t transparent_sprite_pixel = 0xFF;
     static constexpr std::uint8_t register0_mode_m3 = 0x02;
     static constexpr std::uint8_t register0_mode_m4 = 0x04;
@@ -22,6 +24,8 @@ class V9938 {
     static constexpr std::uint8_t graphic4_mode_r0 =
         static_cast<std::uint8_t>(register0_mode_m4 | register0_mode_m3);
     static constexpr std::uint8_t graphic3_mode_r0 = register0_mode_m4;
+    static constexpr std::uint8_t graphic6_mode_r0 =
+        static_cast<std::uint8_t>(register0_mode_m5 | register0_mode_m3);
     static constexpr std::uint8_t graphic_mode_r1 = 0x00;
     static constexpr std::uint16_t graphic4_sprite_pattern_base = 0x7000;
     static constexpr std::uint16_t graphic4_sprite_color_base = 0x7A00;
@@ -33,7 +37,7 @@ class V9938 {
     static constexpr std::uint16_t graphic3_sprite_color_base = 0x4000;
     static constexpr std::uint16_t graphic3_sprite_attribute_base = 0x4200;
 
-    using LineBuffer = std::array<std::uint8_t, visible_width>;
+    using LineBuffer = std::array<std::uint8_t, max_visible_width>;
     using Framebuffer = std::vector<std::uint8_t>;
 
     struct CommandStateSnapshot {
@@ -97,6 +101,7 @@ class V9938 {
     [[nodiscard]] auto sprite_line_buffer() const -> const LineBuffer&;
     [[nodiscard]] auto vram() const -> const std::array<std::uint8_t, vram_size>&;
     [[nodiscard]] auto color_zero_transparent() const -> bool;
+    [[nodiscard]] auto current_visible_width() const -> int;
     [[nodiscard]] auto state_snapshot() const -> State;
     void load_state(const State& state);
 
@@ -109,6 +114,7 @@ class V9938 {
         graphic2,
         graphic3,
         graphic4,
+        graphic6,
     };
 
     enum class CommandType {
@@ -155,7 +161,11 @@ class V9938 {
     LineBuffer line_buffer_{};
 
     void write_register_value(std::uint8_t index, std::uint8_t value);
+    void set_vram_addr(std::uint16_t address);
+    void increment_vram_addr();
+    [[nodiscard]] auto cpu_vram_address_from_latch(std::uint8_t high_control) const -> std::uint16_t;
     [[nodiscard]] auto graphic4_byte_address(int line, int x) const -> std::uint16_t;
+    [[nodiscard]] auto graphic6_byte_address(int line, int x) const -> std::uint16_t;
     [[nodiscard]] auto vertical_scroll() const -> std::uint8_t;
     [[nodiscard]] auto reg16(std::uint8_t low_index) const -> std::uint16_t;
     [[nodiscard]] auto arg_dix() const -> bool;
@@ -199,6 +209,7 @@ class V9938 {
     void render_graphic1_background_scanline(int line);
     void render_graphic2_background_scanline(int line);
     void render_graphic4_background_scanline(int line);
+    void render_graphic6_background_scanline(int line);
     void render_graphic3_background_scanline(int line);
     void render_mode1_sprites_for_scanline(int line);
     void render_mode2_sprites_for_scanline(int line);

@@ -27,6 +27,7 @@ add_executable(
     test_bus.cpp
     test_cpu.cpp
     test_frontend_backends.cpp
+    test_headless.cpp
     test_frontend_runtime.cpp
     test_input.cpp
     test_integration.cpp
@@ -36,6 +37,7 @@ add_executable(
     ../src/frontend/audio_output.cpp
     ../src/frontend/display.cpp
     ../src/frontend/display_presenter.cpp
+    ../src/frontend/headless.cpp
     ../src/frontend/input.cpp
     ../src/frontend/rom_loader.cpp
     ../src/frontend/runtime.cpp

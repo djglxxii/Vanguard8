@@ -279,3 +279,38 @@ When finished:
    without a revised showcase plan.
 ```
 
+## Milestone 7 Kickoff
+
+```text
+Human approval granted to start showcase milestone 7 task SR07-T01.
+
+Follow the showcase workflow in:
+/home/djglxxii/src/Vanguard8/showcase/docs/current-milestone.md
+/home/djglxxii/src/Vanguard8/showcase/docs/showcase-implementation-plan.md
+/home/djglxxii/src/Vanguard8/showcase/docs/milestones/07.md
+/home/djglxxii/src/Vanguard8/showcase/tasks/README.md
+/home/djglxxii/src/Vanguard8/showcase/tasks/planned/07/SR07-T01-scrolling-starfield-and-graphic6-hud-overlay.md
+
+Before coding:
+1. Re-read the current milestone lock, milestone 7 contract, and SR07-T01.
+2. Confirm the matching emulator `Graphic 6` compatibility milestone has
+   already been accepted.
+3. Promote SR07-T01 into `showcase/tasks/active/`.
+4. Update `showcase/docs/current-milestone.md` to milestone `7` and status
+   `in_progress` only after the emulator dependency and milestone-6 acceptance
+   are both satisfied.
+5. Restate milestone 7 objective, allowed scope, non-goals, and verification
+   commands.
+
+Then implement only milestone 7 / SR07-T01 scope.
+
+When finished:
+1. Run the milestone 7 verification commands, or explain precisely what is
+   still missing.
+2. Append the completion summary to the task markdown.
+3. Move the task to `showcase/tasks/completed/`.
+4. Update `showcase/docs/current-milestone.md` to `ready_for_verification` if
+   appropriate.
+5. Stop and wait for human review. Do not start any further showcase task
+   without another plan revision.
+```

@@ -39,6 +39,8 @@ class OpenGlDisplayPresenter final : public DisplayPresenter {
   private:
     unsigned int texture_id_ = 0;
     bool initialized_ = false;
+    int texture_width_ = 0;
+    int texture_height_ = 0;
 };
 
 }  // namespace vanguard8::frontend

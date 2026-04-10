@@ -412,14 +412,12 @@ vanguard8_headless --rom game.rom [options]
 Options:
   --frames N          Run for exactly N frames then exit
   --replay file.v8r   Feed recorded input; exit when replay ends
-  --dump-frame N      Write frame N framebuffer to frame_N.png
-  --dump-audio        Write all generated audio to audio.wav
+  --dump-frame path.ppm    Write the current runtime compositor frame after the requested run
+  --dump-fixture path.ppm  Write the built-in fixture frame explicitly
   --hash-frame N      Print SHA-256 of frame N framebuffer to stdout
   --hash-audio        Print SHA-256 of all generated audio to stdout
   --expect-frame-hash N HASH  Exit nonzero if frame N hash does not match
   --expect-audio-hash HASH    Exit nonzero if audio hash does not match
-  --load-state file.v8s       Start from a save state instead of power-on
-  --save-state N file.v8s     Write save state at frame N
 ```
 
 Exit codes: `0` success, `1` hash mismatch, `2` replay ROM mismatch,

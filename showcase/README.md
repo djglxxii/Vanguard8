@@ -66,3 +66,29 @@ Milestone 3 review surfaces:
   `showcase/tests/milestone-03-checkpoints.md`
 - Contract run:
   `python3 showcase/tools/package/run_showcase_headless.py --frames 720 --trace build/showcase/m3.trace --hash-frame 719 --symbols build/showcase/showcase.sym`
+
+Milestone 5 review surfaces:
+- Headless checkpoint notes:
+  `showcase/tests/milestone-05-checkpoints.md`
+- Default development probes:
+  `python3 showcase/tools/package/run_showcase_headless.py --frames 1000 --hash-frame 999`
+  `python3 showcase/tools/package/run_showcase_headless.py --frames 1040 --hash-audio`
+  `python3 showcase/tools/package/run_showcase_headless.py --frames 1080 --hash-audio`
+  `python3 showcase/tools/package/run_showcase_headless.py --frames 1120 --hash-audio`
+  `python3 showcase/tools/package/run_showcase_headless.py --frames 1160 --hash-audio`
+- Optional full-loop acceptance run:
+  `python3 showcase/tools/package/run_showcase_headless.py --frames 1200 --trace build/showcase/m5.trace --hash-audio --symbols build/showcase/showcase.sym`
+
+Milestone 6 review surfaces:
+- Final checkpoint manifest:
+  `showcase/tests/milestone-06-checkpoints.md`
+- Final review handoff:
+  `showcase/docs/final-review-handoff.md`
+- Full-loop verification command:
+  `python3 showcase/tools/package/run_showcase_headless.py --frames 1440 --trace build/showcase/m6.trace --hash-frame 1439 --hash-audio --symbols build/showcase/showcase.sym`
+
+Milestone 7 review surfaces:
+- Final checkpoint manifest:
+  `showcase/tests/milestone-07-checkpoints.md`
+- Late-loop mixed-mode verification command:
+  `python3 showcase/tools/package/run_showcase_headless.py --frames 1680 --trace build/showcase/m7.trace --hash-frame 1679 --symbols build/showcase/showcase.sym`

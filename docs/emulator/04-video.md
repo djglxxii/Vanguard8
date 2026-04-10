@@ -69,9 +69,18 @@ void    write_register(uint8_t); // Port 0x83 / 0x87: register indirect write
 The two-byte control write protocol (address or register):
 - First byte written to 0x81: latched
 - Second byte written to 0x81:
-  - If bit 7 = 0 and bit 6 = 0: VRAM read address (14-bit, bits 13:0)
-  - If bit 7 = 0 and bit 6 = 1: VRAM write address
+  - If bit 7 = 0 and bit 6 = 0: VRAM read address low bits (`A13:A0`)
+  - If bit 7 = 0 and bit 6 = 1: VRAM write address low bits (`A13:A0`)
   - If bit 7 = 1: register write (bits 5:0 = register number, then first byte = data)
+
+For CPU-visible VRAM access, `R#14` supplies address bits `A15:A14`. The
+effective port-visible VRAM pointer is therefore:
+
+`A15:A14 = R#14[1:0]`, `A13:A8 = second_control_write[5:0]`, `A7:A0 = first_control_write`
+
+Data-port reads and writes auto-increment the full CPU-visible VRAM pointer, so
+sequential accesses may cross the `0x3FFF` boundary without aliasing back into
+the low 16 KB window.
 
 Reading status (0x81) also resets the address latch (clears `addr_latch_full`).
 
@@ -100,6 +109,8 @@ Covered scanline modes:
 - **Graphic 4**: default bitmap path
 - **Graphic 3**: fixed-layout tile path using the repo's documented
   `0x0000-0x42FF` table placement
+- **Graphic 6**: `512x212` background bitmap path for the narrow HUD-overlay
+  compatibility case
 
 Unsupported display modes must not silently fall back to a neighboring mode.
 The narrow emulator path fills the background with the backdrop color until the
@@ -111,6 +122,8 @@ Sprite coverage in the current repo:
   visibility limit and the single-color SAT byte-3 path.
 - **Graphic 3 / Graphic 4** use Sprite Mode 2 with the covered per-row color
   table path.
+- **Graphic 6** currently uses the background path only. Mode-2 sprite coverage
+  remains locked to the accepted Graphic 3 / Graphic 4 surface.
 
 #### Graphic 4 rendering (primary/default mode)
 
@@ -144,6 +157,26 @@ Sprite layout note:
   pattern generator at `0x7000`, color table at `0x7A00`, and SAT at `0x7C00`.
 - The covered default Graphic 3 setup is:
   pattern generator at `0x3000`, color table at `0x4000`, and SAT at `0x4200`.
+
+#### Graphic 6 rendering (milestone-16 HUD compatibility path)
+
+```
+Background:
+  For each x in 0..511:
+    byte_addr = (line + R#23) % 256 * 256 + x / 2
+    byte = vram[byte_addr]
+    if x is even: pixel = byte >> 4
+    else:         pixel = byte & 0x0F
+    line_buffer[x] = pixel
+```
+
+Current precision boundary:
+
+- The repo now supports the documented `Graphic 6` mode decode and background
+  framebuffer packing for deterministic runtime output.
+- The current milestone does **not** expand `Graphic 6` sprites or
+  `Graphic 5/6/7` command packing.
+- Vertical scroll uses the same documented `R#23` path as Graphic 4.
 
 #### Graphic 3 rendering (fixed-layout milestone-11 path)
 
@@ -288,11 +321,11 @@ path only as a convenience for narrow tests.
 ```cpp
 // Called once per active scanline after both VDPs have been ticked
 void composite(
-    const uint8_t*  line_a,        // VDP-A line buffer (256 4bpp indices)
+    const uint8_t*  line_a,        // VDP-A line buffer (256 or 512 indices)
     const uint8_t   palette_a[16][2],
     const uint8_t*  line_b,        // VDP-B line buffer
     const uint8_t   palette_b[16][2],
-    uint8_t         out_rgb[256][3],   // Output: 24-bit RGB
+    uint8_t         out_rgb[512][3],   // Output: 24-bit RGB on the widest grid
     const LayerMask& mask              // Debugger layer toggles
 );
 ```
@@ -300,9 +333,10 @@ void composite(
 Per-pixel logic:
 
 ```cpp
-for (int x = 0; x < 256; ++x) {
-    uint8_t idx_a = line_a[x];
-    uint8_t idx_b = line_b[x];
+const int out_width = max(vdp_a.width(), vdp_b.width());
+for (int x = 0; x < out_width; ++x) {
+    uint8_t idx_a = line_a[map_x(vdp_a.width(), out_width, x)];
+    uint8_t idx_b = line_b[map_x(vdp_b.width(), out_width, x)];
 
     // VDP-A color index 0 = transparent (YS pin high → mux selects VDP-B)
     const uint8_t (&entry)[2] = (idx_a == 0 || mask.hide_vdp_a)
@@ -316,8 +350,10 @@ for (int x = 0; x < 256; ++x) {
 }
 ```
 
-`expand3to8(v)` maps a 3-bit value to 8 bits: `(v << 5) | (v << 2) | (v >> 1)`
-(replicates high bits into low bits to fill the full 8-bit range cleanly).
+`map_x()` keeps equal-width layers 1:1 and duplicates each 256-wide pixel
+horizontally when compositing against a 512-wide layer. `expand3to8(v)` maps a
+3-bit value to 8 bits: `(v << 5) | (v << 2) | (v >> 1)` (replicates high bits
+into low bits to fill the full 8-bit range cleanly).
 
 ### Layer Mask (Debugger)
 
@@ -342,7 +378,7 @@ the background layer intact.
 ```
 VDP-A background/sprites + VDP-B background/sprites
         │
-  Dual-VDP compositor → 256×212 RGB888 framebuffer
+  Dual-VDP compositor → 256×212 or 512×212 RGB888 framebuffer
         │
   Display upload buffer (`Display::upload_frame`)
         │
@@ -351,9 +387,10 @@ VDP-A background/sprites + VDP-B background/sprites
 
 ### Milestone-4 Upload Surface
 
-`Display` stores the most recently uploaded 256×212 RGB888 frame, exposes a
-stable digest for tests, and can emit a binary PPM dump for regression assets.
-This is the current verified stand-in for the eventual SDL/OpenGL upload path.
+`Display` stores the most recently uploaded `256×212` or `512×212` RGB888
+frame, exposes a stable digest for tests, and can emit a binary PPM dump for
+regression assets. This is the current verified stand-in for the eventual
+SDL/OpenGL upload path.
 
 ### GLSL Shaders
 
@@ -373,7 +410,7 @@ dot pitch or convergence. Purely cosmetic.
 
 | Mode           | Behavior                                                   |
 |----------------|------------------------------------------------------------|
-| Integer scale  | Largest N where 256×N ≤ window width and 212×N ≤ window height |
+| Integer scale  | Largest N where current frame width × N ≤ window width and 212 × N ≤ window height |
 | Stretch        | Fill window, ignore aspect ratio                           |
 | NTSC aspect    | Scale to correct 8:7 pixel AR (~292×212 logical, then scaled) |
 | Square pixels  | Integer scale, square pixels (default)                     |

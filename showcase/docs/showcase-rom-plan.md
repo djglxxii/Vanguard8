@@ -136,6 +136,12 @@ The first verification ROM should not rely on:
   subset unless ROM bring-up first proves it necessary and the spec already
   supports it
 
+Follow-on note:
+- That first-pass restriction was the correct accepted scope through showcase
+  milestone `6`. A later revised plan may add a `Graphic 6`-only follow-on
+  scene, but only after the matching emulator compatibility milestone is
+  accepted. `Graphic 5` and `Graphic 7` remain deferred.
+
 ## Recommended Repo Structure
 
 Keep showcase-ROM work in a dedicated top-level workspace:

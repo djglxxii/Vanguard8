@@ -336,6 +336,7 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
 
     switch (opcode) {
     case 0x00:
+    case 0x05:
     case 0x0F:
     case 0xAF:
     case 0xF3:

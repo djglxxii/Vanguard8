@@ -243,6 +243,31 @@ TEST_CASE("scheduled CPU covers LD B,n used by the Pac-Man boot path", "[cpu]") 
     REQUIRE(cpu.pc() == 0x0002);
 }
 
+TEST_CASE("scheduled CPU covers DEC B used by the Pac-Man palette VCLK path", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0x05,  // DEC B
+        0x76,  // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    state.registers.bc = 0x1000;
+    state.registers.af = static_cast<std::uint16_t>(0x2200U | flag_carry);
+    cpu.load_state_snapshot(state);
+
+    REQUIRE(cpu.peek_logical(cpu.pc()) == 0x05);
+    REQUIRE(cpu.next_scheduled_tstates() == 4);
+    REQUIRE(cpu.step_scheduled_instruction() == 4);
+
+    const auto result = cpu.state_snapshot();
+    REQUIRE(static_cast<std::uint8_t>(result.registers.bc >> 8U) == 0x0F);
+    REQUIRE(static_cast<std::uint8_t>(result.registers.bc & 0x00FFU) == 0x00);
+    REQUIRE((result.registers.af & 0x00FFU) == static_cast<std::uint16_t>(flag_half | flag_subtract | flag_carry));
+    REQUIRE(cpu.pc() == 0x0001);
+}
+
 TEST_CASE("scheduled CPU covers IM 1 and keeps INT1 mode-independent", "[cpu]") {
     const auto rom = make_instruction_test_rom({
         0xED, 0x56,  // IM 1

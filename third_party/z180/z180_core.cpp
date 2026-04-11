@@ -396,6 +396,7 @@ void Core::initialize_tables() {
     ed_opcodes_.assign(256, &Core::op_unimplemented);
 
     opcodes_[0x00] = &Core::op_nop;
+    opcodes_[0x05] = &Core::op_dec_b;
     opcodes_[0x06] = &Core::op_ld_b_n;
     opcodes_[0x0F] = &Core::op_rrca;
     opcodes_[0x18] = &Core::op_jr_e;
@@ -593,6 +594,28 @@ void Core::op_unimplemented() { unsupported_opcode(read_logical(static_cast<std:
 
 // Extracted and adapted from MAME z180op.hxx milestone-2 opcode subset.
 void Core::op_nop() {}
+
+void Core::op_dec_b() {
+    const auto old_value = bc_.bytes.hi;
+    const auto result = static_cast<std::uint8_t>(old_value - 1U);
+    bc_.bytes.hi = result;
+
+    auto flags = static_cast<std::uint8_t>(af_.bytes.lo & flag_carry);
+    flags = static_cast<std::uint8_t>(flags | flag_subtract);
+    if ((result & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_sign);
+    }
+    if (result == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if ((old_value & 0x0FU) == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_half);
+    }
+    if (old_value == 0x80U) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    af_.bytes.lo = flags;
+}
 
 void Core::op_ld_b_n() { bc_.bytes.hi = fetch_byte(); }
 

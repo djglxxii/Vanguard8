@@ -132,3 +132,8 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 
 - `M19-T01` Cover the missing timed HD64180 boot opcodes needed by the
   Pac-Man background bring-up path.
+
+## Milestone 20
+
+- `M20-T01` Cover the missing timed HD64180 opcode needed by the Pac-Man
+  palette swatch path under `VCLK 4000`.

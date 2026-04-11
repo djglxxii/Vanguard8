@@ -205,6 +205,16 @@ auto make_pacman_boot_background_blocker_rom() -> std::vector<std::uint8_t> {
     return rom;
 }
 
+auto make_pacman_palette_vclk_blocker_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xC3; rom[0x0001] = 0xB9; rom[0x0002] = 0x02;  // JP 0x02B9
+    rom[0x02B9] = 0x05;                                          // DEC B
+    rom[0x02BA] = 0x76;                                          // HALT
+
+    return rom;
+}
+
 auto read_binary_file(const std::filesystem::path& path) -> std::vector<std::uint8_t> {
     std::ifstream input(path, std::ios::binary);
     return std::vector<std::uint8_t>(
@@ -408,6 +418,30 @@ TEST_CASE("frame loop clears the Pac-Man boot-background opcode blockers at PCs 
     REQUIRE(emulator.cpu().interrupt_mode() == 1);
     REQUIRE(emulator.cpu().pc() == 0x0316);
     REQUIRE(emulator.cpu().halted());
+}
+
+TEST_CASE("frame loop clears the Pac-Man palette opcode blocker at PC 0x02B9 with VCLK stopped", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacman_palette_vclk_blocker_rom());
+    emulator.set_vclk_rate(VclkRate::stopped);
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(static_cast<std::uint8_t>(emulator.cpu().state_snapshot().registers.bc >> 8U) == 0xFF);
+    REQUIRE(emulator.cpu().pc() == 0x02BA);
+    REQUIRE(emulator.cpu().halted());
+    REQUIRE(emulator.bus().msm5205().vclk_count() == 0U);
+}
+
+TEST_CASE("frame loop clears the Pac-Man palette opcode blocker at PC 0x02B9 with VCLK 4000", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacman_palette_vclk_blocker_rom());
+    emulator.set_vclk_rate(VclkRate::hz_4000);
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(static_cast<std::uint8_t>(emulator.cpu().state_snapshot().registers.bc >> 8U) == 0xFF);
+    REQUIRE(emulator.cpu().pc() == 0x02BA);
+    REQUIRE(emulator.cpu().halted());
+    REQUIRE(emulator.bus().msm5205().vclk_count() > 0U);
 }
 
 TEST_CASE("unsupported handler opcodes are reported at the handler PC after INT1 dispatch", "[integration]") {

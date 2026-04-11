@@ -89,6 +89,7 @@ Workflow:
 | 17 | Fix full-range VDP CPU VRAM addressing compatibility |
 | 18 | Make headless runtime frame dumps match compositor output |
 | 19 | Cover the timed HD64180 boot opcode gap exposed by Pac-Man |
+| 20 | Cover the timed HD64180 palette VCLK opcode gap exposed by Pac-Man |
 
 ## Milestones
 
@@ -673,6 +674,41 @@ Exit criteria:
 - The newly supported opcode surface is documented and regression-covered
 - Remaining CPU opcode gaps stay narrow and explicitly deferred
 
+### Milestone 20 — Timed HD64180 Palette VCLK Compatibility
+
+Objective:
+- Close the next narrow timed-CPU compatibility gap exposed by the Pac-Man
+  palette swatch bring-up: the runtime succeeds with `VCLK: off` but the
+  `VCLK 4000` path still aborts on missing timed opcode `0x05` at `PC 0x02B9`.
+
+Deliverables:
+- Reproducing regression coverage for the Pac-Man palette evidence captured
+  under
+  `/home/djglxxii/src/pacman/vanguard8_port/tests/evidence/T004-palette/`
+- Timed opcode coverage for the proven missing base opcode `0x05` in the
+  existing extracted HD64180 runtime path
+- Focused direct CPU tests that pin the documented semantics of the newly
+  covered opcode without broadening into general Z80 completion
+- Runtime/integration coverage proving the palette swatch path survives with
+  active `VCLK 4000` timing rather than only in the `VCLK: off` case
+
+Milestone-20 closure rule:
+- Keep this as a compatibility patch milestone, not a broad palette or VDP
+  rewrite. Add only the timed opcode support and runtime coverage proven
+  necessary by the `T004-palette` evidence.
+
+Tests:
+- Focused timed CPU coverage for opcode `0x05`
+- Runtime/integration coverage proving the Pac-Man palette swatch path no
+  longer aborts when `VCLK 4000` is enabled
+- Coverage proving the passing `VCLK: off` palette path remains stable
+
+Exit criteria:
+- The emulator no longer aborts on the evidence-backed Pac-Man palette path
+  because the timed core is missing opcode `0x05`
+- The newly supported timed opcode surface is documented and regression-covered
+- Remaining opcode gaps stay narrow and explicitly deferred
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:
@@ -767,6 +803,15 @@ Meaning:
 - The timed CPU runtime can clear the first Pac-Man boot/background bring-up
   blocker without broadening into full Z80/Z180 opcode completion.
 
+### Gate K — First Pac-Man Palette VCLK Bring-Up
+
+Required milestones:
+- 0 through 20
+
+Meaning:
+- The timed CPU runtime can execute the Pac-Man palette swatch path with active
+  `VCLK 4000` timing, not only with `VCLK` disabled.
+
 ## Recommended Order of Work Inside the Repo
 
 1. Build and test scaffolding
@@ -785,6 +830,7 @@ Meaning:
 14. Lightweight tooling and selected non-essential closure
 15. Timed HD64180 INT1 audio compatibility patch
 16. Timed HD64180 boot opcode compatibility
+17. Timed HD64180 palette VCLK compatibility
 
 ## Definition of Done for Each Milestone
 

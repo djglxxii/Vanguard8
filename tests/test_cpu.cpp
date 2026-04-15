@@ -243,6 +243,38 @@ TEST_CASE("scheduled CPU covers LD B,n used by the Pac-Man boot path", "[cpu]") 
     REQUIRE(cpu.pc() == 0x0002);
 }
 
+TEST_CASE("scheduled CPU covers LD C,n used by the PacManV8 boot path", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0x0E, 0x34,  // LD C,0x34
+        0x76,        // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    REQUIRE(cpu.peek_logical(cpu.pc()) == 0x0E);
+    REQUIRE(cpu.next_scheduled_tstates() == 7);
+    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.bc & 0x00FFU) == 0x34);
+    REQUIRE(cpu.pc() == 0x0002);
+}
+
+TEST_CASE("scheduled CPU covers LD D,n used by the PacManV8 boot path", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0x16, 0x56,  // LD D,0x56
+        0x76,        // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    REQUIRE(cpu.peek_logical(cpu.pc()) == 0x16);
+    REQUIRE(cpu.next_scheduled_tstates() == 7);
+    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.de >> 8U) == 0x56);
+    REQUIRE(cpu.pc() == 0x0002);
+}
+
 TEST_CASE("scheduled CPU covers DEC B used by the Pac-Man palette VCLK path", "[cpu]") {
     const auto rom = make_instruction_test_rom({
         0x05,  // DEC B

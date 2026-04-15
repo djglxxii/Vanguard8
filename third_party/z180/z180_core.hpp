@@ -183,6 +183,8 @@ class Core {
     void op_nop();
     void op_dec_b();
     void op_ld_b_n();
+    void op_ld_c_n();
+    void op_ld_d_n();
     void op_rrca();
     void op_inc_hl();
     void op_jr_nz_e();

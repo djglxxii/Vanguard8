@@ -398,6 +398,8 @@ void Core::initialize_tables() {
     opcodes_[0x00] = &Core::op_nop;
     opcodes_[0x05] = &Core::op_dec_b;
     opcodes_[0x06] = &Core::op_ld_b_n;
+    opcodes_[0x0E] = &Core::op_ld_c_n;
+    opcodes_[0x16] = &Core::op_ld_d_n;
     opcodes_[0x0F] = &Core::op_rrca;
     opcodes_[0x18] = &Core::op_jr_e;
     opcodes_[0x20] = &Core::op_jr_nz_e;
@@ -618,6 +620,10 @@ void Core::op_dec_b() {
 }
 
 void Core::op_ld_b_n() { bc_.bytes.hi = fetch_byte(); }
+
+void Core::op_ld_c_n() { bc_.bytes.lo = fetch_byte(); }
+
+void Core::op_ld_d_n() { de_.bytes.hi = fetch_byte(); }
 
 void Core::op_rrca() {
     const auto value = af_.bytes.hi;

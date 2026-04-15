@@ -90,6 +90,7 @@ Workflow:
 | 18 | Make headless runtime frame dumps match compositor output |
 | 19 | Cover the timed HD64180 boot opcode gap exposed by Pac-Man |
 | 20 | Cover the timed HD64180 palette VCLK opcode gap exposed by Pac-Man |
+| 21 | Cover the timed HD64180 boot opcode gap exposed by PacManV8 |
 
 ## Milestones
 
@@ -709,6 +710,39 @@ Exit criteria:
 - The newly supported timed opcode surface is documented and regression-covered
 - Remaining opcode gaps stay narrow and explicitly deferred
 
+### Milestone 21 — Timed HD64180 Boot Opcode Compatibility (PacManV8)
+
+Objective:
+- Close the next narrow timed-CPU compatibility gap exposed by the PacManV8
+  minimal boot ROM: the extracted timed HD64180 runtime aborts on `LD C,n`
+  (`0x0E`) and `LD D,n` (`0x16`) during the boot/init path at `PC 0x012A`.
+
+Deliverables:
+- Reproducing regression coverage for the PacManV8 boot blocker reported in
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T001-build-system-and-minimal-boot.md`
+- Timed opcode coverage for `LD C,n` and `LD D,n` in the existing extracted
+  HD64180 runtime path
+- Focused direct CPU tests that pin the documented semantics of the newly
+  covered instructions without broadening into full opcode completion
+- Documentation tying the fix to the observed ROM bring-up PC `0x012A`
+
+Milestone-21 closure rule:
+- Keep this as a compatibility patch milestone, not a general "finish the Z80"
+  effort. Add only the timed opcode support proven necessary by the blocked
+  PacManV8 boot path.
+
+Tests:
+- Focused timed CPU coverage for `LD C,n` (`0x0E`)
+- Focused timed CPU coverage for `LD D,n` (`0x16`)
+- Runtime/integration coverage proving the blocked PacManV8 boot path no
+  longer aborts on the observed missing-opcode PC
+
+Exit criteria:
+- The emulator no longer aborts on the PacManV8 boot path because the timed
+  core is missing `0x0E` or `0x16`
+- The newly supported opcode surface is documented and regression-covered
+- Remaining CPU opcode gaps stay narrow and explicitly deferred
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:
@@ -812,6 +846,15 @@ Meaning:
 - The timed CPU runtime can execute the Pac-Man palette swatch path with active
   `VCLK 4000` timing, not only with `VCLK` disabled.
 
+### Gate L — First PacManV8 Boot CPU Bring-Up
+
+Required milestones:
+- 0 through 21
+
+Meaning:
+- The timed CPU runtime can execute the PacManV8 minimal boot ROM without
+  aborting on missing `LD r,n` opcode variants in the timed extracted path.
+
 ## Recommended Order of Work Inside the Repo
 
 1. Build and test scaffolding
@@ -831,6 +874,7 @@ Meaning:
 15. Timed HD64180 INT1 audio compatibility patch
 16. Timed HD64180 boot opcode compatibility
 17. Timed HD64180 palette VCLK compatibility
+18. Timed HD64180 PacManV8 boot opcode compatibility
 
 ## Definition of Done for Each Milestone
 

@@ -91,6 +91,13 @@ Workflow:
 | 19 | Cover the timed HD64180 boot opcode gap exposed by Pac-Man |
 | 20 | Cover the timed HD64180 palette VCLK opcode gap exposed by Pac-Man |
 | 21 | Cover the timed HD64180 boot opcode gap exposed by PacManV8 |
+| 22 | Cover the timed HD64180 VDP-B bring-up opcode gap exposed by PacManV8 |
+| 23 | Cover the timed HD64180 VDP-B VRAM seek opcode gap exposed by PacManV8 |
+| 24 | Cover the timed HD64180 VDP-B VRAM seek LD A,B gap exposed by PacManV8 |
+| 25 | Cover the timed HD64180 VDP-B VRAM seek OR n gap exposed by PacManV8 |
+| 26 | Cover the timed HD64180 VDP-B framebuffer-load LD DE,nn gap exposed by PacManV8 |
+| 27 | Cover the timed HD64180 VDP-B framebuffer copy LD A,D gap exposed by PacManV8 |
+| 28 | Cover the timed HD64180 VDP-B framebuffer copy OR E gap exposed by PacManV8 |
 
 ## Milestones
 
@@ -741,6 +748,306 @@ Exit criteria:
 - The emulator no longer aborts on the PacManV8 boot path because the timed
   core is missing `0x0E` or `0x16`
 - The newly supported opcode surface is documented and regression-covered
+- Remaining CPU opcode gaps stay narrow and explicitly deferred
+
+### Milestone 22 — Timed HD64180 VDP-B Bring-Up Opcode Compatibility (PacManV8)
+
+Objective:
+- Close the next narrow timed-CPU compatibility gap exposed by the PacManV8
+  VDP-B maze render ROM: the extracted timed HD64180 runtime aborts on
+  `LD BC,nn` (`0x01`) during the VDP-B bring-up path at `PC 0x01FD`.
+
+Deliverables:
+- Reproducing regression coverage for the PacManV8 VDP-B bring-up blocker
+  reported in
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T007-vdp-b-maze-render-and-pellet-display.md`
+- Timed opcode coverage for `LD BC,nn` (`0x01`) in the existing extracted
+  HD64180 runtime path
+- A focused direct CPU test that pins the documented 16-bit immediate load
+  semantics without broadening into full opcode completion
+- Documentation tying the fix to the observed PacManV8 VDP-B bring-up
+  `PC 0x01FD`
+
+Milestone-22 closure rule:
+- Keep this as a compatibility patch milestone, not a general "finish the Z80"
+  effort. Add only the timed opcode support proven necessary by the blocked
+  PacManV8 VDP-B bring-up path.
+
+Tests:
+- Focused timed CPU coverage for `LD BC,nn` (`0x01`)
+- Runtime/integration coverage proving the blocked PacManV8 VDP-B bring-up
+  path no longer aborts on the observed missing-opcode PC
+
+Exit criteria:
+- The emulator no longer aborts on the PacManV8 VDP-B bring-up path because
+  the timed core is missing `0x01`
+- The newly supported opcode surface is documented and regression-covered
+- Remaining CPU opcode gaps stay narrow and explicitly deferred
+
+### Milestone 23 — Timed HD64180 VDP-B VRAM Seek Opcode Compatibility (PacManV8)
+
+Objective:
+- Close the next narrow timed-CPU compatibility gap exposed by the PacManV8
+  VDP-B maze render ROM: after the milestone-22 patch, the extracted timed
+  HD64180 runtime now aborts on `LD A,C` (`0x79`) in the VDP-B VRAM seek
+  helper at `PC 0x023B`.
+
+Deliverables:
+- Reproducing regression coverage for the PacManV8 VDP-B VRAM seek blocker
+  reported in
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T007-vdp-b-maze-render-and-pellet-display.md`
+- Timed opcode coverage for `LD A,C` (`0x79`) in the existing extracted
+  HD64180 runtime path
+- A focused direct CPU test that pins the documented `LD r,r'` copy semantics
+  (A <- C, 4 T-states, flags untouched) without broadening into a full
+  `LD r,r'` sweep
+- Documentation tying the fix to the observed PacManV8 VDP-B VRAM seek
+  `PC 0x023B`
+
+Milestone-23 closure rule:
+- Keep this as a compatibility patch milestone, not a general "finish the Z80"
+  effort. Add only the timed opcode support proven necessary by the blocked
+  PacManV8 VDP-B VRAM seek path.
+
+Tests:
+- Focused timed CPU coverage for `LD A,C` (`0x79`)
+- Runtime/integration coverage proving the blocked PacManV8 VDP-B VRAM seek
+  path no longer aborts on the observed missing-opcode PC
+
+Exit criteria:
+- The emulator no longer aborts on the PacManV8 VDP-B VRAM seek path because
+  the timed core is missing `0x79`
+- The newly supported opcode surface is documented and regression-covered
+- Remaining CPU opcode gaps stay narrow and explicitly deferred
+
+### Milestone 24 — Timed HD64180 VDP-B VRAM Seek LD A,B Compatibility (PacManV8)
+
+Objective:
+- Close the next narrow timed-CPU compatibility gap exposed by the PacManV8
+  VDP-B maze render ROM: after the milestone-23 `LD A,C` patch, the extracted
+  timed HD64180 runtime now aborts on `LD A,B` (`0x78`) in the same VDP-B
+  VRAM seek helper at `PC 0x023E`.
+
+Deliverables:
+- Reproducing regression coverage for the PacManV8 VDP-B VRAM seek `LD A,B`
+  blocker reported in
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T007-vdp-b-maze-render-and-pellet-display.md`
+- Timed opcode coverage for `LD A,B` (`0x78`) in the existing extracted
+  HD64180 runtime path
+- A focused direct CPU test that pins the documented `LD r,r'` copy semantics
+  (A <- B, 4 T-states, flags untouched) without broadening into a full
+  `LD r,r'` sweep
+- Documentation tying the fix to the observed PacManV8 VDP-B VRAM seek
+  `PC 0x023E`
+
+Milestone-24 closure rule:
+- Keep this as a compatibility patch milestone, not a general "finish the Z80"
+  effort. Add only the timed opcode support proven necessary by the blocked
+  PacManV8 VDP-B VRAM seek path.
+
+Tests:
+- Focused timed CPU coverage for `LD A,B` (`0x78`)
+- Runtime/integration coverage proving the blocked PacManV8 VDP-B VRAM seek
+  path no longer aborts on the observed missing-opcode PC
+
+Exit criteria:
+- The emulator no longer aborts on the PacManV8 VDP-B VRAM seek path because
+  the timed core is missing `0x78`
+- The newly supported opcode surface is documented and regression-covered
+- Remaining CPU opcode gaps stay narrow and explicitly deferred
+
+### Milestone 25 — Timed HD64180 VDP-B VRAM Seek OR n Compatibility (PacManV8)
+
+Objective:
+- Close the next narrow timed-CPU compatibility gap exposed by the PacManV8
+  VDP-B maze render ROM: after the milestone-24 `LD A,B` patch, the extracted
+  timed HD64180 runtime now aborts on `OR n` (`0xF6`) in the same VDP-B
+  VRAM seek helper at `PC 0x0241`.
+
+Deliverables:
+- Reproducing regression coverage for the PacManV8 VDP-B VRAM seek `OR n`
+  blocker reported in
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T007-vdp-b-maze-render-and-pellet-display.md`
+- Timed opcode coverage for `OR n` (`0xF6`) in the existing extracted
+  HD64180 runtime path
+- A focused direct CPU test that pins the documented `OR n` semantics (A,
+  PC advance by two, 7 T-states) and Z80-standard flag result (S, Z, H=0,
+  P/V parity, N=0, C=0) without broadening into a general logical-op sweep
+- Documentation tying the fix to the observed PacManV8 VDP-B VRAM seek
+  `PC 0x0241`
+
+Milestone-25 closure rule:
+- Keep this as a compatibility patch milestone, not a general "finish the Z80"
+  effort. Add only the timed opcode support proven necessary by the blocked
+  PacManV8 VDP-B VRAM seek path.
+
+Tests:
+- Focused timed CPU coverage for `OR n` (`0xF6`) including flag semantics
+- Runtime/integration coverage proving the blocked PacManV8 VDP-B VRAM seek
+  path no longer aborts on the observed missing-opcode PC
+
+Exit criteria:
+- The emulator no longer aborts on the PacManV8 VDP-B VRAM seek path because
+  the timed core is missing `0xF6`
+- The newly supported opcode surface is documented and regression-covered
+- Remaining CPU opcode gaps stay narrow and explicitly deferred
+
+### Milestone 26 — Timed HD64180 VDP-B Framebuffer Load LD DE,nn Compatibility (PacManV8)
+
+Objective:
+- Close the next narrow timed-CPU compatibility gap exposed by the PacManV8
+  VDP-B maze render ROM: after the milestone-25 `OR n` patch, the extracted
+  timed HD64180 runtime now aborts on `LD DE,nn` (`0x11`) in the VDP-B
+  framebuffer-load setup at `PC 0x020B`.
+
+Deliverables:
+- Reproducing regression coverage for the PacManV8 VDP-B framebuffer-load
+  `LD DE,nn` blocker reported in
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T007-vdp-b-maze-render-and-pellet-display.md`
+- Timed opcode coverage for `LD DE,nn` (`0x11`) in the existing extracted
+  HD64180 runtime path
+- A focused direct CPU test that pins the documented 16-bit immediate load
+  semantics (DE <- two-byte little-endian immediate, PC +3, 10 T-states,
+  flags untouched) without broadening into full opcode completion
+- Documentation tying the fix to the observed PacManV8 VDP-B framebuffer-load
+  `PC 0x020B`
+
+Milestone-26 closure rule:
+- Keep this as a compatibility patch milestone, not a general "finish the Z80"
+  effort. Add only the timed opcode support proven necessary by the blocked
+  PacManV8 VDP-B framebuffer-load path.
+
+Tests:
+- Focused timed CPU coverage for `LD DE,nn` (`0x11`)
+- Runtime/integration coverage proving the blocked PacManV8 VDP-B
+  framebuffer-load path no longer aborts on the observed missing-opcode PC
+
+Exit criteria:
+- The emulator no longer aborts on the PacManV8 VDP-B framebuffer-load path
+  because the timed core is missing `0x11`
+- The newly supported opcode surface is documented and regression-covered
+- Remaining CPU opcode gaps stay narrow and explicitly deferred
+
+### Milestone 27 — Timed HD64180 VDP-B Framebuffer Copy LD A,D Compatibility (PacManV8)
+
+Objective:
+- Close the next narrow timed-CPU compatibility gap exposed by the PacManV8
+  VDP-B maze render ROM: after the milestone-26 `LD DE,nn` patch, the
+  extracted timed HD64180 runtime now aborts on `LD A,D` (`0x7A`) in the
+  VDP-B framebuffer copy loop at `PC 0x0246`.
+
+Deliverables:
+- Reproducing regression coverage for the PacManV8 VDP-B framebuffer copy
+  `LD A,D` blocker reported in
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T007-vdp-b-maze-render-and-pellet-display.md`
+- Timed opcode coverage for `LD A,D` (`0x7A`) in the existing extracted
+  HD64180 runtime path
+- A focused direct CPU test that pins the documented register-copy
+  semantics (A <- D, PC +1, 4 T-states, flags untouched) without
+  broadening into full opcode completion
+- Documentation tying the fix to the observed PacManV8 VDP-B framebuffer
+  copy `PC 0x0246`
+
+Milestone-27 closure rule:
+- Keep this as a compatibility patch milestone, not a general "finish the Z80"
+  effort. Add only the timed opcode support proven necessary by the blocked
+  PacManV8 VDP-B framebuffer copy path.
+
+Tests:
+- Focused timed CPU coverage for `LD A,D` (`0x7A`)
+- Runtime/integration coverage proving the blocked PacManV8 VDP-B
+  framebuffer copy path no longer aborts on the observed missing-opcode PC
+
+Exit criteria:
+- The emulator no longer aborts on the PacManV8 VDP-B framebuffer copy path
+  because the timed core is missing `0x7A`
+- The newly supported opcode surface is documented and regression-covered
+- Remaining CPU opcode gaps stay narrow and explicitly deferred
+
+### Milestone 28 — Timed HD64180 VDP-B Framebuffer Copy OR E Compatibility (PacManV8)
+
+Objective:
+- Close the next narrow timed-CPU compatibility gap exposed by the PacManV8
+  VDP-B maze render ROM: after the milestone-27 `LD A,D` patch, the
+  extracted timed HD64180 runtime now aborts on `OR E` (`0xB3`) in the
+  VDP-B framebuffer copy loop at `PC 0x0247`.
+
+Deliverables:
+- Reproducing regression coverage for the PacManV8 VDP-B framebuffer copy
+  `OR E` blocker reported in
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T007-vdp-b-maze-render-and-pellet-display.md`
+- Timed opcode coverage for `OR E` (`0xB3`) in the existing extracted
+  HD64180 runtime path
+- A focused direct CPU test that pins the documented logical-OR
+  semantics (A <- A | E; S from bit 7, Z from zero result, H=0, P/V
+  from even parity, N=0, C=0; PC +1, 4 T-states) without broadening into
+  full opcode completion
+- Documentation tying the fix to the observed PacManV8 VDP-B framebuffer
+  copy `PC 0x0247`
+
+Milestone-28 closure rule:
+- Keep this as a compatibility patch milestone, not a general "finish the Z80"
+  effort. Add only the timed opcode support proven necessary by the blocked
+  PacManV8 VDP-B framebuffer copy path.
+
+Tests:
+- Focused timed CPU coverage for `OR E` (`0xB3`)
+- Runtime/integration coverage proving the blocked PacManV8 VDP-B
+  framebuffer copy path no longer aborts on the observed missing-opcode PC
+
+Exit criteria:
+- The emulator no longer aborts on the PacManV8 VDP-B framebuffer copy path
+  because the timed core is missing `0xB3`
+- The newly supported opcode surface is documented and regression-covered
+- Remaining CPU opcode gaps stay narrow and explicitly deferred
+
+### Milestone 29 — Timed HD64180 VDP-B Framebuffer Copy RET Z / DEC DE Compatibility (PacManV8)
+
+Objective:
+- Close the remaining narrow timed-CPU compatibility gaps designated by
+  the PacManV8 VDP-B maze render blocked task after the milestone-28
+  `OR E` patch. The blocked T007 static audit identifies exactly two
+  remaining missing timed opcodes on the VDP-B framebuffer copy loop
+  path:
+  - `0xC8` at `PC 0x0248` — `RET Z`
+  - `0x1B` at `PC 0x024D` — `DEC DE`
+- Implement both together so the documented PacManV8 headless runtime
+  frame-dump path can clear the two designated gaps in one pass and
+  PacManV8 T007 becomes actionable for runtime frame capture.
+
+Deliverables:
+- Reproducing regression coverage for the PacManV8 VDP-B framebuffer
+  copy `RET Z` and `DEC DE` blockers reported in
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T007-vdp-b-maze-render-and-pellet-display.md`
+- Timed opcode coverage for `RET Z` (`0xC8`) and `DEC DE` (`0x1B`) in
+  the existing extracted HD64180 runtime path
+- Focused direct CPU tests that pin the documented semantics:
+  - `RET Z`: taken path (Z=1) pops PC from SP, SP += 2, 11 T-states;
+    not-taken path (Z=0) advances PC by one, 5 T-states; flags
+    untouched on both paths
+  - `DEC DE`: DE <- DE - 1 with wrap at 0x0000; PC += 1; 6 T-states;
+    flags untouched
+- Documentation tying the fix to the observed PacManV8 VDP-B framebuffer
+  copy `PC 0x0248` and `PC 0x024D`
+
+Milestone-29 closure rule:
+- Keep this as a compatibility patch milestone, not a general "finish
+  the Z80" effort. Add only the two timed opcodes explicitly designated
+  by the T007 blocker's static audit.
+
+Tests:
+- Focused timed CPU coverage for `RET Z` (`0xC8`), including both the
+  taken and not-taken timing branches
+- Focused timed CPU coverage for `DEC DE` (`0x1B`)
+- Runtime/integration coverage proving the blocked PacManV8 VDP-B
+  framebuffer copy path no longer aborts on the two observed
+  missing-opcode PCs
+
+Exit criteria:
+- The emulator no longer aborts on the PacManV8 VDP-B framebuffer copy
+  path because the timed core is missing `0xC8` or `0x1B`
+- The newly supported opcode surface is documented and
+  regression-covered
 - Remaining CPU opcode gaps stay narrow and explicitly deferred
 
 ## Suggested Release Gates

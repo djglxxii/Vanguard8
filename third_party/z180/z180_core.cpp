@@ -396,10 +396,13 @@ void Core::initialize_tables() {
     ed_opcodes_.assign(256, &Core::op_unimplemented);
 
     opcodes_[0x00] = &Core::op_nop;
+    opcodes_[0x01] = &Core::op_ld_bc_nn;
     opcodes_[0x05] = &Core::op_dec_b;
     opcodes_[0x06] = &Core::op_ld_b_n;
     opcodes_[0x0E] = &Core::op_ld_c_n;
+    opcodes_[0x11] = &Core::op_ld_de_nn;
     opcodes_[0x16] = &Core::op_ld_d_n;
+    opcodes_[0x1B] = &Core::op_dec_de;
     opcodes_[0x0F] = &Core::op_rrca;
     opcodes_[0x18] = &Core::op_jr_e;
     opcodes_[0x20] = &Core::op_jr_nz_e;
@@ -411,16 +414,22 @@ void Core::initialize_tables() {
     opcodes_[0x32] = &Core::op_ld_mem_nn_a;
     opcodes_[0x3A] = &Core::op_ld_a_mem_nn;
     opcodes_[0x3E] = &Core::op_ld_a_n;
+    opcodes_[0x78] = &Core::op_ld_a_b;
+    opcodes_[0x79] = &Core::op_ld_a_c;
+    opcodes_[0x7A] = &Core::op_ld_a_d;
     opcodes_[0x7E] = &Core::op_ld_a_mem_hl;
     opcodes_[0x76] = &Core::op_halt;
     opcodes_[0xAF] = &Core::op_xor_a;
     opcodes_[0xC3] = &Core::op_jp_nn;
+    opcodes_[0xC8] = &Core::op_ret_z;
     opcodes_[0xC9] = &Core::op_ret;
     opcodes_[0xCD] = &Core::op_call_nn;
     opcodes_[0xD3] = &Core::op_out_n_a;
     opcodes_[0xDB] = &Core::op_in_a_n;
     opcodes_[0xED] = &Core::op_ed_prefix;
+    opcodes_[0xB3] = &Core::op_or_e;
     opcodes_[0xE6] = &Core::op_and_n;
+    opcodes_[0xF6] = &Core::op_or_n;
     opcodes_[0xF1] = &Core::op_pop_af;
     opcodes_[0xF3] = &Core::op_di;
     opcodes_[0xF5] = &Core::op_push_af;
@@ -641,6 +650,10 @@ void Core::op_jr_nz_e() {
     }
 }
 
+void Core::op_ld_bc_nn() { bc_.value = fetch_word(); }
+
+void Core::op_ld_de_nn() { de_.value = fetch_word(); }
+
 void Core::op_ld_hl_nn() { hl_.value = fetch_word(); }
 
 void Core::op_ld_hl_mem_nn() { hl_.value = read_word(fetch_word()); }
@@ -650,6 +663,12 @@ void Core::op_ld_mem_nn_hl() { write_word(fetch_word(), hl_.value); }
 void Core::op_ld_sp_nn() { sp_.value = fetch_word(); }
 
 void Core::op_ld_mem_nn_a() { write_logical(fetch_word(), af_.bytes.hi); }
+
+void Core::op_ld_a_b() { af_.bytes.hi = bc_.bytes.hi; }
+
+void Core::op_ld_a_c() { af_.bytes.hi = bc_.bytes.lo; }
+
+void Core::op_ld_a_d() { af_.bytes.hi = de_.bytes.hi; }
 
 void Core::op_ld_a_mem_hl() { af_.bytes.hi = read_logical(hl_.value); }
 
@@ -668,6 +687,42 @@ void Core::op_and_n() {
     }
     if (has_even_parity(af_.bytes.hi)) {
         af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_parity_overflow);
+    }
+}
+
+void Core::op_or_n() {
+    af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | fetch_byte());
+    af_.bytes.lo = 0;
+    if ((af_.bytes.hi & 0x80U) != 0U) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_sign);
+    }
+    if (af_.bytes.hi == 0U) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_zero);
+    }
+    if (has_even_parity(af_.bytes.hi)) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_parity_overflow);
+    }
+}
+
+void Core::op_or_e() {
+    af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | de_.bytes.lo);
+    af_.bytes.lo = 0;
+    if ((af_.bytes.hi & 0x80U) != 0U) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_sign);
+    }
+    if (af_.bytes.hi == 0U) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_zero);
+    }
+    if (has_even_parity(af_.bytes.hi)) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_parity_overflow);
+    }
+}
+
+void Core::op_dec_de() { de_.value = static_cast<std::uint16_t>(de_.value - 1U); }
+
+void Core::op_ret_z() {
+    if ((af_.bytes.lo & flag_zero) != 0U) {
+        pc_.value = pop_word();
     }
 }
 

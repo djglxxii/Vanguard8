@@ -215,6 +215,107 @@ auto make_pacman_palette_vclk_blocker_rom() -> std::vector<std::uint8_t> {
     return rom;
 }
 
+auto make_pacmanv8_vdp_b_bring_up_blocker_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xC3; rom[0x0001] = 0xFD; rom[0x0002] = 0x01;  // JP 0x01FD
+
+    rom[0x01FD] = 0x01; rom[0x01FE] = 0x78; rom[0x01FF] = 0x56;  // LD BC,0x5678
+    rom[0x0200] = 0x76;                                          // HALT
+
+    return rom;
+}
+
+auto make_pacmanv8_vdp_b_vram_seek_blocker_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xC3; rom[0x0001] = 0x3B; rom[0x0002] = 0x02;  // JP 0x023B
+
+    rom[0x023B] = 0x01; rom[0x023C] = 0xA5; rom[0x023D] = 0xBB;  // LD BC,0xBBA5
+    rom[0x023E] = 0x79;                                          // LD A,C
+    rom[0x023F] = 0x76;                                          // HALT
+
+    return rom;
+}
+
+auto make_pacmanv8_vdp_b_vram_seek_ld_a_b_blocker_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xC3; rom[0x0001] = 0x3B; rom[0x0002] = 0x02;  // JP 0x023B
+
+    rom[0x023B] = 0x01; rom[0x023C] = 0xA5; rom[0x023D] = 0xBB;  // LD BC,0xBBA5
+    rom[0x023E] = 0x78;                                          // LD A,B
+    rom[0x023F] = 0x76;                                          // HALT
+
+    return rom;
+}
+
+auto make_pacmanv8_vdp_b_vram_seek_or_n_blocker_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xC3; rom[0x0001] = 0x3F; rom[0x0002] = 0x02;  // JP 0x023F
+
+    rom[0x023F] = 0x3E; rom[0x0240] = 0x30;                      // LD A,0x30
+    rom[0x0241] = 0xF6; rom[0x0242] = 0x0C;                      // OR 0x0C
+    rom[0x0243] = 0x76;                                          // HALT
+
+    return rom;
+}
+
+auto make_pacmanv8_vdp_b_framebuffer_load_ld_de_nn_blocker_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xC3; rom[0x0001] = 0x0B; rom[0x0002] = 0x02;  // JP 0x020B
+
+    rom[0x020B] = 0x11; rom[0x020C] = 0x00; rom[0x020D] = 0x40;  // LD DE,0x4000
+    rom[0x020E] = 0x76;                                          // HALT
+
+    return rom;
+}
+
+auto make_pacmanv8_vdp_b_framebuffer_copy_ld_a_d_blocker_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xC3; rom[0x0001] = 0x43; rom[0x0002] = 0x02;  // JP 0x0243
+
+    rom[0x0243] = 0x11; rom[0x0244] = 0x78; rom[0x0245] = 0x56;  // LD DE,0x5678
+    rom[0x0246] = 0x7A;                                          // LD A,D
+    rom[0x0247] = 0x76;                                          // HALT
+
+    return rom;
+}
+
+auto make_pacmanv8_vdp_b_framebuffer_copy_or_e_blocker_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xC3; rom[0x0001] = 0x43; rom[0x0002] = 0x02;  // JP 0x0243
+
+    rom[0x0243] = 0x11; rom[0x0244] = 0x0C; rom[0x0245] = 0x30;  // LD DE,0x300C
+    rom[0x0246] = 0x7A;                                          // LD A,D  (A=0x30)
+    rom[0x0247] = 0xB3;                                          // OR E    (A |= 0x0C = 0x3C)
+    rom[0x0248] = 0x76;                                          // HALT
+
+    return rom;
+}
+
+auto make_pacmanv8_vdp_b_framebuffer_copy_ret_z_and_dec_de_blocker_rom()
+    -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xC3; rom[0x0001] = 0x43; rom[0x0002] = 0x02;  // JP 0x0243
+
+    rom[0x0243] = 0x11; rom[0x0244] = 0x0C; rom[0x0245] = 0x30;  // LD DE,0x300C
+    rom[0x0246] = 0x7A;                                          // LD A,D  (A=0x30)
+    rom[0x0247] = 0xB3;                                          // OR E    (A=0x3C, Z=0)
+    rom[0x0248] = 0xC8;                                          // RET Z (not taken, Z=0)
+    rom[0x0249] = 0x00; rom[0x024A] = 0x00;                      // NOP, NOP
+    rom[0x024B] = 0x00; rom[0x024C] = 0x00;                      // NOP, NOP
+    rom[0x024D] = 0x1B;                                          // DEC DE  (DE=0x300B)
+    rom[0x024E] = 0x76;                                          // HALT
+
+    return rom;
+}
+
 auto read_binary_file(const std::filesystem::path& path) -> std::vector<std::uint8_t> {
     std::ifstream input(path, std::ios::binary);
     return std::vector<std::uint8_t>(
@@ -442,6 +543,90 @@ TEST_CASE("frame loop clears the Pac-Man palette opcode blocker at PC 0x02B9 wit
     REQUIRE(emulator.cpu().pc() == 0x02BA);
     REQUIRE(emulator.cpu().halted());
     REQUIRE(emulator.bus().msm5205().vclk_count() > 0U);
+}
+
+TEST_CASE("frame loop clears the PacManV8 VDP-B bring-up opcode blocker at PC 0x01FD", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacmanv8_vdp_b_bring_up_blocker_rom());
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(emulator.cpu().state_snapshot().registers.bc == 0x5678);
+    REQUIRE(emulator.cpu().pc() == 0x0200);
+    REQUIRE(emulator.cpu().halted());
+}
+
+TEST_CASE("frame loop clears the PacManV8 VDP-B VRAM seek opcode blocker at PC 0x023B", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacmanv8_vdp_b_vram_seek_blocker_rom());
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(emulator.cpu().state_snapshot().registers.bc == 0xBBA5);
+    REQUIRE(static_cast<std::uint8_t>(emulator.cpu().state_snapshot().registers.af >> 8U) == 0xA5);
+    REQUIRE(emulator.cpu().pc() == 0x023F);
+    REQUIRE(emulator.cpu().halted());
+}
+
+TEST_CASE("frame loop clears the PacManV8 VDP-B VRAM seek LD A,B opcode blocker at PC 0x023E", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacmanv8_vdp_b_vram_seek_ld_a_b_blocker_rom());
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(emulator.cpu().state_snapshot().registers.bc == 0xBBA5);
+    REQUIRE(static_cast<std::uint8_t>(emulator.cpu().state_snapshot().registers.af >> 8U) == 0xBB);
+    REQUIRE(emulator.cpu().pc() == 0x023F);
+    REQUIRE(emulator.cpu().halted());
+}
+
+TEST_CASE("frame loop clears the PacManV8 VDP-B VRAM seek OR n opcode blocker at PC 0x0241", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacmanv8_vdp_b_vram_seek_or_n_blocker_rom());
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(static_cast<std::uint8_t>(emulator.cpu().state_snapshot().registers.af >> 8U) == 0x3C);
+    REQUIRE(emulator.cpu().pc() == 0x0243);
+    REQUIRE(emulator.cpu().halted());
+}
+
+TEST_CASE("frame loop clears the PacManV8 VDP-B framebuffer-load LD DE,nn opcode blocker at PC 0x020B", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacmanv8_vdp_b_framebuffer_load_ld_de_nn_blocker_rom());
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(emulator.cpu().state_snapshot().registers.de == 0x4000);
+    REQUIRE(emulator.cpu().pc() == 0x020E);
+    REQUIRE(emulator.cpu().halted());
+}
+
+TEST_CASE("frame loop clears the PacManV8 VDP-B framebuffer copy LD A,D opcode blocker at PC 0x0246", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacmanv8_vdp_b_framebuffer_copy_ld_a_d_blocker_rom());
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(emulator.cpu().state_snapshot().registers.de == 0x5678);
+    REQUIRE(static_cast<std::uint8_t>(emulator.cpu().state_snapshot().registers.af >> 8U) == 0x56);
+    REQUIRE(emulator.cpu().pc() == 0x0247);
+    REQUIRE(emulator.cpu().halted());
+}
+
+TEST_CASE("frame loop clears the PacManV8 VDP-B framebuffer copy OR E opcode blocker at PC 0x0247", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacmanv8_vdp_b_framebuffer_copy_or_e_blocker_rom());
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(static_cast<std::uint8_t>(emulator.cpu().state_snapshot().registers.af >> 8U) == 0x3C);
+    REQUIRE(emulator.cpu().pc() == 0x0248);
+    REQUIRE(emulator.cpu().halted());
+}
+
+TEST_CASE("frame loop clears the PacManV8 VDP-B framebuffer copy RET Z and DEC DE opcode blockers at PC 0x0248 and 0x024D", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacmanv8_vdp_b_framebuffer_copy_ret_z_and_dec_de_blocker_rom());
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+    REQUIRE(emulator.cpu().state_snapshot().registers.de == 0x300B);
+    REQUIRE(static_cast<std::uint8_t>(emulator.cpu().state_snapshot().registers.af >> 8U) == 0x3C);
+    REQUIRE(emulator.cpu().pc() == 0x024E);
+    REQUIRE(emulator.cpu().halted());
 }
 
 TEST_CASE("unsupported handler opcodes are reported at the handler PC after INT1 dispatch", "[integration]") {

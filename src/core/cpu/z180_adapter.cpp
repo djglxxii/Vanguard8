@@ -338,7 +338,11 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0x00:
     case 0x05:
     case 0x0F:
+    case 0x78:
+    case 0x79:
+    case 0x7A:
     case 0xAF:
+    case 0xB3:
     case 0xF3:
     case 0xFB:
         return 4;
@@ -346,13 +350,18 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
         return 12;
     case 0x20:
         return (core_.register_snapshot().af & flag_zero) == 0U ? 12 : 7;
+    case 0x01:
+    case 0x11:
     case 0x21:
     case 0x2A:
     case 0x31:
     case 0xC3:
         return 10;
+    case 0x1B:
     case 0x23:
         return 6;
+    case 0xC8:
+        return (core_.register_snapshot().af & flag_zero) != 0U ? 11 : 5;
     case 0x22:
         return 16;
     case 0x32:
@@ -364,6 +373,7 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0x16:
     case 0x7E:
     case 0xE6:
+    case 0xF6:
         return 7;
     case 0x76:
         return 4;

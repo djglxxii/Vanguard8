@@ -395,9 +395,28 @@ void Core::initialize_tables() {
     opcodes_.assign(256, &Core::op_unimplemented);
     ed_opcodes_.assign(256, &Core::op_unimplemented);
 
+    for (std::size_t i = 0x40U; i <= 0x7FU; ++i) {
+        opcodes_[i] = &Core::op_ld_r_r_main;
+    }
+
     opcodes_[0x00] = &Core::op_nop;
     opcodes_[0x01] = &Core::op_ld_bc_nn;
-    opcodes_[0x05] = &Core::op_dec_b;
+    opcodes_[0x04] = &Core::op_inc_r_main;
+    opcodes_[0x05] = &Core::op_dec_r_main;
+    opcodes_[0x0C] = &Core::op_inc_r_main;
+    opcodes_[0x0D] = &Core::op_dec_r_main;
+    opcodes_[0x14] = &Core::op_inc_r_main;
+    opcodes_[0x15] = &Core::op_dec_r_main;
+    opcodes_[0x1C] = &Core::op_inc_r_main;
+    opcodes_[0x1D] = &Core::op_dec_r_main;
+    opcodes_[0x24] = &Core::op_inc_r_main;
+    opcodes_[0x25] = &Core::op_dec_r_main;
+    opcodes_[0x2C] = &Core::op_inc_r_main;
+    opcodes_[0x2D] = &Core::op_dec_r_main;
+    opcodes_[0x34] = &Core::op_inc_r_main;
+    opcodes_[0x35] = &Core::op_dec_r_main;
+    opcodes_[0x3C] = &Core::op_inc_r_main;
+    opcodes_[0x3D] = &Core::op_dec_r_main;
     opcodes_[0x06] = &Core::op_ld_b_n;
     opcodes_[0x0E] = &Core::op_ld_c_n;
     opcodes_[0x11] = &Core::op_ld_de_nn;
@@ -406,6 +425,7 @@ void Core::initialize_tables() {
     opcodes_[0x0F] = &Core::op_rrca;
     opcodes_[0x18] = &Core::op_jr_e;
     opcodes_[0x20] = &Core::op_jr_nz_e;
+    opcodes_[0x28] = &Core::op_jr_z_e;
     opcodes_[0x21] = &Core::op_ld_hl_nn;
     opcodes_[0x22] = &Core::op_ld_mem_nn_hl;
     opcodes_[0x23] = &Core::op_inc_hl;
@@ -417,19 +437,47 @@ void Core::initialize_tables() {
     opcodes_[0x78] = &Core::op_ld_a_b;
     opcodes_[0x79] = &Core::op_ld_a_c;
     opcodes_[0x7A] = &Core::op_ld_a_d;
+    opcodes_[0x7B] = &Core::op_ld_a_e;
+    opcodes_[0x7C] = &Core::op_ld_a_h;
+    opcodes_[0x7D] = &Core::op_ld_a_l;
     opcodes_[0x7E] = &Core::op_ld_a_mem_hl;
+    opcodes_[0x7F] = &Core::op_ld_a_a;
     opcodes_[0x76] = &Core::op_halt;
     opcodes_[0xAF] = &Core::op_xor_a;
+    opcodes_[0xC2] = &Core::op_jp_nz_nn;
     opcodes_[0xC3] = &Core::op_jp_nn;
+    opcodes_[0xCA] = &Core::op_jp_z_nn;
+    opcodes_[0xC0] = &Core::op_ret_nz;
     opcodes_[0xC8] = &Core::op_ret_z;
     opcodes_[0xC9] = &Core::op_ret;
     opcodes_[0xCD] = &Core::op_call_nn;
     opcodes_[0xD3] = &Core::op_out_n_a;
     opcodes_[0xDB] = &Core::op_in_a_n;
     opcodes_[0xED] = &Core::op_ed_prefix;
+    opcodes_[0xB0] = &Core::op_or_b;
+    opcodes_[0xB1] = &Core::op_or_c;
+    opcodes_[0xB2] = &Core::op_or_d;
     opcodes_[0xB3] = &Core::op_or_e;
+    opcodes_[0xB4] = &Core::op_or_h;
+    opcodes_[0xB5] = &Core::op_or_l;
+    opcodes_[0xB7] = &Core::op_or_a;
+    opcodes_[0xC1] = &Core::op_pop_bc;
+    opcodes_[0xC5] = &Core::op_push_bc;
+    opcodes_[0xD1] = &Core::op_pop_de;
+    opcodes_[0xD5] = &Core::op_push_de;
+    opcodes_[0xE1] = &Core::op_pop_hl;
+    opcodes_[0xE5] = &Core::op_push_hl;
     opcodes_[0xE6] = &Core::op_and_n;
     opcodes_[0xF6] = &Core::op_or_n;
+    opcodes_[0xFE] = &Core::op_cp_n;
+    opcodes_[0xB8] = &Core::op_cp_r_main;
+    opcodes_[0xB9] = &Core::op_cp_r_main;
+    opcodes_[0xBA] = &Core::op_cp_r_main;
+    opcodes_[0xBB] = &Core::op_cp_r_main;
+    opcodes_[0xBC] = &Core::op_cp_r_main;
+    opcodes_[0xBD] = &Core::op_cp_r_main;
+    opcodes_[0xBE] = &Core::op_cp_r_main;
+    opcodes_[0xBF] = &Core::op_cp_r_main;
     opcodes_[0xF1] = &Core::op_pop_af;
     opcodes_[0xF3] = &Core::op_di;
     opcodes_[0xF5] = &Core::op_push_af;
@@ -481,6 +529,7 @@ auto Core::pop_word() -> std::uint16_t {
 void Core::execute_one() {
     ++r_;
     const auto opcode = fetch_byte();
+    last_opcode_ = opcode;
     (this->*opcodes_[opcode])();
     if (ei_delay_ > 0U) {
         --ei_delay_;
@@ -606,6 +655,67 @@ void Core::op_unimplemented() { unsupported_opcode(read_logical(static_cast<std:
 // Extracted and adapted from MAME z180op.hxx milestone-2 opcode subset.
 void Core::op_nop() {}
 
+void Core::op_dec_r_main() {
+    const auto reg_code = static_cast<std::uint8_t>((last_opcode_ >> 3U) & 0x07U);
+    std::uint8_t old_value = 0U;
+    std::uint8_t result = 0U;
+    if (reg_code == 0x06U) {
+        old_value = read_logical(hl_.value);
+        result = static_cast<std::uint8_t>(old_value - 1U);
+        write_logical(hl_.value, result);
+    } else {
+        auto& reg = register8_from_code(reg_code);
+        old_value = reg;
+        result = static_cast<std::uint8_t>(old_value - 1U);
+        reg = result;
+    }
+    auto flags = static_cast<std::uint8_t>(af_.bytes.lo & flag_carry);
+    flags = static_cast<std::uint8_t>(flags | flag_subtract);
+    if ((result & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_sign);
+    }
+    if (result == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if ((old_value & 0x0FU) == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_half);
+    }
+    if (old_value == 0x80U) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    af_.bytes.lo = flags;
+}
+
+void Core::op_inc_r_main() {
+    const auto reg_code = static_cast<std::uint8_t>((last_opcode_ >> 3U) & 0x07U);
+    std::uint8_t old_value = 0U;
+    std::uint8_t result = 0U;
+    if (reg_code == 0x06U) {
+        old_value = read_logical(hl_.value);
+        result = static_cast<std::uint8_t>(old_value + 1U);
+        write_logical(hl_.value, result);
+    } else {
+        auto& reg = register8_from_code(reg_code);
+        old_value = reg;
+        result = static_cast<std::uint8_t>(old_value + 1U);
+        reg = result;
+    }
+    auto flags = static_cast<std::uint8_t>(af_.bytes.lo & flag_carry);
+    if ((result & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_sign);
+    }
+    if (result == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if ((old_value & 0x0FU) == 0x0FU) {
+        flags = static_cast<std::uint8_t>(flags | flag_half);
+    }
+    if (old_value == 0x7FU) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    af_.bytes.lo = flags;
+}
+
 void Core::op_dec_b() {
     const auto old_value = bc_.bytes.hi;
     const auto result = static_cast<std::uint8_t>(old_value - 1U);
@@ -650,6 +760,13 @@ void Core::op_jr_nz_e() {
     }
 }
 
+void Core::op_jr_z_e() {
+    const auto displacement = static_cast<std::int8_t>(fetch_byte());
+    if ((af_.bytes.lo & flag_zero) != 0U) {
+        pc_.value = static_cast<std::uint16_t>(pc_.value + displacement);
+    }
+}
+
 void Core::op_ld_bc_nn() { bc_.value = fetch_word(); }
 
 void Core::op_ld_de_nn() { de_.value = fetch_word(); }
@@ -670,7 +787,29 @@ void Core::op_ld_a_c() { af_.bytes.hi = bc_.bytes.lo; }
 
 void Core::op_ld_a_d() { af_.bytes.hi = de_.bytes.hi; }
 
+void Core::op_ld_a_e() { af_.bytes.hi = de_.bytes.lo; }
+
+void Core::op_ld_a_h() { af_.bytes.hi = hl_.bytes.hi; }
+
+void Core::op_ld_a_l() { af_.bytes.hi = hl_.bytes.lo; }
+
+void Core::op_ld_a_a() {}
+
 void Core::op_ld_a_mem_hl() { af_.bytes.hi = read_logical(hl_.value); }
+
+void Core::op_ld_r_r_main() {
+    const auto dst = static_cast<std::uint8_t>((last_opcode_ >> 3U) & 0x07U);
+    const auto src = static_cast<std::uint8_t>(last_opcode_ & 0x07U);
+    if (src == 0x06U) {
+        register8_from_code(dst) = read_logical(hl_.value);
+        return;
+    }
+    if (dst == 0x06U) {
+        write_logical(hl_.value, register8_from_code(src));
+        return;
+    }
+    register8_from_code(dst) = register8_from_code(src);
+}
 
 void Core::op_ld_a_mem_nn() { af_.bytes.hi = read_logical(fetch_word()); }
 
@@ -718,10 +857,71 @@ void Core::op_or_e() {
     }
 }
 
+void Core::apply_or_flags() {
+    af_.bytes.lo = 0;
+    if ((af_.bytes.hi & 0x80U) != 0U) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_sign);
+    }
+    if (af_.bytes.hi == 0U) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_zero);
+    }
+    if (has_even_parity(af_.bytes.hi)) {
+        af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_parity_overflow);
+    }
+}
+
+void Core::op_or_b() { af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | bc_.bytes.hi); apply_or_flags(); }
+void Core::op_or_c() { af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | bc_.bytes.lo); apply_or_flags(); }
+void Core::op_or_d() { af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | de_.bytes.hi); apply_or_flags(); }
+void Core::op_or_h() { af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | hl_.bytes.hi); apply_or_flags(); }
+void Core::op_or_l() { af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | hl_.bytes.lo); apply_or_flags(); }
+void Core::op_or_a() { apply_or_flags(); }
+
+void Core::apply_cp_flags(const std::uint8_t a_value, const std::uint8_t operand) {
+    const auto result = static_cast<std::uint8_t>(a_value - operand);
+    std::uint8_t flags = flag_subtract;
+    if ((result & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_sign);
+    }
+    if (result == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if (((a_value & 0x0FU) - (operand & 0x0FU)) & 0x10U) {
+        flags = static_cast<std::uint8_t>(flags | flag_half);
+    }
+    if (((static_cast<std::int16_t>(static_cast<std::int8_t>(a_value)) -
+          static_cast<std::int16_t>(static_cast<std::int8_t>(operand))) < -128) ||
+        ((static_cast<std::int16_t>(static_cast<std::int8_t>(a_value)) -
+          static_cast<std::int16_t>(static_cast<std::int8_t>(operand))) > 127)) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    if (a_value < operand) {
+        flags = static_cast<std::uint8_t>(flags | flag_carry);
+    }
+    af_.bytes.lo = flags;
+}
+
+void Core::op_cp_n() {
+    const auto operand = fetch_byte();
+    apply_cp_flags(af_.bytes.hi, operand);
+}
+
+void Core::op_cp_r_main() {
+    const auto reg_code = static_cast<std::uint8_t>(last_opcode_ & 0x07U);
+    const auto operand = (reg_code == 0x06U) ? read_logical(hl_.value) : register8_from_code(reg_code);
+    apply_cp_flags(af_.bytes.hi, operand);
+}
+
 void Core::op_dec_de() { de_.value = static_cast<std::uint16_t>(de_.value - 1U); }
 
 void Core::op_ret_z() {
     if ((af_.bytes.lo & flag_zero) != 0U) {
+        pc_.value = pop_word();
+    }
+}
+
+void Core::op_ret_nz() {
+    if ((af_.bytes.lo & flag_zero) == 0U) {
         pc_.value = pop_word();
     }
 }
@@ -738,6 +938,20 @@ void Core::op_halt() {
 
 void Core::op_jp_nn() { pc_.value = fetch_word(); }
 
+void Core::op_jp_z_nn() {
+    const auto target = fetch_word();
+    if ((af_.bytes.lo & flag_zero) != 0U) {
+        pc_.value = target;
+    }
+}
+
+void Core::op_jp_nz_nn() {
+    const auto target = fetch_word();
+    if ((af_.bytes.lo & flag_zero) == 0U) {
+        pc_.value = target;
+    }
+}
+
 void Core::op_ret() { pc_.value = pop_word(); }
 
 void Core::op_call_nn() {
@@ -749,6 +963,12 @@ void Core::op_call_nn() {
 void Core::op_in_a_n() { af_.bytes.hi = callbacks_.read_port(fetch_byte()); }
 
 void Core::op_pop_af() { af_.value = pop_word(); }
+
+void Core::op_pop_bc() { bc_.value = pop_word(); }
+
+void Core::op_pop_de() { de_.value = pop_word(); }
+
+void Core::op_pop_hl() { hl_.value = pop_word(); }
 
 void Core::op_xor_a() {
     af_.bytes.hi = 0x00;
@@ -764,6 +984,12 @@ void Core::op_di() {
 }
 
 void Core::op_push_af() { push_word(af_.value); }
+
+void Core::op_push_bc() { push_word(bc_.value); }
+
+void Core::op_push_de() { push_word(de_.value); }
+
+void Core::op_push_hl() { push_word(hl_.value); }
 
 void Core::op_ei() { ei_delay_ = 2; }
 

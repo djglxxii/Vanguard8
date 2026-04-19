@@ -334,15 +334,44 @@ auto Z180Adapter::interrupt_service_tstates(const InterruptSource source) const 
 auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     const auto opcode = peek_logical(pc());
 
+    if (opcode >= 0x40U && opcode <= 0x7FU && opcode != 0x76U) {
+        const auto dst = static_cast<std::uint8_t>((opcode >> 3U) & 0x07U);
+        const auto src = static_cast<std::uint8_t>(opcode & 0x07U);
+        return (dst == 0x06U || src == 0x06U) ? 7 : 4;
+    }
+
     switch (opcode) {
     case 0x00:
+    case 0x04:
     case 0x05:
+    case 0x0C:
+    case 0x0D:
+    case 0x14:
+    case 0x15:
+    case 0x1C:
+    case 0x1D:
+    case 0x24:
+    case 0x25:
+    case 0x2C:
+    case 0x2D:
+    case 0x3C:
+    case 0x3D:
     case 0x0F:
     case 0x78:
     case 0x79:
     case 0x7A:
+    case 0x7B:
+    case 0x7C:
+    case 0x7D:
+    case 0x7F:
     case 0xAF:
+    case 0xB0:
+    case 0xB1:
+    case 0xB2:
     case 0xB3:
+    case 0xB4:
+    case 0xB5:
+    case 0xB7:
     case 0xF3:
     case 0xFB:
         return 4;
@@ -350,16 +379,25 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
         return 12;
     case 0x20:
         return (core_.register_snapshot().af & flag_zero) == 0U ? 12 : 7;
+    case 0x28:
+        return (core_.register_snapshot().af & flag_zero) != 0U ? 12 : 7;
     case 0x01:
     case 0x11:
     case 0x21:
     case 0x2A:
     case 0x31:
+    case 0xC2:
     case 0xC3:
+    case 0xCA:
         return 10;
     case 0x1B:
     case 0x23:
         return 6;
+    case 0x34:
+    case 0x35:
+        return 11;
+    case 0xC0:
+        return (core_.register_snapshot().af & flag_zero) == 0U ? 11 : 5;
     case 0xC8:
         return (core_.register_snapshot().af & flag_zero) != 0U ? 11 : 5;
     case 0x22:
@@ -374,10 +412,24 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0x7E:
     case 0xE6:
     case 0xF6:
+    case 0xFE:
+        return 7;
+    case 0xB8:
+    case 0xB9:
+    case 0xBA:
+    case 0xBB:
+    case 0xBC:
+    case 0xBD:
+    case 0xBF:
+        return 4;
+    case 0xBE:
         return 7;
     case 0x76:
         return 4;
+    case 0xC1:
     case 0xC9:
+    case 0xD1:
+    case 0xE1:
     case 0xF1:
         return 10;
     case 0xCD:
@@ -387,6 +439,9 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
         return 11;
     case 0xED:
         return ed_instruction_tstates(peek_logical(static_cast<std::uint16_t>(pc() + 1U)));
+    case 0xC5:
+    case 0xD5:
+    case 0xE5:
     case 0xF5:
         return 11;
     default:

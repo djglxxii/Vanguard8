@@ -316,6 +316,86 @@ auto make_pacmanv8_vdp_b_framebuffer_copy_ret_z_and_dec_de_blocker_rom()
     return rom;
 }
 
+auto make_pacmanv8_vblank_push_pop_rr_blocker_rom() -> std::vector<std::uint8_t> {
+    // Reproduces the PacManV8 VBlank handler prologue/epilogue that exposed
+    // the missing register-pair stack opcodes documented in
+    // /home/djglxxii/src/PacManV8/docs/field-manual/vanguard8-build-directory-skew-and-timed-opcodes.md.
+    // The test driver jumps execution directly to 0x0038 (via state snapshot)
+    // so the prologue/epilogue opcode PCs line up exactly with the evidence:
+    //
+    //   0038: F5        PUSH AF
+    //   0039: C5        PUSH BC   ; first previously-missing opcode
+    //   003A: D5        PUSH DE
+    //   003B: E5        PUSH HL
+    //   003C..003F: 00  NOP       ; stand-in for the audio_update_frame call
+    //   0040: E1        POP HL
+    //   0041: D1        POP DE
+    //   0042: C1        POP BC
+    //   0043: F1        POP AF
+    //   0044: 76        HALT
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0038] = 0xF5;                                          // PUSH AF
+    rom[0x0039] = 0xC5;                                          // PUSH BC
+    rom[0x003A] = 0xD5;                                          // PUSH DE
+    rom[0x003B] = 0xE5;                                          // PUSH HL
+    rom[0x0040] = 0xE1;                                          // POP HL
+    rom[0x0041] = 0xD1;                                          // POP DE
+    rom[0x0042] = 0xC1;                                          // POP BC
+    rom[0x0043] = 0xF1;                                          // POP AF
+    rom[0x0044] = 0x76;                                          // HALT
+
+    return rom;
+}
+
+auto make_pacmanv8_rom_run_opcode_coverage_rom() -> std::vector<std::uint8_t> {
+    // Exercises every M31 opcode family in a single scripted ROM:
+    //   0000: 3E 05    LD A,0x05
+    //   0002: 3D       DEC A           ; INC/DEC r family; A=0x04, flags set
+    //   0003: 3C       INC A           ; A=0x05
+    //   0004: FE 05    CP n            ; A==n -> Z=1
+    //   0006: 28 02    JR Z,+2         ; taken -> PC=0x000A
+    //   0008: 76       HALT            ; should not be reached
+    //   0009: 00       NOP
+    //   000A: 06 42    LD B,0x42
+    //   000C: 57       LD D,A          ; LD r,r' family: D=0x05
+    //   000D: 48       LD C,B          ; LD r,r' family: C=0x42
+    //   000E: CA 12 00 JP Z,0x0012     ; taken (Z still set from CP)
+    //   0011: 76       HALT            ; should not be reached
+    //   0012: 3E 00    LD A,0x00
+    //   0014: B7       OR A            ; Z=1
+    //   0015: C2 1A 00 JP NZ,0x001A    ; not taken (Z=1)
+    //   0018: 18 02    JR e,+2         ; branch to 0x001C
+    //   001A: 76       HALT            ; not reached
+    //   001B: 00       NOP
+    //   001C: 3E 10    LD A,0x10
+    //   001E: BE       CP (HL)         ; HL=0x8000 memory=0x10 -> Z=1 after
+    //   001F: 76       HALT
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+    rom[0x0000] = 0x3E; rom[0x0001] = 0x05;
+    rom[0x0002] = 0x3D;
+    rom[0x0003] = 0x3C;
+    rom[0x0004] = 0xFE; rom[0x0005] = 0x05;
+    rom[0x0006] = 0x28; rom[0x0007] = 0x02;
+    rom[0x0008] = 0x76;
+    rom[0x0009] = 0x00;
+    rom[0x000A] = 0x06; rom[0x000B] = 0x42;
+    rom[0x000C] = 0x57;
+    rom[0x000D] = 0x48;
+    rom[0x000E] = 0xCA; rom[0x000F] = 0x12; rom[0x0010] = 0x00;
+    rom[0x0011] = 0x76;
+    rom[0x0012] = 0x3E; rom[0x0013] = 0x00;
+    rom[0x0014] = 0xB7;
+    rom[0x0015] = 0xC2; rom[0x0016] = 0x1A; rom[0x0017] = 0x00;
+    rom[0x0018] = 0x18; rom[0x0019] = 0x02;
+    rom[0x001A] = 0x76;
+    rom[0x001B] = 0x00;
+    rom[0x001C] = 0x3E; rom[0x001D] = 0x10;
+    rom[0x001E] = 0xBE;
+    rom[0x001F] = 0x76;
+    return rom;
+}
+
 auto read_binary_file(const std::filesystem::path& path) -> std::vector<std::uint8_t> {
     std::ifstream input(path, std::ios::binary);
     return std::vector<std::uint8_t>(
@@ -627,6 +707,70 @@ TEST_CASE("frame loop clears the PacManV8 VDP-B framebuffer copy RET Z and DEC D
     REQUIRE(static_cast<std::uint8_t>(emulator.cpu().state_snapshot().registers.af >> 8U) == 0x3C);
     REQUIRE(emulator.cpu().pc() == 0x024E);
     REQUIRE(emulator.cpu().halted());
+}
+
+TEST_CASE("frame loop clears the PacManV8 VBlank handler PUSH/POP rr opcode blockers at PC 0x0039..0x0042", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacmanv8_vblank_push_pop_rr_blocker_rom());
+
+    // Stage the boot MMU (CBAR=0x48, CBR=0xF0, BBR=0x04) so SP=0x8100 lands in
+    // SRAM and the pushes are visible to the pops, and jump the PC to 0x0038
+    // so the previously-failing opcode PCs match the field manual evidence.
+    auto state = emulator.mutable_cpu().state_snapshot();
+    state.registers.cbar = 0x48;
+    state.registers.cbr = 0xF0;
+    state.registers.bbr = 0x04;
+    state.registers.sp = 0x8100;
+    state.registers.pc = 0x0038;
+    state.registers.af = 0x11AA;
+    state.registers.bc = 0x2233;
+    state.registers.de = 0x4455;
+    state.registers.hl = 0x6677;
+    emulator.mutable_cpu().load_state_snapshot(state);
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+
+    const auto final_state = emulator.cpu().state_snapshot();
+    REQUIRE(emulator.cpu().pc() == 0x0044);
+    REQUIRE(emulator.cpu().halted());
+    // After four pushes and four pops in reverse order, SP returns to 0x8100
+    // and AF/BC/DE/HL match the values staged above.
+    REQUIRE(final_state.registers.sp == 0x8100);
+    REQUIRE(final_state.registers.af == 0x11AA);
+    REQUIRE(final_state.registers.bc == 0x2233);
+    REQUIRE(final_state.registers.de == 0x4455);
+    REQUIRE(final_state.registers.hl == 0x6677);
+}
+
+TEST_CASE("frame loop clears the PacManV8 ROM run-time opcode blockers (M31)", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacmanv8_rom_run_opcode_coverage_rom());
+
+    // Point HL at the 0x8000 SRAM region with a known byte so CP (HL) at PC 0x001E
+    // can compare A=0x10 against memory=0x10 and set Z.
+    auto state = emulator.mutable_cpu().state_snapshot();
+    state.registers.cbar = 0x48;
+    state.registers.cbr = 0xF0;
+    state.registers.bbr = 0x04;
+    state.registers.hl = 0x8000;
+    emulator.mutable_cpu().load_state_snapshot(state);
+    emulator.mutable_cpu().write_logical(0x8000, 0x10);
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+
+    const auto final_state = emulator.cpu().state_snapshot();
+    REQUIRE(emulator.cpu().halted());
+    // Only the terminal HALT at PC 0x001F should trigger; the three intermediate
+    // HALTs at 0x0008, 0x0011, and 0x001A must be skipped by the conditional
+    // jumps/returns under test.
+    REQUIRE(emulator.cpu().pc() == 0x001F);
+    // Final A=0x10 from LD A,0x10 at PC 0x001C; Z set by CP (HL).
+    REQUIRE((final_state.registers.af >> 8U) == 0x10);
+    REQUIRE((final_state.registers.af & 0x0040U) == 0x0040U);
+    // D received A via LD D,A (0x57) when A was 0x05.
+    REQUIRE((final_state.registers.de >> 8U) == 0x05);
+    // C received B via LD C,B (0x48) when B was 0x42.
+    REQUIRE((final_state.registers.bc & 0x00FFU) == 0x42);
 }
 
 TEST_CASE("unsupported handler opcodes are reported at the handler PC after INT1 dispatch", "[integration]") {

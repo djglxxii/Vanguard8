@@ -1050,6 +1050,124 @@ Exit criteria:
   regression-covered
 - Remaining CPU opcode gaps stay narrow and explicitly deferred
 
+### Milestone 30 — Timed HD64180 PacManV8 VBlank Handler PUSH/POP rr Compatibility
+
+Objective:
+- Close the narrow timed-CPU compatibility gap blocking the PacManV8 T016
+  audio bring-up ROM against the current Vanguard8 timed HD64180 runtime.
+  The PacManV8 VBlank handler (see
+  `/home/djglxxii/src/PacManV8/docs/field-manual/vanguard8-build-directory-skew-and-timed-opcodes.md`)
+  was widened to save more register pairs around `audio_update_frame`.
+  This exposes six register-pair stack opcodes that the timed path does
+  not yet cover:
+  - `0xC5` (`PUSH BC`) at `PC 0x0039`
+  - `0xD5` (`PUSH DE`) at `PC 0x003A`
+  - `0xE5` (`PUSH HL`) at `PC 0x003B`
+  - `0xE1` (`POP HL`)  at `PC 0x0040`
+  - `0xD1` (`POP DE`)  at `PC 0x0041`
+  - `0xC1` (`POP BC`)  at `PC 0x0042`
+- Implement all six together so the PacManV8 T016 regression command
+  clears the VBlank handler prologue and epilogue in a single pass,
+  rather than triggering six separate one-opcode compatibility
+  milestones.
+
+Deliverables:
+- Reproducing regression coverage for the PacManV8 VBlank handler
+  register-pair PUSH/POP blockers reported in
+  `/home/djglxxii/src/PacManV8/docs/field-manual/vanguard8-build-directory-skew-and-timed-opcodes.md`
+- Timed opcode coverage for `PUSH BC/DE/HL` and `POP BC/DE/HL` in the
+  existing extracted HD64180 runtime path
+- Focused direct CPU tests that pin the documented semantics:
+  - `PUSH rr` (BC/DE/HL): SP <- SP - 2; memory[SP+1] <- high(rr);
+    memory[SP] <- low(rr); PC += 1; 11 T-states; flags untouched
+  - `POP rr`  (BC/DE/HL): low(rr) <- memory[SP]; high(rr) <- memory[SP+1];
+    SP <- SP + 2; PC += 1; 10 T-states; flags untouched
+- Runtime/integration coverage exercising a PacManV8-shaped VBlank
+  prologue/epilogue around an `audio_update_frame` stand-in
+- Documentation tying the fix to the observed PacManV8 VBlank handler
+  PCs (`0x0038..0x0044`)
+
+Milestone-30 closure rule:
+- Keep this as a compatibility patch milestone, not a general "finish
+  the Z80" effort. Add only the six register-pair stack opcodes
+  explicitly designated by the PacManV8 field manual. Do not extend
+  into IX/IY PUSH/POP forms, `EX (SP),HL`, or `LD SP,rr`.
+
+Tests:
+- Focused timed CPU coverage for each of `PUSH BC` (`0xC5`),
+  `PUSH DE` (`0xD5`), `PUSH HL` (`0xE5`), `POP BC` (`0xC1`),
+  `POP DE` (`0xD1`), and `POP HL` (`0xE1`)
+- Regression coverage that `PUSH AF` (`0xF5`) and `POP AF` (`0xF1`)
+  remain covered in the timed path after the new opcodes are added
+- Runtime/integration coverage proving the blocked PacManV8 VBlank
+  handler prologue and epilogue no longer abort on any of the six
+  observed missing-opcode PCs
+
+Exit criteria:
+- The emulator no longer aborts on the PacManV8 VBlank handler path
+  because the timed core is missing any of `0xC5`, `0xD5`, `0xE5`,
+  `0xC1`, `0xD1`, or `0xE1`
+- The newly supported opcode surface is documented and
+  regression-covered
+- Remaining CPU opcode gaps stay narrow and explicitly deferred
+
+### Milestone 31 — Timed HD64180 PacManV8 ROM Run-Time Opcode Coverage
+
+Objective:
+- After M30 closed the VBlank handler prologue/epilogue, running the full
+  PacManV8 `pacman.rom` against the timed HD64180 dispatcher still aborts
+  on a series of general-purpose opcodes used by the main program past the
+  interrupt boundary. The user has explicitly broadened this milestone
+  (deviating from the M19-M30 one-opcode-at-a-time discipline) to close
+  all timed-HD64180 opcode gaps discoverable by running the canonical
+  `cmake-build-debug/src/vanguard8_headless --rom pacman.rom --frames 3600
+  --hash-audio` binary against the current PacManV8 `pacman.rom`.
+
+Deliverables:
+- Reproducing regression coverage for the full PacManV8 `pacman.rom`
+  against the timed dispatcher for at least 3600 emulated frames without
+  a timed-opcode abort
+- Timed opcode coverage for the following families in the existing
+  extracted HD64180 runtime:
+  - `LD r, r'` / `LD r, (HL)` / `LD (HL), r` for `0x40-0x7F` except
+    `0x76` (`HALT`)
+  - `INC r` / `DEC r` / `INC (HL)` / `DEC (HL)` with correct
+    S/Z/H/P/V/N flags and preserved carry
+  - `JR Z, e` (`0x28`), `JP NZ, nn` (`0xC2`), `JP Z, nn` (`0xCA`),
+    `RET NZ` (`0xC0`)
+  - `CP n` (`0xFE`) and `CP r` / `CP (HL)` (`0xB8-0xBF`)
+- Focused direct CPU tests pinning the cycle counts and flag semantics
+  for each newly added family
+- Integration coverage running the full `pacman.rom` against the timed
+  dispatcher for at least 3600 frames with stable digests
+
+Milestone-31 closure rule:
+- The milestone covers only opcode families surfaced by the iterative
+  discovery loop described above. Do not extend into index-register
+  (`IX`/`IY`), `CB`-prefix, block-instruction, or `ADD`/`SUB`/`ADC`/`SBC`
+  families; any new gap surfaced later belongs to a subsequent narrow
+  compatibility milestone.
+
+Tests:
+- Representative `LD r, r'` / `LD r, (HL)` / `LD (HL), r` coverage
+- `INC r` / `DEC r` coverage pinning half-carry, parity/overflow, and
+  carry-preservation on boundary values
+- `JR Z, e`, `JP NZ, nn`, `JP Z, nn`, `RET NZ` coverage pinning taken
+  / not-taken cycle counts and PC/SP state against the zero flag
+- `CP n` / `CP r` / `CP (HL)` coverage pinning that `A` is unchanged
+  while flags reflect the subtraction
+- Runtime/integration coverage running the full PacManV8 `pacman.rom`
+  through the timed dispatcher for at least 3600 frames with stable
+  audio SHA-256 and event-log digest across repeat runs
+
+Exit criteria:
+- The canonical `cmake-build-debug/src/vanguard8_headless --rom
+  /path/to/pacman.rom --frames 3600 --hash-audio` command runs to
+  completion without a timed-opcode abort
+- The newly supported opcode surface is documented and
+  regression-covered
+- Any further opcode gaps stay narrow and explicitly deferred
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:

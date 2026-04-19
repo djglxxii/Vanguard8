@@ -37,6 +37,20 @@ auto parse_bool_option(const std::string& value) -> bool {
     throw std::invalid_argument("Expected on/off boolean option.");
 }
 
+void assign_rom_path(
+    FrontendRuntimeOptions& options,
+    const std::filesystem::path& rom_path,
+    const std::string& source
+) {
+    if (options.rom_path.has_value()) {
+        throw std::invalid_argument("Multiple ROM paths provided; use only one ROM argument.");
+    }
+    if (options.recent_index.has_value()) {
+        throw std::invalid_argument(source + " cannot be combined with --recent.");
+    }
+    options.rom_path = rom_path;
+}
+
 }  // namespace
 
 auto parse_frontend_options(int argc, char** argv) -> FrontendRuntimeOptions {
@@ -54,14 +68,17 @@ auto parse_frontend_options(int argc, char** argv) -> FrontendRuntimeOptions {
             continue;
         }
         if (arg == "--rom") {
-            options.rom_path = require_value("--rom");
+            assign_rom_path(options, require_value("--rom"), "--rom");
             continue;
         }
         if (arg == "--drop-rom") {
-            options.rom_path = require_value("--drop-rom");
+            assign_rom_path(options, require_value("--drop-rom"), "--drop-rom");
             continue;
         }
         if (arg == "--recent") {
+            if (options.rom_path.has_value()) {
+                throw std::invalid_argument("--recent cannot be combined with a ROM path.");
+            }
             options.recent_index = static_cast<std::size_t>(std::stoull(require_value("--recent")));
             continue;
         }
@@ -108,9 +125,7 @@ auto parse_frontend_options(int argc, char** argv) -> FrontendRuntimeOptions {
         if (!arg.empty() && arg.front() == '-') {
             throw std::invalid_argument("Unknown frontend argument: " + arg);
         }
-        throw std::invalid_argument(
-            "Unexpected positional argument '" + arg + "'. Use --rom <path> to launch a ROM."
-        );
+        assign_rom_path(options, arg, "A positional ROM path");
     }
     return options;
 }
@@ -119,7 +134,7 @@ namespace {
 
 void print_usage() {
     std::cout
-        << "Usage: vanguard8_frontend [--rom path] [--drop-rom path] [--recent index] [--list-recent] "
+        << "Usage: vanguard8_frontend [path|--rom path] [--drop-rom path] [--recent index] [--list-recent] "
            "[--debugger] [--scale N] [--aspect square|ntsc|stretch] [--fullscreen|--windowed] "
            "[--frame-pacing on|off] [--press-key NAME] [--gamepad1-button NAME] [--gamepad2-button NAME]\n";
 }
@@ -197,7 +212,7 @@ struct RuntimeStatus {
 [[nodiscard]] auto build_window_title(
     const RuntimeStatus& status,
     const core::Emulator& emulator,
-    const SdlAudioOutputDevice& audio_output
+    const AudioOutputDevice& audio_output
 ) -> std::string {
     std::ostringstream stream;
     stream << status.title_base << " | frame " << status.frame_count << " | audio "
@@ -211,7 +226,7 @@ struct RuntimeStatus {
 void print_runtime_status(
     const RuntimeStatus& status,
     const core::Emulator& emulator,
-    const SdlAudioOutputDevice& audio_output,
+    const AudioOutputDevice& audio_output,
     const std::optional<LoadedRom>& loaded_rom
 ) {
     const auto rom_label =
@@ -232,7 +247,7 @@ void print_runtime_status(
     const RuntimeEvent& event,
     RuntimeStatus& status,
     const core::Emulator& emulator,
-    const SdlAudioOutputDevice& audio_output,
+    const AudioOutputDevice& audio_output,
     const std::optional<LoadedRom>& loaded_rom
 ) -> bool {
     switch (event.type) {
@@ -386,11 +401,7 @@ auto run_frontend_app(int argc, char** argv) -> int {
             return false;
         }
 
-        if (!audio_queue_pump.pump(
-            audio_output,
-            emulator.mutable_bus().mutable_audio_mixer().consume_output_bytes(),
-            error
-        )) {
+        if (!audio_queue_pump.pump(audio_output, emulator.mutable_bus().mutable_audio_mixer(), error)) {
             return false;
         }
 

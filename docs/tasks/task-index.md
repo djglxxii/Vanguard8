@@ -137,3 +137,11 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 
 - `M20-T01` Cover the missing timed HD64180 opcode needed by the Pac-Man
   palette swatch path under `VCLK 4000`.
+
+## Milestone 32
+
+- `M32-T01` Frontend live audio playback for interactive verification.
+
+## Milestone 33
+
+- `M33-T01` Fix instruction-granular audio timing for YM2151 busy polls.

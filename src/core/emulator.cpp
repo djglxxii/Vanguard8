@@ -312,18 +312,21 @@ void Emulator::run_cpu_until(const std::uint64_t target_master_cycle) {
     }
 
     const auto delta = target_master_cycle - master_cycle_;
-    bus_.run_audio(delta);
-    bus_.mutable_vdp_a().advance_command(delta);
-    bus_.mutable_vdp_b().advance_command(delta);
+    if (delta == 0U) {
+        return;
+    }
+
     cpu_execution_budget_master_cycles_ += delta;
 
     while (cpu_execution_budget_master_cycles_ >= timing::cpu_divider) {
         if (cpu_.halted() && !bus_.int0_asserted() && !bus_.int1_asserted()) {
+            cpu_execution_budget_master_cycles_ = 0;
             break;
         }
 
         const auto step_tstates = cpu_.next_scheduled_tstates();
         if (step_tstates == 0U) {
+            cpu_execution_budget_master_cycles_ = 0;
             break;
         }
 
@@ -334,14 +337,30 @@ void Emulator::run_cpu_until(const std::uint64_t target_master_cycle) {
 
         (void)cpu_.step_scheduled_instruction();
         cpu_execution_budget_master_cycles_ -= step_master_cycles;
+        advance_hardware_time(std::min(step_master_cycles, target_master_cycle - master_cycle_));
+        if (master_cycle_ == target_master_cycle) {
+            return;
+        }
     }
 
-    cpu_master_remainder_ += delta;
+    advance_hardware_time(target_master_cycle - master_cycle_);
+}
+
+void Emulator::advance_hardware_time(const std::uint64_t master_cycles) {
+    if (master_cycles == 0U) {
+        return;
+    }
+
+    bus_.run_audio(master_cycles);
+    bus_.mutable_vdp_a().advance_command(master_cycles);
+    bus_.mutable_vdp_b().advance_command(master_cycles);
+
+    cpu_master_remainder_ += master_cycles;
     const auto advanced_tstates = cpu_master_remainder_ / timing::cpu_divider;
     cpu_tstates_ += advanced_tstates;
     cpu_.advance_tstates(advanced_tstates);
     cpu_master_remainder_ %= timing::cpu_divider;
-    master_cycle_ = target_master_cycle;
+    master_cycle_ += master_cycles;
 }
 
 void Emulator::fire_event(const Event& event) {

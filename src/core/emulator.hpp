@@ -107,6 +107,7 @@ class Emulator {
     void populate_scheduler_for_frame();
     void run_single_frame();
     void run_cpu_until(std::uint64_t target_master_cycle);
+    void advance_hardware_time(std::uint64_t master_cycles);
     void fire_event(const Event& event);
     [[nodiscard]] auto vclk_rate_hz() const -> std::uint32_t;
     [[nodiscard]] auto vclk_due_cycle(std::uint64_t tick_index) const -> std::uint64_t;

@@ -18,6 +18,17 @@ auto AudioQueuePump::pump(
     return device.queue_audio(pcm_bytes, error);
 }
 
+auto AudioQueuePump::pump(
+    AudioOutputDevice& device,
+    core::audio::AudioMixer& mixer,
+    std::string& error
+) const -> bool {
+    if (device.queued_bytes() >= max_queue_bytes_) {
+        return true;
+    }
+    return pump(device, mixer.consume_output_bytes(), error);
+}
+
 SdlAudioOutputDevice::~SdlAudioOutputDevice() { close(); }
 
 auto SdlAudioOutputDevice::open(const AudioDeviceConfig& config, std::string& error) -> bool {
@@ -31,7 +42,7 @@ auto SdlAudioOutputDevice::open(const AudioDeviceConfig& config, std::string& er
 
     SDL_AudioSpec desired{};
     desired.freq = config.sample_rate;
-    desired.format = AUDIO_S16SYS;
+    desired.format = AUDIO_S16LSB;
     desired.channels = 2;
     desired.samples = 1024;
     desired.callback = nullptr;

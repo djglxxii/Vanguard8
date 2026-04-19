@@ -1470,6 +1470,61 @@ TEST_CASE("scheduled CPU covers conditional JR Z / JP Z,nn / JP NZ,nn / RET NZ",
     }
 }
 
+TEST_CASE("scheduled CPU covers ADD A,n blocker exposed after YM busy-poll timing fix", "[cpu]") {
+    SECTION("ADD A,n (0xC6) adds immediate data, clears N, and costs 7 T-states") {
+        const auto rom = make_instruction_test_rom({0xC6, 0x22, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x1100U | flag_subtract | flag_carry);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        const auto af = cpu.state_snapshot().registers.af;
+        REQUIRE((af >> 8U) == 0x33);
+        const auto flags = static_cast<std::uint8_t>(af & 0x00FFU);
+        REQUIRE((flags & flag_subtract) == 0);
+        REQUIRE((flags & flag_carry) == 0);
+        REQUIRE((flags & flag_zero) == 0);
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+
+    SECTION("ADD A,n (0xC6) reports half-carry, signed overflow, and carry") {
+        const auto overflow_rom = make_instruction_test_rom({0xC6, 0x01, 0x76});
+        vanguard8::core::Bus overflow_bus{vanguard8::core::memory::CartridgeSlot(overflow_rom)};
+        vanguard8::core::cpu::Z180Adapter overflow_cpu{overflow_bus};
+        auto state = overflow_cpu.state_snapshot();
+        state.registers.af = 0x7F00;
+        overflow_cpu.load_state_snapshot(state);
+
+        (void)overflow_cpu.step_scheduled_instruction();
+        auto af = overflow_cpu.state_snapshot().registers.af;
+        REQUIRE((af >> 8U) == 0x80);
+        auto flags = static_cast<std::uint8_t>(af & 0x00FFU);
+        REQUIRE((flags & flag_sign) == flag_sign);
+        REQUIRE((flags & flag_half) == flag_half);
+        REQUIRE((flags & flag_parity_overflow) == flag_parity_overflow);
+        REQUIRE((flags & flag_carry) == 0);
+
+        const auto carry_rom = make_instruction_test_rom({0xC6, 0x01, 0x76});
+        vanguard8::core::Bus carry_bus{vanguard8::core::memory::CartridgeSlot(carry_rom)};
+        vanguard8::core::cpu::Z180Adapter carry_cpu{carry_bus};
+        state = carry_cpu.state_snapshot();
+        state.registers.af = 0xFF00;
+        carry_cpu.load_state_snapshot(state);
+
+        (void)carry_cpu.step_scheduled_instruction();
+        af = carry_cpu.state_snapshot().registers.af;
+        REQUIRE((af >> 8U) == 0x00);
+        flags = static_cast<std::uint8_t>(af & 0x00FFU);
+        REQUIRE((flags & flag_zero) == flag_zero);
+        REQUIRE((flags & flag_half) == flag_half);
+        REQUIRE((flags & flag_carry) == flag_carry);
+        REQUIRE((flags & flag_subtract) == 0);
+    }
+}
+
 TEST_CASE("scheduled CPU covers CP n / CP r / CP (HL) flag semantics", "[cpu]") {
     SECTION("CP n (0xFE) with A==n sets Z and keeps A unchanged") {
         const auto rom = make_instruction_test_rom({0xFE, 0x42, 0x76});

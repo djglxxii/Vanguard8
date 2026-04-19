@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/audio/audio_mixer.hpp"
+
 #include <cstddef>
 #include <cstdint>
 #include <string>
@@ -29,6 +31,11 @@ class AudioQueuePump {
     [[nodiscard]] auto pump(
         AudioOutputDevice& device,
         const std::vector<std::uint8_t>& pcm_bytes,
+        std::string& error
+    ) const -> bool;
+    [[nodiscard]] auto pump(
+        AudioOutputDevice& device,
+        core::audio::AudioMixer& mixer,
         std::string& error
     ) const -> bool;
 

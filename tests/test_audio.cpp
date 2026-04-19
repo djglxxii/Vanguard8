@@ -98,6 +98,17 @@ TEST_CASE("repeated runs produce stable INT1 cadence and deterministic audio has
     REQUIRE(first.audio_output_digest() == second.audio_output_digest());
 }
 
+TEST_CASE("HALT-heavy frames keep audio sample counts tied to master cycles", "[audio]") {
+    vanguard8::core::Emulator emulator;
+    emulator.run_frames(3);
+
+    const auto expected_samples =
+        (emulator.master_cycle() * vanguard8::core::audio::AudioMixer::output_sample_rate) /
+        vanguard8::core::timing::master_hz;
+    REQUIRE(emulator.audio_output_sample_count() == expected_samples);
+    REQUIRE(emulator.bus().audio_mixer().output_bytes().size() == expected_samples * 4U);
+}
+
 TEST_CASE("ROM-style MSM5205 enable after stopped frames resynchronizes VCLK scheduling", "[audio]") {
     vanguard8::core::Emulator emulator;
     emulator.run_frames(2);

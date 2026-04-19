@@ -2,6 +2,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include "frontend/app.hpp"
+#include "frontend/audio_output.hpp"
 #include "frontend/runtime.hpp"
 
 #include <filesystem>
@@ -58,6 +59,36 @@ class FakeWindowHost final : public WindowHost {
     void present() override { ++present_count; }
 
     void shutdown() override { shutdown_called = true; }
+};
+
+class FakeAudioOutputDevice final : public vanguard8::frontend::AudioOutputDevice {
+  public:
+    bool opened = false;
+    bool closed = false;
+    int open_calls = 0;
+    int queue_calls = 0;
+    std::size_t queued = 0;
+
+    [[nodiscard]] auto open(const vanguard8::frontend::AudioDeviceConfig&, std::string&) -> bool override {
+        ++open_calls;
+        opened = true;
+        closed = false;
+        return true;
+    }
+
+    [[nodiscard]] auto queue_audio(const std::vector<std::uint8_t>& pcm_bytes, std::string&) -> bool override {
+        ++queue_calls;
+        queued += pcm_bytes.size();
+        return true;
+    }
+
+    [[nodiscard]] auto queued_bytes() const -> std::size_t override { return 0; }
+
+    void close() override {
+        opened = false;
+        closed = true;
+        queued = 0;
+    }
 };
 
 struct ArgvBuilder {
@@ -257,14 +288,57 @@ TEST_CASE("window runtime skips the pacing fallback when disabled", "[frontend]"
     REQUIRE(sleep_calls.empty());
 }
 
-TEST_CASE("frontend CLI rejects unexpected positional ROM arguments", "[frontend]") {
+TEST_CASE("window runtime opens pumps and closes frontend audio through fake device hooks", "[frontend]") {
+    FakeWindowHost host;
+    host.event_batches = {
+        {},
+        {},
+        {RuntimeEvent{.type = RuntimeEventType::quit}},
+    };
+
+    FakeAudioOutputDevice audio;
+    const vanguard8::frontend::AudioQueuePump pump(16'384);
+    int frame_count = 0;
+    bool audio_was_open_before_first_frame = false;
+    std::string error;
+
+    const auto result = vanguard8::frontend::run_window_runtime(
+        host,
+        WindowConfig{.frame_pacing = false},
+        RuntimeHooks{
+            .on_started = [&](std::string& hook_error) {
+                return audio.open(vanguard8::frontend::AudioDeviceConfig{}, hook_error);
+            },
+            .on_frame = [&](std::string& hook_error) {
+                if (frame_count == 0) {
+                    audio_was_open_before_first_frame = audio.opened;
+                }
+                ++frame_count;
+                return pump.pump(audio, std::vector<std::uint8_t>{0x10, 0x00, 0x20, 0x00}, hook_error);
+            },
+            .on_shutdown = [&] { audio.close(); },
+        },
+        error
+    );
+
+    REQUIRE(result == 0);
+    REQUIRE(error.empty());
+    REQUIRE(audio_was_open_before_first_frame);
+    REQUIRE(audio.open_calls == 1);
+    REQUIRE(frame_count == 3);
+    REQUIRE(audio.queue_calls == frame_count);
+    REQUIRE(audio.closed);
+    REQUIRE(host.shutdown_called);
+}
+
+TEST_CASE("frontend CLI accepts the milestone 32 positional ROM launch form", "[frontend]") {
     ArgvBuilder args{"vanguard8_frontend", "build/showcase/showcase.rom"};
 
-    REQUIRE_THROWS_WITH(
-        vanguard8::frontend::parse_frontend_options(static_cast<int>(args.argv.size()), args.argv.data()),
-        Catch::Matchers::ContainsSubstring("Unexpected positional argument") &&
-            Catch::Matchers::ContainsSubstring("Use --rom <path>")
-    );
+    const auto options =
+        vanguard8::frontend::parse_frontend_options(static_cast<int>(args.argv.size()), args.argv.data());
+
+    REQUIRE(options.rom_path.has_value());
+    REQUIRE(*options.rom_path == std::filesystem::path("build/showcase/showcase.rom"));
 }
 
 TEST_CASE("frontend CLI still accepts ROM paths behind --rom", "[frontend]") {
@@ -275,4 +349,13 @@ TEST_CASE("frontend CLI still accepts ROM paths behind --rom", "[frontend]") {
 
     REQUIRE(options.rom_path.has_value());
     REQUIRE(*options.rom_path == std::filesystem::path("build/showcase/showcase.rom"));
+}
+
+TEST_CASE("frontend CLI rejects multiple ROM path sources", "[frontend]") {
+    ArgvBuilder args{"vanguard8_frontend", "--rom", "one.rom", "two.rom"};
+
+    REQUIRE_THROWS_WITH(
+        vanguard8::frontend::parse_frontend_options(static_cast<int>(args.argv.size()), args.argv.data()),
+        Catch::Matchers::ContainsSubstring("Multiple ROM paths")
+    );
 }

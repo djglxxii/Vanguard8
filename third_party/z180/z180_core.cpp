@@ -465,6 +465,7 @@ void Core::initialize_tables() {
     opcodes_[0xC5] = &Core::op_push_bc;
     opcodes_[0xD1] = &Core::op_pop_de;
     opcodes_[0xD5] = &Core::op_push_de;
+    opcodes_[0xC6] = &Core::op_add_a_n;
     opcodes_[0xE1] = &Core::op_pop_hl;
     opcodes_[0xE5] = &Core::op_push_hl;
     opcodes_[0xE6] = &Core::op_and_n;
@@ -814,6 +815,35 @@ void Core::op_ld_r_r_main() {
 void Core::op_ld_a_mem_nn() { af_.bytes.hi = read_logical(fetch_word()); }
 
 void Core::op_ld_a_n() { af_.bytes.hi = fetch_byte(); }
+
+void Core::apply_add_flags(const std::uint8_t old_a, const std::uint8_t operand, const std::uint16_t result) {
+    const auto result8 = static_cast<std::uint8_t>(result & 0x00FFU);
+    std::uint8_t flags = 0;
+    if ((result8 & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_sign);
+    }
+    if (result8 == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if (((old_a & 0x0FU) + (operand & 0x0FU)) > 0x0FU) {
+        flags = static_cast<std::uint8_t>(flags | flag_half);
+    }
+    if (((~(old_a ^ operand)) & (old_a ^ result8) & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    if (result > 0x00FFU) {
+        flags = static_cast<std::uint8_t>(flags | flag_carry);
+    }
+    af_.bytes.lo = flags;
+}
+
+void Core::op_add_a_n() {
+    const auto old_a = af_.bytes.hi;
+    const auto operand = fetch_byte();
+    const auto result = static_cast<std::uint16_t>(old_a) + operand;
+    af_.bytes.hi = static_cast<std::uint8_t>(result & 0x00FFU);
+    apply_add_flags(old_a, operand, result);
+}
 
 void Core::op_and_n() {
     af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi & fetch_byte());

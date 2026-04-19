@@ -191,6 +191,24 @@ auto make_audio_window_runtime_rom() -> std::vector<std::uint8_t> {
     return rom;
 }
 
+auto make_ym2151_busy_poll_runtime_rom() -> std::vector<std::uint8_t> {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+
+    rom[0x0000] = 0xF3;                                     // DI
+    rom[0x0001] = 0x3E; rom[0x0002] = 0x20;                // LD A,0x20
+    rom[0x0003] = 0xD3; rom[0x0004] = 0x40;                // OUT (0x40),A
+    rom[0x0005] = 0x3E; rom[0x0006] = 0x7F;                // LD A,0x7F
+    rom[0x0007] = 0xD3; rom[0x0008] = 0x41;                // OUT (0x41),A
+    rom[0x0009] = 0xDB; rom[0x000A] = 0x40;                // IN A,(0x40)
+    rom[0x000B] = 0xED; rom[0x000C] = 0x64; rom[0x000D] = 0x80;  // TST 0x80
+    rom[0x000E] = 0x20; rom[0x000F] = 0xF9;                // JR NZ,0x0009
+    rom[0x0010] = 0x3E; rom[0x0011] = 0x5A;                // LD A,0x5A
+    rom[0x0012] = 0x32; rom[0x0013] = 0x00; rom[0x0014] = 0x81;  // LD (0x8100),A
+    rom[0x0015] = 0x76;                                     // HALT
+
+    return rom;
+}
+
 auto make_pacman_boot_background_blocker_rom() -> std::vector<std::uint8_t> {
     std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
 
@@ -573,6 +591,27 @@ TEST_CASE("frame loop can service a ROM-driven INT1 handler through the normal r
     REQUIRE_NOTHROW(emulator.run_frames(1));
     REQUIRE(emulator.mutable_cpu().peek_logical(0x8102) == 0x55);
     REQUIRE(emulator.bus().msm5205().vclk_count() > 0U);
+}
+
+TEST_CASE("scheduled frame loop ages YM2151 busy state between ROM poll instructions", "[integration]") {
+    Emulator first;
+    first.load_rom_image(make_ym2151_busy_poll_runtime_rom());
+    REQUIRE_NOTHROW(first.run_frames(1));
+
+    Emulator second;
+    second.load_rom_image(make_ym2151_busy_poll_runtime_rom());
+    REQUIRE_NOTHROW(second.run_frames(1));
+
+    REQUIRE(first.cpu().halted());
+    REQUIRE(first.cpu().pc() == 0x0015);
+    REQUIRE(static_cast<std::uint8_t>(first.cpu().state_snapshot().registers.af >> 8U) == 0x5A);
+    REQUIRE(first.completed_frames() == 1);
+    REQUIRE(first.completed_frames() == second.completed_frames());
+    REQUIRE(first.cpu().state_snapshot().registers.af == second.cpu().state_snapshot().registers.af);
+    REQUIRE(first.cpu().pc() == second.cpu().pc());
+    REQUIRE(first.event_log_digest() == second.event_log_digest());
+    REQUIRE(first.audio_output_sample_count() == second.audio_output_sample_count());
+    REQUIRE(first.audio_output_digest() == second.audio_output_digest());
 }
 
 TEST_CASE("frame loop executes the first blocked audio window through YM polling and INT1 nibble feed", "[integration]") {

@@ -2,17 +2,14 @@
 
 ## Overview
 
-Implemented against `docs/spec/03-audio.md` and milestone 7.
+Implemented against `docs/spec/03-audio.md`, milestone 7, and milestone 32.
 
-The current audio path is entirely core-side. `Bus` owns the three chip models,
-routes the documented ports, and advances them on the master-cycle timeline.
-`AudioMixer` samples the chip outputs onto the common 55,930 Hz timeline
-(master ÷ 256), then emits a deterministic 48 kHz stereo stream and hash for
-tests/headless verification.
-
-Milestone note:
-- Milestone 7 does not permit `src/frontend/` edits, so the current verified
-  output is the core/headless digest path, not a live SDL callback.
+`Bus` owns the three chip models, routes the documented ports, and advances
+them on the master-cycle timeline. `AudioMixer` samples the chip outputs onto
+the common 55,930 Hz timeline (master ÷ 256), then emits a deterministic 48 kHz
+stereo stream. The headless path keeps that stream for SHA-256 regression
+checks. The desktop frontend consumes the same bytes per frame and queues them
+to SDL for live playback; there is no second frontend mixer or resampler.
 
 | Chip       | Source                      | Clock / cadence                  | Output role |
 |------------|-----------------------------|----------------------------------|-------------|
@@ -120,8 +117,10 @@ Scheduler ownership:
 Files:
 - `src/core/audio/audio_mixer.hpp`
 - `src/core/audio/audio_mixer.cpp`
+- `src/frontend/audio_output.hpp`
+- `src/frontend/audio_output.cpp`
 
-The current mixer is deterministic and master-clock-rooted:
+The mixer is deterministic and master-clock-rooted:
 
 1. YM2151, AY-3-8910, and MSM5205 advance inside `Bus::run_audio()`
 2. Every 256 master cycles, `AudioMixer` captures one common stereo sample
@@ -129,11 +128,58 @@ The current mixer is deterministic and master-clock-rooted:
 4. MSM5205 contributes its most recent decoded mono sample as a held value
 5. The current common sample is resampled to 48 kHz using a rational master-
    clock stepper
-6. The mixer folds the 48 kHz stereo output into a deterministic digest
+6. The mixer appends signed 16-bit little-endian stereo PCM bytes and folds
+   each sample into a deterministic digest
 
-The current implementation does not yet allocate an SDL ring buffer. That
-frontend playback path can be added later once a milestone explicitly opens
-`src/frontend/` again for audio output work.
+The headless verifier reads `AudioMixer::output_bytes()` after the requested
+frame count and hashes the complete PCM stream. The desktop frontend uses
+`AudioQueuePump` once per runtime frame. The pump reads
+`AudioMixer::consume_output_bytes()` only when the SDL device queue is below the
+configured high-water mark, so back-pressure does not silently discard pending
+mixer bytes. `SdlAudioOutputDevice` opens an SDL queue-backed stereo device at
+the configured sample rate, starts playback with `SDL_PauseAudioDevice(..., 0)`,
+queues the mixer bytes with `SDL_QueueAudio`, reports queued bytes for status,
+and clears/closes the device during shutdown.
+
+The default output contract is:
+- 48,000 Hz
+- stereo
+- signed 16-bit little-endian SDL format on the opened device
+- bytes supplied only by the deterministic `AudioMixer`
+
+## Interactive Audio Verification
+
+For human review, build the desktop frontend and launch the target ROM:
+
+```bash
+cmake --build cmake-build-debug
+cmake-build-debug/src/vanguard8_frontend \
+    /home/djglxxii/src/PacManV8/build/pacman.rom
+```
+
+The positional ROM form above is accepted for the milestone-32 listening flow;
+`--rom /path/to/rom` remains accepted as an equivalent explicit form. The
+window title and F10 status output include the current SDL queued-byte count.
+
+The PacManV8 T016/T017 review target is the first 300 frames: PSG cues at
+frames `0`, `12`, `36`, `72`, and `112`, then FM cues at frames `144`, `196`,
+and `240`.
+
+The milestone-32 bring-up attempt on 2026-04-19 proved that the previous
+300-frame digest
+`0d634fb059d15b12c4a8faf2412fbe08b85d187a31b1f22278ce3662f3b44390` was
+deterministic silence (959,128 zero bytes) caused by a core CPU/audio
+co-scheduling blocker, not an SDL queueing issue. Milestone 33 corrected that
+by advancing audio hardware time between scheduled CPU instructions. The
+current nonzero PacManV8 300-frame guard is:
+
+```bash
+cmake-build-debug/src/vanguard8_headless \
+    --rom /home/djglxxii/src/PacManV8/build/pacman.rom \
+    --frames 300 --hash-audio \
+    --expect-audio-hash \
+    9ced653d70f55ff0ce2b2e0d81a45ea18d204032ee9731ddd7d700bb10475a3e
+```
 
 ---
 
@@ -143,6 +189,9 @@ Milestone-7 verification is locked by:
 - `tests/test_audio.cpp`
 - `tests/test_bus.cpp`
 - `tests/test_scheduler.cpp`
+Milestone-32 frontend playback verification is locked by:
+- `tests/test_frontend_backends.cpp`
+- `tests/test_frontend_runtime.cpp`
 
 Covered rules:
 - YM2151 busy/status reads are routed and deterministic
@@ -150,3 +199,11 @@ Covered rules:
 - MSM5205 control writes change `/VCLK` cadence at the documented 4/6/8 kHz
   rates
 - Repeated runs produce stable `/VCLK` counts and stable audio digests
+- SDL audio devices open, queue, close, and reopen through the public frontend
+  audio contract
+- `AudioQueuePump` handles empty input, successful queueing, and queue
+  back-pressure without consuming pending mixer bytes
+- The fake frontend audio-device path records a byte-identical PCM stream to
+  per-frame headless mixer consumption
+- The PacManV8 300-frame T017 digest is nonzero and remains
+  `9ced653d70f55ff0ce2b2e0d81a45ea18d204032ee9731ddd7d700bb10475a3e`

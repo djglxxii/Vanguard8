@@ -1168,6 +1168,79 @@ Exit criteria:
   regression-covered
 - Any further opcode gaps stay narrow and explicitly deferred
 
+### Milestone 32 — Frontend Live Audio Playback for Interactive Verification
+
+Objective:
+- Connect the deterministic core audio byte stream to the desktop frontend's
+  SDL queue path so interactive ROM review can be performed by ear. This
+  milestone was later blocked because its PacManV8 acceptance guard was proven
+  to encode deterministic silence rather than audible output.
+
+Deliverables:
+- Frontend SDL audio queue path consuming `AudioMixer::consume_output_bytes()`
+  as the only PCM source
+- Fake-device and SDL dummy-device coverage for open, queue, back-pressure,
+  close, error handling, and reopen behavior
+- Frontend/headless PCM parity coverage for per-frame mixer consumption
+- Documentation of the shipping GUI audio path
+
+Milestone-32 blocker:
+- The current PacManV8 T017 ROM remains in the YM2151 busy-poll helper
+  (`audio_ym_write_bc`, `PC 0x2B8B`) through at least 3,600 frames because
+  the scheduled CPU loop does not advance audio time between individual
+  instructions inside a scheduler event slice.
+- The required 300-frame audio digest
+  `0d634fb059d15b12c4a8faf2412fbe08b85d187a31b1f22278ce3662f3b44390`
+  is the SHA-256 of 959,128 zero bytes. It is not a valid audible-output
+  acceptance target.
+
+Exit criteria:
+- Blocked pending milestone 33. Do not accept M32 until the core timing
+  blocker is fixed and the PacManV8 audible-output evidence is regenerated
+  against nonzero PCM.
+
+### Milestone 33 — Instruction-Granular Audio Timing for YM2151 Busy Polls
+
+Objective:
+- Fix the core CPU/audio co-scheduling defect exposed by M32. Scheduled CPU
+  instruction execution must advance audio hardware time in lockstep closely
+  enough that ROM-visible YM2151 busy/status polling ages while code executes.
+  PacManV8 must progress past `audio_ym_write_bc` at `PC 0x2B8B` and reach
+  nonzero audio/video output.
+
+Deliverables:
+- Core emulation-loop/scheduler change that keeps CPU instruction execution,
+  audio advancement, VDP command advancement, CPU T-state accounting, and event
+  firing on one coherent master-cycle timeline
+- Focused YM2151 busy-poll regression proving a ROM-shaped poll loop can
+  observe busy clear while executing inside one frame
+- Repeatability and sample-count tests proving the timing change remains
+  deterministic and does not double-count audio cycles
+- PacManV8 blocker regression proving the ROM is no longer stuck at
+  `PC 0x2B8B`, produces nonzero PCM, and reaches nonblack video at the selected
+  review frame
+- Replacement of the invalid M32 all-zero audio digest with post-fix evidence
+
+Milestone-33 closure rule:
+- Keep this as a core timing milestone. Do not bundle frontend, debugger UI,
+  input, VDP feature work, synthetic audio, recording/export, or broad opcode
+  completion. If the corrected timing exposes a new missing opcode, document it
+  narrowly and only include it if it is required to reach the M33 exit
+  criteria.
+
+Tests:
+- YM2151 busy-poll progress under scheduled CPU execution
+- Deterministic repeat run of the busy-poll scenario
+- Audio sample-count accounting against the master-cycle timeline
+- PacManV8 nonzero audio/video regression replacing the old all-zero hash
+
+Exit criteria:
+- PacManV8 no longer remains at `PC 0x2B8B` in the review window
+- PacManV8 audio bytes are nonzero and the new SHA-256 is recorded
+- PacManV8 video is nonblack at the selected review frame, or the exact later
+  first-nonblack frame is documented and regression-covered
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:

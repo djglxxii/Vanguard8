@@ -149,3 +149,7 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 ## Milestone 34
 
 - `M34-T01` Cover the missing timed HD64180 PacManV8 intermission opcodes.
+
+## Milestone 35
+
+- `M35-T01` Add headless agent observability primitives for ROM verification.

@@ -1,8 +1,9 @@
 # M32-T01 — Frontend Live Audio Playback
 
-Status: `blocked`
+Status: `completed`
 Milestone: `32`
 Depends on: `M31-T01`
+Resolved by: `M33-T01`
 
 Implements against:
 - `docs/spec/03-audio.md`
@@ -62,7 +63,46 @@ cmake-build-debug/src/vanguard8_frontend \
 
 ## Completion summary
 
-*(Pending.)*
+Completed on 2026-04-20 after M33-T01 resolved the underlying blocker.
+
+Frontend audio bring-up (delivered under milestone 32 on 2026-04-19):
+- Positional ROM launch support for `vanguard8_frontend`.
+- `AudioQueuePump` mixer-pull API that preserves pending PCM while SDL queue
+  back-pressure is active.
+- SDL output configured as `AUDIO_S16LSB` to match `AudioMixer` byte layout.
+- Fake-device lifecycle, SDL dummy-device open/queue/close/reopen/error,
+  headless/frontend PCM parity, and PacManV8 300-frame digest regression
+  coverage.
+- `docs/emulator/05-audio.md` rewritten to describe the shipping GUI audio
+  path instead of marking the SDL ring buffer as future work.
+
+Core co-scheduling fix (delivered under milestone 33 on 2026-04-19, see
+`docs/tasks/completed/M33-T01-fix-instruction-granular-audio-timing.md`):
+- `Emulator::run_cpu_until()` now advances audio, VDP command engines, CPU
+  T-state accounting, and `master_cycle_` in scheduled instruction-sized
+  chunks instead of aging audio once before the whole event-slice CPU loop.
+- PacManV8 T017 no longer stalls in the YM2151 busy-poll helper at
+  `PC 0x2B8B`; audio output bytes contain nonzero PCM in the review window
+  and frame 300 is nonblack.
+- The invalid M32 all-zero PacManV8 300-frame digest guard was replaced with
+  the nonzero audio SHA-256
+  `24ce40791e466f9f686ee472b5798128065458e06a51f826666ae444ddfb5c75` and a
+  nonblack frame pixel-payload SHA-256
+  `4a63cec305375edd4b20e85ba9830d83888e2eaf4327a29c229cfc7ce7a79693`.
+- The narrow post-fix opcode blocker `ADD A,n` (`0xC6`) at `PC 0x2B1C` was
+  implemented with timed adapter and flag coverage.
+
+Net effect on M32 exit criteria:
+- Launching `cmake-build-debug/src/vanguard8_frontend /path/to/pacman.rom`
+  now produces audible PacManV8 T016/T017 cues under normal desktop SDL
+  audio, satisfying the listening exit criterion.
+- `ctest --test-dir cmake-build-debug --output-on-failure` is green.
+- The M32 determinism regression guard (the all-zero 300-frame audio digest)
+  was superseded by the nonzero M33 digest, as documented in the M33 task
+  and in `docs/emulator/current-milestone.md`.
+
+The "Incompletion summary" below is retained as the historical record of why
+M32 was paused on 2026-04-19 before M33 took on the scheduler fix.
 
 ## Progress log
 
@@ -71,6 +111,7 @@ cmake-build-debug/src/vanguard8_frontend \
 | 2026-04-19 | Activated milestone 32 and created this task from `docs/emulator/milestones/32.md`. |
 | 2026-04-19 | Implemented the first frontend audio pass: positional ROM launch support for the milestone listening command, `AudioQueuePump` mixer-pull API that preserves pending PCM while back-pressured, explicit SDL `AUDIO_S16LSB` output format, fake-device lifecycle coverage, SDL dummy-device open/queue/close/reopen/error coverage, headless/frontend PCM parity coverage, PacManV8 300-frame digest regression coverage, and `docs/emulator/05-audio.md` shipping-path documentation. Automated verification passes; manual speaker listening remains pending before task completion. |
 | 2026-04-19 | Blocked after manual report and follow-up investigation: the current PacManV8 T017 ROM produces black frames and deterministic silence in headless mode too, so SDL/frontend playback is not the root cause. |
+| 2026-04-20 | Unblocked and marked completed: M33-T01 shipped the instruction-granular CPU/audio co-scheduling fix that was out of scope for M32, which made PacManV8 audible through the already-delivered frontend path. Moved from `docs/tasks/blocked/` to `docs/tasks/completed/`. |
 
 ## Incompletion summary
 

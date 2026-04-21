@@ -10,8 +10,12 @@ Execution rules:
 - Only milestone `35` task files present in `docs/tasks/active/` may be
   executed.
 - Milestone `31` is accepted.
-- Milestone `32` remains blocked on the core CPU/audio co-scheduling defect
-  documented in `docs/tasks/blocked/M32-T01-frontend-live-audio-playback.md`.
+- Milestone `32` is accepted. The frontend audio plumbing shipped on
+  2026-04-19; the underlying CPU/audio co-scheduling defect that made
+  PacManV8 inaudible was out of M32 scope and was fixed by M33-T01.
+  `M32-T01-frontend-live-audio-playback.md` now lives in
+  `docs/tasks/completed/` with a completion summary that cites M33-T01 as
+  the resolving change.
 - Milestone `33` verification commands were rerun on 2026-04-20 after
   refreshing the stale PacManV8 T017 300-frame audio regression hash to
   `24ce40791e466f9f686ee472b5798128065458e06a51f826666ae444ddfb5c75`.

@@ -7,6 +7,7 @@ namespace vanguard8::core::cpu {
 namespace {
 
 constexpr std::uint8_t flag_zero = 0x40;
+constexpr std::uint8_t flag_carry = 0x01;
 
 }
 
@@ -339,6 +340,9 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
         const auto src = static_cast<std::uint8_t>(opcode & 0x07U);
         return (dst == 0x06U || src == 0x06U) ? 7 : 4;
     }
+    if (opcode >= 0x80U && opcode <= 0x87U) {
+        return opcode == 0x86U ? 7 : 4;
+    }
 
     switch (opcode) {
     case 0x00:
@@ -375,12 +379,18 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0xF3:
     case 0xFB:
         return 4;
+    case 0x10:
+        return static_cast<std::uint8_t>(core_.register_snapshot().bc >> 8U) == 0x01U ? 8 : 13;
     case 0x18:
         return 12;
     case 0x20:
         return (core_.register_snapshot().af & flag_zero) == 0U ? 12 : 7;
     case 0x28:
         return (core_.register_snapshot().af & flag_zero) != 0U ? 12 : 7;
+    case 0x30:
+        return (core_.register_snapshot().af & flag_carry) == 0U ? 12 : 7;
+    case 0x38:
+        return (core_.register_snapshot().af & flag_carry) != 0U ? 12 : 7;
     case 0x01:
     case 0x11:
     case 0x21:
@@ -390,6 +400,11 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0xC3:
     case 0xCA:
         return 10;
+    case 0x09:
+    case 0x19:
+    case 0x29:
+    case 0x39:
+        return 11;
     case 0x1B:
     case 0x23:
         return 6;
@@ -467,6 +482,11 @@ auto Z180Adapter::ed_instruction_tstates(const std::uint8_t opcode) const -> std
         return 8;
     case 0x64:
         return 9;
+    case 0x42:
+    case 0x52:
+    case 0x62:
+    case 0x72:
+        return 15;
     default:
         if ((opcode & 0xC7U) == 0x00U && ((opcode >> 3U) & 0x07U) != 0x06U) {
             return 12;

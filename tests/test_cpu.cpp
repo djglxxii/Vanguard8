@@ -1470,6 +1470,96 @@ TEST_CASE("scheduled CPU covers conditional JR Z / JP Z,nn / JP NZ,nn / RET NZ",
     }
 }
 
+TEST_CASE("scheduled CPU covers DJNZ and carry-conditional JR used by the PacManV8 T020 path", "[cpu]") {
+    SECTION("DJNZ (0x10) decrements B, takes the branch in 13 T-states, and leaves flags untouched") {
+        const auto rom = make_instruction_test_rom({0x10, 0x02, 0x76, 0x00, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        constexpr auto preserved_flags = static_cast<std::uint8_t>(
+            flag_sign | flag_zero | flag_half | flag_parity_overflow | flag_subtract | flag_carry
+        );
+        state.registers.bc = 0x0200;
+        state.registers.af = static_cast<std::uint16_t>(0x5500U | preserved_flags);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 13);
+        REQUIRE(cpu.step_scheduled_instruction() == 13);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.bc >> 8U) == 0x01);
+        REQUIRE(cpu.pc() == 0x0004);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == preserved_flags);
+    }
+
+    SECTION("DJNZ (0x10) falls through in 8 T-states when B reaches zero") {
+        const auto rom = make_instruction_test_rom({0x10, 0x02, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.bc = 0x0100;
+        state.registers.af = 0xAA00;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.bc >> 8U) == 0x00);
+        REQUIRE(cpu.pc() == 0x0002);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == 0x00);
+    }
+
+    SECTION("JR NC,e (0x30) takes on carry clear in 12 T-states and falls through in 7 with carry set") {
+        const auto rom = make_instruction_test_rom({0x30, 0x02, 0x76, 0x00, 0x76});
+        vanguard8::core::Bus taken_bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter taken_cpu{taken_bus};
+        auto state = taken_cpu.state_snapshot();
+        constexpr auto preserved_flags = static_cast<std::uint8_t>(flag_sign | flag_zero | flag_parity_overflow);
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | preserved_flags);
+        taken_cpu.load_state_snapshot(state);
+
+        REQUIRE(taken_cpu.next_scheduled_tstates() == 12);
+        REQUIRE(taken_cpu.step_scheduled_instruction() == 12);
+        REQUIRE(taken_cpu.pc() == 0x0004);
+        REQUIRE(static_cast<std::uint8_t>(taken_cpu.state_snapshot().registers.af & 0x00FFU) == preserved_flags);
+
+        vanguard8::core::Bus fallthrough_bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter fallthrough_cpu{fallthrough_bus};
+        state = fallthrough_cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | (preserved_flags | flag_carry));
+        fallthrough_cpu.load_state_snapshot(state);
+
+        REQUIRE(fallthrough_cpu.next_scheduled_tstates() == 7);
+        REQUIRE(fallthrough_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(fallthrough_cpu.pc() == 0x0002);
+        REQUIRE(static_cast<std::uint8_t>(fallthrough_cpu.state_snapshot().registers.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(preserved_flags | flag_carry));
+    }
+
+    SECTION("JR C,e (0x38) takes on carry set in 12 T-states and falls through in 7 with carry clear") {
+        const auto rom = make_instruction_test_rom({0x38, 0x02, 0x76, 0x00, 0x76});
+        vanguard8::core::Bus taken_bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter taken_cpu{taken_bus};
+        auto state = taken_cpu.state_snapshot();
+        constexpr auto preserved_flags = static_cast<std::uint8_t>(flag_half | flag_carry);
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | preserved_flags);
+        taken_cpu.load_state_snapshot(state);
+
+        REQUIRE(taken_cpu.next_scheduled_tstates() == 12);
+        REQUIRE(taken_cpu.step_scheduled_instruction() == 12);
+        REQUIRE(taken_cpu.pc() == 0x0004);
+        REQUIRE(static_cast<std::uint8_t>(taken_cpu.state_snapshot().registers.af & 0x00FFU) == preserved_flags);
+
+        vanguard8::core::Bus fallthrough_bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter fallthrough_cpu{fallthrough_bus};
+        state = fallthrough_cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_half);
+        fallthrough_cpu.load_state_snapshot(state);
+
+        REQUIRE(fallthrough_cpu.next_scheduled_tstates() == 7);
+        REQUIRE(fallthrough_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(fallthrough_cpu.pc() == 0x0002);
+        REQUIRE(static_cast<std::uint8_t>(fallthrough_cpu.state_snapshot().registers.af & 0x00FFU) == flag_half);
+    }
+}
+
 TEST_CASE("scheduled CPU covers ADD A,n blocker exposed after YM busy-poll timing fix", "[cpu]") {
     SECTION("ADD A,n (0xC6) adds immediate data, clears N, and costs 7 T-states") {
         const auto rom = make_instruction_test_rom({0xC6, 0x22, 0x76});
@@ -1522,6 +1612,119 @@ TEST_CASE("scheduled CPU covers ADD A,n blocker exposed after YM busy-poll timin
         REQUIRE((flags & flag_half) == flag_half);
         REQUIRE((flags & flag_carry) == flag_carry);
         REQUIRE((flags & flag_subtract) == 0);
+    }
+}
+
+TEST_CASE("scheduled CPU covers ADD A,r / ADD A,(HL) and 16-bit ADD/SBC families used by the PacManV8 T020 path", "[cpu]") {
+    SECTION("ADD A,A (0x87) keeps the timed dispatcher on the intermission path at 4 T-states") {
+        const auto rom = make_instruction_test_rom({0x87, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x8100U | flag_subtract);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        const auto af = cpu.state_snapshot().registers.af;
+        REQUIRE((af >> 8U) == 0x02);
+        const auto flags = static_cast<std::uint8_t>(af & 0x00FFU);
+        REQUIRE((flags & flag_parity_overflow) == flag_parity_overflow);
+        REQUIRE((flags & flag_carry) == flag_carry);
+        REQUIRE((flags & flag_subtract) == 0);
+    }
+
+    SECTION("ADD A,(HL) (0x86) reads through the MMU in 7 T-states and updates H") {
+        const auto rom = make_instruction_test_rom({0x86, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.hl = 0x8200;
+        state.registers.af = 0x0F00;
+        cpu.load_state_snapshot(state);
+        bus.write_memory(0xF0200, 0x01);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        const auto af = cpu.state_snapshot().registers.af;
+        REQUIRE((af >> 8U) == 0x10);
+        const auto flags = static_cast<std::uint8_t>(af & 0x00FFU);
+        REQUIRE((flags & flag_half) == flag_half);
+        REQUIRE((flags & flag_carry) == 0);
+        REQUIRE((flags & flag_subtract) == 0);
+    }
+
+    SECTION("ADD HL,BC (0x09) preserves S/Z/PV, clears N, and updates H/C in 11 T-states") {
+        const auto rom = make_instruction_test_rom({0x09, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x0FFF;
+        state.registers.bc = 0x0001;
+        state.registers.af = static_cast<std::uint16_t>(0x0000U |
+                                                        flag_sign |
+                                                        flag_zero |
+                                                        flag_parity_overflow |
+                                                        flag_subtract |
+                                                        flag_carry);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 11);
+        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.state_snapshot().registers.hl == 0x1000);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_sign | flag_zero | flag_parity_overflow | flag_half));
+    }
+
+    SECTION("ADD HL,DE (0x19) reports carry in 11 T-states") {
+        const auto rom = make_instruction_test_rom({0x19, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0xFFFF;
+        state.registers.de = 0x0001;
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_zero);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 11);
+        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.state_snapshot().registers.hl == 0x0000);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_zero | flag_half | flag_carry));
+    }
+
+    SECTION("SBC HL,DE (ED 52) can produce a zero result with Z/N set in 15 T-states") {
+        const auto rom = make_instruction_test_rom({0xED, 0x52, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x1234;
+        state.registers.de = 0x1234;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 15);
+        REQUIRE(cpu.step_scheduled_instruction() == 15);
+        REQUIRE(cpu.state_snapshot().registers.hl == 0x0000);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_zero | flag_subtract));
+    }
+
+    SECTION("SBC HL,DE (ED 52) reports half-borrow and signed overflow without full borrow") {
+        const auto rom = make_instruction_test_rom({0xED, 0x52, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x8000;
+        state.registers.de = 0x0001;
+        cpu.load_state_snapshot(state);
+
+        (void)cpu.step_scheduled_instruction();
+        REQUIRE(cpu.state_snapshot().registers.hl == 0x7FFF);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_half | flag_parity_overflow | flag_subtract));
     }
 }
 

@@ -98,6 +98,9 @@ Workflow:
 | 26 | Cover the timed HD64180 VDP-B framebuffer-load LD DE,nn gap exposed by PacManV8 |
 | 27 | Cover the timed HD64180 VDP-B framebuffer copy LD A,D gap exposed by PacManV8 |
 | 28 | Cover the timed HD64180 VDP-B framebuffer copy OR E gap exposed by PacManV8 |
+| 32 | Frontend live audio playback for interactive verification |
+| 33 | Fix instruction-granular audio timing for YM2151 busy polls |
+| 34 | Cover the timed HD64180 intermission opcode gaps exposed by PacManV8 T020 |
 
 ## Milestones
 

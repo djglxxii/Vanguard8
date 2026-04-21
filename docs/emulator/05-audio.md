@@ -178,7 +178,7 @@ cmake-build-debug/src/vanguard8_headless \
     --rom /home/djglxxii/src/PacManV8/build/pacman.rom \
     --frames 300 --hash-audio \
     --expect-audio-hash \
-    9ced653d70f55ff0ce2b2e0d81a45ea18d204032ee9731ddd7d700bb10475a3e
+    24ce40791e466f9f686ee472b5798128065458e06a51f826666ae444ddfb5c75
 ```
 
 ---
@@ -206,4 +206,4 @@ Covered rules:
 - The fake frontend audio-device path records a byte-identical PCM stream to
   per-frame headless mixer consumption
 - The PacManV8 300-frame T017 digest is nonzero and remains
-  `9ced653d70f55ff0ce2b2e0d81a45ea18d204032ee9731ddd7d700bb10475a3e`
+  `24ce40791e466f9f686ee472b5798128065458e06a51f826666ae444ddfb5c75`

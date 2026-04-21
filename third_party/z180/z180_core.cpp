@@ -405,16 +405,23 @@ void Core::initialize_tables() {
     opcodes_[0x05] = &Core::op_dec_r_main;
     opcodes_[0x0C] = &Core::op_inc_r_main;
     opcodes_[0x0D] = &Core::op_dec_r_main;
+    opcodes_[0x09] = &Core::op_add_hl_ss_main;
+    opcodes_[0x10] = &Core::op_djnz_e;
     opcodes_[0x14] = &Core::op_inc_r_main;
     opcodes_[0x15] = &Core::op_dec_r_main;
     opcodes_[0x1C] = &Core::op_inc_r_main;
     opcodes_[0x1D] = &Core::op_dec_r_main;
+    opcodes_[0x19] = &Core::op_add_hl_ss_main;
     opcodes_[0x24] = &Core::op_inc_r_main;
     opcodes_[0x25] = &Core::op_dec_r_main;
+    opcodes_[0x29] = &Core::op_add_hl_ss_main;
     opcodes_[0x2C] = &Core::op_inc_r_main;
     opcodes_[0x2D] = &Core::op_dec_r_main;
+    opcodes_[0x30] = &Core::op_jr_nc_e;
     opcodes_[0x34] = &Core::op_inc_r_main;
     opcodes_[0x35] = &Core::op_dec_r_main;
+    opcodes_[0x38] = &Core::op_jr_c_e;
+    opcodes_[0x39] = &Core::op_add_hl_ss_main;
     opcodes_[0x3C] = &Core::op_inc_r_main;
     opcodes_[0x3D] = &Core::op_dec_r_main;
     opcodes_[0x06] = &Core::op_ld_b_n;
@@ -442,6 +449,9 @@ void Core::initialize_tables() {
     opcodes_[0x7D] = &Core::op_ld_a_l;
     opcodes_[0x7E] = &Core::op_ld_a_mem_hl;
     opcodes_[0x7F] = &Core::op_ld_a_a;
+    for (std::size_t i = 0x80U; i <= 0x87U; ++i) {
+        opcodes_[i] = &Core::op_add_a_r_main;
+    }
     opcodes_[0x76] = &Core::op_halt;
     opcodes_[0xAF] = &Core::op_xor_a;
     opcodes_[0xC2] = &Core::op_jp_nz_nn;
@@ -745,6 +755,14 @@ void Core::op_ld_c_n() { bc_.bytes.lo = fetch_byte(); }
 
 void Core::op_ld_d_n() { de_.bytes.hi = fetch_byte(); }
 
+void Core::op_djnz_e() {
+    const auto displacement = static_cast<std::int8_t>(fetch_byte());
+    bc_.bytes.hi = static_cast<std::uint8_t>(bc_.bytes.hi - 1U);
+    if (bc_.bytes.hi != 0U) {
+        pc_.value = static_cast<std::uint16_t>(pc_.value + displacement);
+    }
+}
+
 void Core::op_rrca() {
     const auto value = af_.bytes.hi;
     const auto carry = static_cast<std::uint8_t>(value & 0x01U);
@@ -761,9 +779,23 @@ void Core::op_jr_nz_e() {
     }
 }
 
+void Core::op_jr_nc_e() {
+    const auto displacement = static_cast<std::int8_t>(fetch_byte());
+    if ((af_.bytes.lo & flag_carry) == 0U) {
+        pc_.value = static_cast<std::uint16_t>(pc_.value + displacement);
+    }
+}
+
 void Core::op_jr_z_e() {
     const auto displacement = static_cast<std::int8_t>(fetch_byte());
     if ((af_.bytes.lo & flag_zero) != 0U) {
+        pc_.value = static_cast<std::uint16_t>(pc_.value + displacement);
+    }
+}
+
+void Core::op_jr_c_e() {
+    const auto displacement = static_cast<std::int8_t>(fetch_byte());
+    if ((af_.bytes.lo & flag_carry) != 0U) {
         pc_.value = static_cast<std::uint16_t>(pc_.value + displacement);
     }
 }
@@ -816,6 +848,15 @@ void Core::op_ld_a_mem_nn() { af_.bytes.hi = read_logical(fetch_word()); }
 
 void Core::op_ld_a_n() { af_.bytes.hi = fetch_byte(); }
 
+void Core::op_add_a_r_main() {
+    const auto reg_code = static_cast<std::uint8_t>(last_opcode_ & 0x07U);
+    const auto operand = (reg_code == 0x06U) ? read_logical(hl_.value) : register8_from_code(reg_code);
+    const auto old_a = af_.bytes.hi;
+    const auto result = static_cast<std::uint16_t>(old_a) + operand;
+    af_.bytes.hi = static_cast<std::uint8_t>(result & 0x00FFU);
+    apply_add_flags(old_a, operand, result);
+}
+
 void Core::apply_add_flags(const std::uint8_t old_a, const std::uint8_t operand, const std::uint16_t result) {
     const auto result8 = static_cast<std::uint8_t>(result & 0x00FFU);
     std::uint8_t flags = 0;
@@ -843,6 +884,24 @@ void Core::op_add_a_n() {
     const auto result = static_cast<std::uint16_t>(old_a) + operand;
     af_.bytes.hi = static_cast<std::uint8_t>(result & 0x00FFU);
     apply_add_flags(old_a, operand, result);
+}
+
+void Core::op_add_hl_ss_main() {
+    const auto pair_code = static_cast<std::uint8_t>((last_opcode_ >> 4U) & 0x03U);
+    const auto operand = register_pair_from_code(pair_code).value;
+    const auto old_hl = hl_.value;
+    const auto result = static_cast<std::uint32_t>(old_hl) + operand;
+
+    hl_.value = static_cast<std::uint16_t>(result & 0xFFFFU);
+
+    auto flags = static_cast<std::uint8_t>(af_.bytes.lo & (flag_sign | flag_zero | flag_parity_overflow));
+    if (((old_hl & 0x0FFFU) + (operand & 0x0FFFU)) > 0x0FFFU) {
+        flags = static_cast<std::uint8_t>(flags | flag_half);
+    }
+    if (result > 0xFFFFU) {
+        flags = static_cast<std::uint8_t>(flags | flag_carry);
+    }
+    af_.bytes.lo = flags;
 }
 
 void Core::op_and_n() {
@@ -1041,6 +1100,10 @@ void Core::op_ed_prefix() {
         op_ed_mlt_rr(static_cast<std::uint8_t>((opcode >> 4U) & 0x03U));
         return;
     }
+    if ((opcode & 0xCFU) == 0x42U) {
+        op_ed_sbc_hl_ss(static_cast<std::uint8_t>((opcode >> 4U) & 0x03U));
+        return;
+    }
     if (opcode == 0x64U) {
         op_ed_tst_n();
         return;
@@ -1069,6 +1132,35 @@ void Core::op_ed_tst_n() {
 void Core::op_ed_mlt_rr(const std::uint8_t pair_code) {
     auto& reg = register_pair_from_code(pair_code);
     reg.value = static_cast<std::uint16_t>(reg.bytes.hi * reg.bytes.lo);
+}
+
+void Core::op_ed_sbc_hl_ss(const std::uint8_t pair_code) {
+    const auto operand = register_pair_from_code(pair_code).value;
+    const auto old_hl = hl_.value;
+    const auto carry = (af_.bytes.lo & flag_carry) != 0U ? 1U : 0U;
+    const auto subtrahend = static_cast<std::uint32_t>(operand) + carry;
+    const auto result = static_cast<std::uint32_t>(old_hl) - subtrahend;
+    const auto result16 = static_cast<std::uint16_t>(result & 0xFFFFU);
+
+    hl_.value = result16;
+
+    std::uint8_t flags = flag_subtract;
+    if ((result16 & 0x8000U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_sign);
+    }
+    if (result16 == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if (((old_hl ^ operand ^ result16) & 0x1000U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_half);
+    }
+    if (((old_hl ^ operand) & (old_hl ^ result16) & 0x8000U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    if (static_cast<std::uint32_t>(old_hl) < subtrahend) {
+        flags = static_cast<std::uint8_t>(flags | flag_carry);
+    }
+    af_.bytes.lo = flags;
 }
 
 void Core::op_ed_out0_n_a() { out0(fetch_byte(), af_.bytes.hi); }

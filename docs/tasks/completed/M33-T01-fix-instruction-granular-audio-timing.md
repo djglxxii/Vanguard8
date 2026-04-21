@@ -103,7 +103,7 @@ Observed PacManV8 evidence:
 - `cmake-build-debug/src/vanguard8_headless --rom
   /home/djglxxii/src/PacManV8/build/pacman.rom --frames 300 --hash-audio`
   now reports audio SHA-256
-  `9ced653d70f55ff0ce2b2e0d81a45ea18d204032ee9731ddd7d700bb10475a3e`.
+  `24ce40791e466f9f686ee472b5798128065458e06a51f826666ae444ddfb5c75`.
 - The old all-zero SHA-256
   `0d634fb059d15b12c4a8faf2412fbe08b85d187a31b1f22278ce3662f3b44390`
   is no longer accepted by tests.

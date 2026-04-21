@@ -3,6 +3,7 @@
 #include <catch2/matchers/catch_matchers_string.hpp>
 
 #include "core/emulator.hpp"
+#include "core/hash.hpp"
 #include "core/memory/cartridge.hpp"
 #include "core/video/compositor.hpp"
 #include "core/video/v9938.hpp"
@@ -10,6 +11,7 @@
 #include <array>
 #include <filesystem>
 #include <fstream>
+#include <tuple>
 #include <vector>
 
 namespace {
@@ -19,6 +21,17 @@ using vanguard8::core::EventType;
 using vanguard8::core::VclkRate;
 using vanguard8::core::video::Compositor;
 using vanguard8::core::video::V9938;
+
+auto digest_hex(const vanguard8::core::Sha256Digest& digest) -> std::string {
+    static constexpr char hex[] = "0123456789abcdef";
+    std::string output;
+    output.reserve(digest.size() * 2U);
+    for (const auto byte : digest) {
+        output.push_back(hex[(byte >> 4U) & 0x0FU]);
+        output.push_back(hex[byte & 0x0FU]);
+    }
+    return output;
+}
 
 auto make_integration_rom() -> std::vector<std::uint8_t> {
     constexpr std::size_t rom_size = 0xC000;
@@ -411,6 +424,55 @@ auto make_pacmanv8_rom_run_opcode_coverage_rom() -> std::vector<std::uint8_t> {
     rom[0x001C] = 0x3E; rom[0x001D] = 0x10;
     rom[0x001E] = 0xBE;
     rom[0x001F] = 0x76;
+    return rom;
+}
+
+auto make_pacmanv8_intermission_opcode_coverage_rom() -> std::vector<std::uint8_t> {
+    // Exercises the M34 opcode families in one scripted frame-loop ROM:
+    //   0000: 06 02    LD B,0x02
+    //   0002: 10 02    DJNZ +2        ; taken -> PC=0x0006, B=0x01
+    //   0004: 76       HALT           ; skipped
+    //   0006: 3E 80    LD A,0x80
+    //   0008: 87       ADD A,A        ; A=0x00, C=1
+    //   0009: 38 02    JR C,+2        ; taken -> PC=0x000D
+    //   000B: 76       HALT           ; skipped
+    //   000D: B7       OR A           ; clears C
+    //   000E: 30 02    JR NC,+2       ; taken -> PC=0x0012
+    //   0010: 76       HALT           ; skipped
+    //   0012: 21 FF 0F LD HL,0x0FFF
+    //   0015: 01 01 00 LD BC,0x0001
+    //   0018: 11 01 00 LD DE,0x0001
+    //   001B: 09       ADD HL,BC      ; HL=0x1000
+    //   001C: 19       ADD HL,DE      ; HL=0x1001
+    //   001D: ED 52    SBC HL,DE      ; HL=0x1000
+    //   001F: 21 00 80 LD HL,0x8000
+    //   0022: 3E 0F    LD A,0x0F
+    //   0024: 86       ADD A,(HL)     ; memory=0x01 -> A=0x10
+    //   0025: 76       HALT
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+    rom[0x0000] = 0x06; rom[0x0001] = 0x02;
+    rom[0x0002] = 0x10; rom[0x0003] = 0x02;
+    rom[0x0004] = 0x76;
+    rom[0x0005] = 0x00;
+    rom[0x0006] = 0x3E; rom[0x0007] = 0x80;
+    rom[0x0008] = 0x87;
+    rom[0x0009] = 0x38; rom[0x000A] = 0x02;
+    rom[0x000B] = 0x76;
+    rom[0x000C] = 0x00;
+    rom[0x000D] = 0xB7;
+    rom[0x000E] = 0x30; rom[0x000F] = 0x02;
+    rom[0x0010] = 0x76;
+    rom[0x0011] = 0x00;
+    rom[0x0012] = 0x21; rom[0x0013] = 0xFF; rom[0x0014] = 0x0F;
+    rom[0x0015] = 0x01; rom[0x0016] = 0x01; rom[0x0017] = 0x00;
+    rom[0x0018] = 0x11; rom[0x0019] = 0x01; rom[0x001A] = 0x00;
+    rom[0x001B] = 0x09;
+    rom[0x001C] = 0x19;
+    rom[0x001D] = 0xED; rom[0x001E] = 0x52;
+    rom[0x001F] = 0x21; rom[0x0020] = 0x00; rom[0x0021] = 0x80;
+    rom[0x0022] = 0x3E; rom[0x0023] = 0x0F;
+    rom[0x0024] = 0x86;
+    rom[0x0025] = 0x76;
     return rom;
 }
 
@@ -810,6 +872,55 @@ TEST_CASE("frame loop clears the PacManV8 ROM run-time opcode blockers (M31)", "
     REQUIRE((final_state.registers.de >> 8U) == 0x05);
     // C received B via LD C,B (0x48) when B was 0x42.
     REQUIRE((final_state.registers.bc & 0x00FFU) == 0x42);
+}
+
+TEST_CASE("frame loop clears the PacManV8 T020 intermission opcode blocker families (M34)", "[integration]") {
+    Emulator emulator;
+    emulator.load_rom_image(make_pacmanv8_intermission_opcode_coverage_rom());
+
+    auto state = emulator.mutable_cpu().state_snapshot();
+    state.registers.cbar = 0x48;
+    state.registers.cbr = 0xF0;
+    state.registers.bbr = 0x04;
+    emulator.mutable_cpu().load_state_snapshot(state);
+    emulator.mutable_cpu().write_logical(0x8000, 0x01);
+
+    REQUIRE_NOTHROW(emulator.run_frames(1));
+
+    const auto final_state = emulator.cpu().state_snapshot();
+    REQUIRE(emulator.cpu().halted());
+    REQUIRE(emulator.cpu().pc() == 0x0025);
+    REQUIRE(final_state.registers.bc == 0x0001);
+    REQUIRE(final_state.registers.hl == 0x8000);
+    REQUIRE((final_state.registers.af >> 8U) == 0x10);
+}
+
+TEST_CASE("PacManV8 T020 headless repro remains deterministic across repeat runs", "[integration]") {
+    const auto rom_path = std::filesystem::path("/home/djglxxii/src/PacManV8/build/pacman.rom");
+    if (!std::filesystem::is_regular_file(rom_path)) {
+        SKIP("PacManV8 pacman.rom is not available at " << rom_path.string());
+    }
+
+    const auto rom = read_binary_file(rom_path);
+    auto run = [&rom]() {
+        Emulator emulator;
+        emulator.load_rom_image(rom);
+        emulator.run_frames(700);
+
+        const auto frame = Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b());
+        return std::tuple{
+            emulator.cpu().pc(),
+            emulator.event_log_digest(),
+            digest_hex(vanguard8::core::sha256(frame)),
+        };
+    };
+
+    const auto [first_pc, first_event_log_digest, first_frame_hash] = run();
+    const auto [second_pc, second_event_log_digest, second_frame_hash] = run();
+
+    REQUIRE(first_pc == second_pc);
+    REQUIRE(first_event_log_digest == second_event_log_digest);
+    REQUIRE(first_frame_hash == second_frame_hash);
 }
 
 TEST_CASE("unsupported handler opcodes are reported at the handler PC after INT1 dispatch", "[integration]") {

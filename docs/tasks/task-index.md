@@ -145,3 +145,7 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 ## Milestone 33
 
 - `M33-T01` Fix instruction-granular audio timing for YM2151 busy polls.
+
+## Milestone 34
+
+- `M34-T01` Cover the missing timed HD64180 PacManV8 intermission opcodes.

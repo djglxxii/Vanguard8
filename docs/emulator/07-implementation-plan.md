@@ -1244,6 +1244,57 @@ Exit criteria:
   first-nonblack frame is documented and regression-covered
 - `ctest --test-dir cmake-build-debug --output-on-failure` passes
 
+### Milestone 34 — Timed HD64180 PacManV8 Intermission Opcode Coverage
+
+Objective:
+- Close the narrow timed-opcode gap that blocked the PacManV8 T020
+  intermission owner after M33. The milestone remains CPU-compatibility only:
+  it adds the specific opcode families surfaced by the T020 runtime path and
+  does not change ROM, VDP, audio, scheduler, or frontend behavior.
+
+Deliverables:
+- Timed HD64180 coverage for the observed PacManV8 intermission opcodes
+- Focused CPU tests and ROM-shaped runtime regressions for those opcodes
+- Documentation tying the fix to the T020 blocker PCs
+
+Exit criteria:
+- The canonical headless PacManV8 runtime no longer aborts on the observed
+  intermission opcode path
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes
+
+### Milestone 35 — Agent Observability Primitives for Headless ROM Verification
+
+Objective:
+- Close the headless observability gap that kept PacManV8 T020 from
+  distinguishing between "intermission state never reached", "reached but
+  crashed before drawing", and "drew but is not visible in the composed
+  framebuffer".
+
+Deliverables:
+- Headless CLI flags for deterministic inspection: `--inspect`,
+  `--inspect-frame`, `--peek-mem`, `--peek-logical`, `--dump-cpu`,
+  `--dump-vdp-regs`, `--dump-vram-a`, `--dump-vram-b`, and
+  `--run-until-pc`
+- A locked text-report format and tests for deterministic report/VRAM output,
+  memory peek correctness, non-perturbation of existing hashes/digests, and
+  PC probe hit/not-hit outcomes
+- Documentation in `docs/emulator/06-debugger.md` describing how agents should
+  use the flags for headless ROM failure triage
+
+Closure rule:
+- Keep this milestone in `src/frontend/`, `src/headless_main.cpp`, tests, and
+  docs only. Do not add new core tracking state, GUI panels, opcode coverage,
+  VDP/audio/scheduler behavior, or PacManV8 ROM changes.
+
+Exit criteria:
+- `vanguard8_headless --help` lists every observability flag
+- Inspection reports and VRAM dumps are deterministic and contain no
+  host-specific report body content
+- Existing `--hash-frame`, `--hash-audio`, frame dump, fixture dump, replay,
+  and trace paths remain behaviorally unchanged with or without inspection
+- The PacManV8 smoke command in `docs/emulator/milestones/35.md` produces a
+  deterministic report covering CPU, both VDPs, and the requested RAM ranges
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:

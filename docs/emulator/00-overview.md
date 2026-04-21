@@ -239,6 +239,9 @@ Vanguard8/
 - Framebuffer and audio SHA-256 hash verification with nonzero exit on mismatch
 - Dump the current runtime frame to binary PPM, with an explicit fixture-only dump path
 - `--expect-frame-hash` / `--expect-audio-hash` for CI regression gating
+- Headless observability reports, memory peeks, CPU/VDP register dumps, raw
+  VRAM dumps, and PC stop probes are documented in
+  `docs/emulator/06-debugger.md#headless-observability`
 - ctest integration via replay files in `tests/replays/`
 
 ### Developer / Debugger

@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include "core/hash.hpp"
 #include "core/emulator.hpp"
 #include "core/video/compositor.hpp"
 #include "core/video/v9938.hpp"
@@ -11,7 +12,9 @@
 #include <filesystem>
 #include <fstream>
 #include <initializer_list>
+#include <iostream>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -55,6 +58,18 @@ class ScopedEnvVar {
     std::optional<std::string> old_value_;
 };
 
+class ScopedStreamRedirect {
+  public:
+    ScopedStreamRedirect(std::ostream& stream, std::streambuf* replacement)
+        : stream_(stream), old_(stream.rdbuf(replacement)) {}
+
+    ~ScopedStreamRedirect() { stream_.rdbuf(old_); }
+
+  private:
+    std::ostream& stream_;
+    std::streambuf* old_ = nullptr;
+};
+
 struct ParsedPpm {
     int width = 0;
     int height = 0;
@@ -72,6 +87,11 @@ auto make_temp_dir() -> std::filesystem::path {
 void write_binary_file(const std::filesystem::path& path, const std::vector<std::uint8_t>& bytes) {
     std::ofstream output(path, std::ios::binary);
     output.write(reinterpret_cast<const char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+}
+
+auto read_text_file(const std::filesystem::path& path) -> std::string {
+    std::ifstream input(path);
+    return std::string((std::istreambuf_iterator<char>(input)), std::istreambuf_iterator<char>());
 }
 
 auto read_binary_file(const std::filesystem::path& path) -> std::vector<std::uint8_t> {
@@ -170,6 +190,85 @@ auto make_graphic6_runtime_rom() -> std::vector<std::uint8_t> {
     return rom;
 }
 
+struct ObservabilityRom {
+    std::vector<std::uint8_t> bytes;
+    std::uint16_t loop_pc = 0;
+};
+
+auto make_observability_rom() -> ObservabilityRom {
+    std::vector<std::uint8_t> rom(vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+    std::size_t pc = 0;
+
+    auto emit = [&](const std::initializer_list<std::uint8_t> bytes) {
+        for (const auto byte : bytes) {
+            rom[pc++] = byte;
+        }
+    };
+    auto emit_out0_a = [&](const std::uint8_t port, const std::uint8_t value) {
+        emit({0x3E, value, 0xED, 0x39, port});
+    };
+    auto emit_ld_mem_a = [&](const std::uint16_t address, const std::uint8_t value) {
+        emit({0x3E, value, 0x32, static_cast<std::uint8_t>(address & 0xFFU), static_cast<std::uint8_t>(address >> 8U)});
+    };
+    auto emit_out = [&](const std::uint8_t port, const std::uint8_t value) {
+        emit({0x3E, value, 0xD3, port});
+    };
+    auto emit_vram_write = [&](const std::uint8_t control_port,
+                               const std::uint8_t data_port,
+                               const std::uint16_t address,
+                               const std::uint8_t value) {
+        emit_out(control_port, static_cast<std::uint8_t>(address & 0xFFU));
+        emit_out(control_port, static_cast<std::uint8_t>(0x40U | ((address >> 8U) & 0x3FU)));
+        emit_out(data_port, value);
+    };
+
+    emit({0xF3});  // DI
+    emit_out0_a(0x3A, 0x48);
+    emit_out0_a(0x38, 0xF0);
+    emit_out0_a(0x39, 0x04);
+    emit_ld_mem_a(0x8250, 0x12);
+    emit_ld_mem_a(0x8251, 0x34);
+    emit_vram_write(0x81, 0x80, 0x0000, 0xAB);
+    emit_vram_write(0x85, 0x84, 0x0000, 0xCD);
+
+    const auto loop_pc = static_cast<std::uint16_t>(pc);
+    emit({0xC3, static_cast<std::uint8_t>(loop_pc & 0xFFU), static_cast<std::uint8_t>(loop_pc >> 8U)});
+    return ObservabilityRom{.bytes = rom, .loop_pc = loop_pc};
+}
+
+auto run_headless_capture(std::initializer_list<std::string> args) -> std::pair<int, std::string> {
+    ArgvBuilder argv(args);
+    std::ostringstream stdout_capture;
+    std::ostringstream stderr_capture;
+    ScopedStreamRedirect cout_redirect(std::cout, stdout_capture.rdbuf());
+    ScopedStreamRedirect cerr_redirect(std::cerr, stderr_capture.rdbuf());
+    const auto code =
+        vanguard8::frontend::run_headless_app(static_cast<int>(argv.argv.size()), argv.argv.data());
+    return {code, stdout_capture.str() + stderr_capture.str()};
+}
+
+auto digest_hex(const vanguard8::core::Sha256Digest& digest) -> std::string {
+    static constexpr char hex[] = "0123456789abcdef";
+    std::string output;
+    output.reserve(digest.size() * 2U);
+    for (const auto byte : digest) {
+        output.push_back(hex[(byte >> 4U) & 0x0FU]);
+        output.push_back(hex[byte & 0x0FU]);
+    }
+    return output;
+}
+
+auto output_line(const std::string& output, const std::string& prefix) -> std::string {
+    std::istringstream stream(output);
+    std::string line;
+    while (std::getline(stream, line)) {
+        if (line.rfind(prefix, 0) == 0) {
+            return line;
+        }
+    }
+    return {};
+}
+
 auto expected_runtime_frame(const std::vector<std::uint8_t>& rom, const std::uint64_t frames)
     -> std::vector<std::uint8_t> {
     Emulator emulator;
@@ -252,6 +351,217 @@ TEST_CASE("headless --dump-fixture remains an explicit fixture-only capture path
     REQUIRE(ppm.width == V9938::visible_width);
     REQUIRE(ppm.height == V9938::visible_height);
     REQUIRE(ppm.pixels == expected_fixture_frame());
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("headless --inspect emits the committed observability report format", "[frontend]") {
+    const auto temp_dir = make_temp_dir();
+    const auto config_home = temp_dir / "xdg-config";
+    const auto report_path = temp_dir / "inspect.txt";
+    const auto source_dir = std::filesystem::path(VANGUARD8_SOURCE_DIR);
+    const auto rom_path = source_dir / "tests/replays/replay_fixture.rom";
+    const auto golden_path = source_dir / "tests/golden/headless_observability_report.txt";
+
+    ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", config_home.string());
+    const auto [code, output] = run_headless_capture({
+        "vanguard8_headless",
+        "--rom",
+        rom_path.string(),
+        "--frames",
+        "1",
+        "--inspect-frame",
+        "1",
+        "--inspect",
+        report_path.string(),
+        "--dump-cpu",
+        "--dump-vdp-regs",
+        "--peek-mem",
+        "0x00000:4",
+        "--peek-logical",
+        "0x0000:4",
+    });
+
+    REQUIRE(code == 0);
+    REQUIRE(output.find("Inspection report path: ") != std::string::npos);
+    REQUIRE(read_text_file(report_path) == read_text_file(golden_path));
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("headless inspection reports physical and logical memory peeks from the same frame", "[frontend]") {
+    const auto temp_dir = make_temp_dir();
+    const auto config_home = temp_dir / "xdg-config";
+    const auto rom_path = temp_dir / "observability.rom";
+    const auto rom = make_observability_rom();
+    write_binary_file(rom_path, rom.bytes);
+
+    ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", config_home.string());
+    const auto [code, output] = run_headless_capture({
+        "vanguard8_headless",
+        "--rom",
+        rom_path.string(),
+        "--frames",
+        "1",
+        "--peek-mem",
+        "0xF0250:2",
+        "--peek-logical",
+        "0x8250:2",
+    });
+
+    Emulator emulator;
+    emulator.load_rom_image(rom.bytes);
+    emulator.run_frames(1);
+
+    REQUIRE(code == 0);
+    REQUIRE(emulator.mutable_bus().read_memory(0xF0250) == 0x12);
+    REQUIRE(emulator.mutable_bus().read_memory(0xF0251) == 0x34);
+    REQUIRE(output.find("physical 0xf0250 length 2") != std::string::npos);
+    REQUIRE(output.find("logical 0x8250 physical 0xf0250 region ca1 length 2") != std::string::npos);
+    REQUIRE(output.find("0xf0250: 12 34") != std::string::npos);
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("headless VRAM dumps are deterministic and match VDP state snapshots", "[frontend]") {
+    const auto temp_dir = make_temp_dir();
+    const auto config_home = temp_dir / "xdg-config";
+    const auto rom_path = temp_dir / "observability.rom";
+    const auto dump_a_1 = temp_dir / "a1.bin";
+    const auto dump_b_1 = temp_dir / "b1.bin";
+    const auto dump_a_2 = temp_dir / "a2.bin";
+    const auto dump_b_2 = temp_dir / "b2.bin";
+    const auto rom = make_observability_rom();
+    write_binary_file(rom_path, rom.bytes);
+
+    ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", config_home.string());
+    const auto [first_code, first_output] = run_headless_capture({
+        "vanguard8_headless",
+        "--rom",
+        rom_path.string(),
+        "--frames",
+        "1",
+        "--dump-vram-a",
+        dump_a_1.string(),
+        "--dump-vram-b",
+        dump_b_1.string(),
+    });
+    const auto [second_code, second_output] = run_headless_capture({
+        "vanguard8_headless",
+        "--rom",
+        rom_path.string(),
+        "--frames",
+        "1",
+        "--dump-vram-a",
+        dump_a_2.string(),
+        "--dump-vram-b",
+        dump_b_2.string(),
+    });
+
+    Emulator emulator;
+    emulator.load_rom_image(rom.bytes);
+    emulator.run_frames(1);
+    const auto expected_a = std::vector<std::uint8_t>(emulator.vdp_a().vram().begin(), emulator.vdp_a().vram().end());
+    const auto expected_b = std::vector<std::uint8_t>(emulator.vdp_b().vram().begin(), emulator.vdp_b().vram().end());
+
+    REQUIRE(first_code == 0);
+    REQUIRE(second_code == 0);
+    REQUIRE(read_binary_file(dump_a_1) == read_binary_file(dump_a_2));
+    REQUIRE(read_binary_file(dump_b_1) == read_binary_file(dump_b_2));
+    REQUIRE(read_binary_file(dump_a_1) == expected_a);
+    REQUIRE(read_binary_file(dump_b_1) == expected_b);
+    REQUIRE(first_output.find("VDP-A VRAM SHA-256: " + digest_hex(vanguard8::core::sha256(expected_a))) != std::string::npos);
+    REQUIRE(first_output.find("VDP-B VRAM SHA-256: " + digest_hex(vanguard8::core::sha256(expected_b))) != std::string::npos);
+    REQUIRE(output_line(first_output, "VDP-A VRAM SHA-256: ") == output_line(second_output, "VDP-A VRAM SHA-256: "));
+    REQUIRE(output_line(first_output, "VDP-B VRAM SHA-256: ") == output_line(second_output, "VDP-B VRAM SHA-256: "));
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("headless observability flags do not perturb frame audio or event digests", "[frontend]") {
+    const auto temp_dir = make_temp_dir();
+    const auto config_home = temp_dir / "xdg-config";
+    const auto rom_path = temp_dir / "observability.rom";
+    const auto report_path = temp_dir / "inspect.txt";
+    const auto dump_a = temp_dir / "a.bin";
+    const auto dump_b = temp_dir / "b.bin";
+    const auto rom = make_observability_rom();
+    write_binary_file(rom_path, rom.bytes);
+
+    ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", config_home.string());
+    const auto [baseline_code, baseline_output] = run_headless_capture({
+        "vanguard8_headless",
+        "--rom",
+        rom_path.string(),
+        "--frames",
+        "1",
+        "--hash-frame",
+        "1",
+        "--hash-audio",
+    });
+    const auto [observed_code, observed_output] = run_headless_capture({
+        "vanguard8_headless",
+        "--rom",
+        rom_path.string(),
+        "--frames",
+        "1",
+        "--hash-frame",
+        "1",
+        "--hash-audio",
+        "--inspect",
+        report_path.string(),
+        "--peek-mem",
+        "0xF0250:2",
+        "--peek-logical",
+        "0x8250:2",
+        "--dump-cpu",
+        "--dump-vdp-regs",
+        "--dump-vram-a",
+        dump_a.string(),
+        "--dump-vram-b",
+        dump_b.string(),
+        "--run-until-pc",
+        "0x1234:1",
+    });
+
+    REQUIRE(baseline_code == 0);
+    REQUIRE(observed_code == 0);
+    REQUIRE(output_line(observed_output, "Frame SHA-256 (1): ") == output_line(baseline_output, "Frame SHA-256 (1): "));
+    REQUIRE(output_line(observed_output, "Audio SHA-256: ") == output_line(baseline_output, "Audio SHA-256: "));
+    REQUIRE(output_line(observed_output, "Event log digest: ") == output_line(baseline_output, "Event log digest: "));
+
+    std::filesystem::remove_all(temp_dir);
+}
+
+TEST_CASE("headless --run-until-pc reports hit and not-hit frame outcomes", "[frontend]") {
+    const auto temp_dir = make_temp_dir();
+    const auto config_home = temp_dir / "xdg-config";
+    const auto rom_path = std::filesystem::path(VANGUARD8_SOURCE_DIR) / "tests/replays/replay_fixture.rom";
+
+    ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", config_home.string());
+    const auto [hit_code, hit_output] = run_headless_capture({
+        "vanguard8_headless",
+        "--rom",
+        rom_path.string(),
+        "--run-until-pc",
+        "0x0000:1",
+    });
+    const auto [miss_code, miss_output] = run_headless_capture({
+        "vanguard8_headless",
+        "--rom",
+        rom_path.string(),
+        "--frames",
+        "1",
+        "--run-until-pc",
+        "0x1234",
+    });
+
+    REQUIRE(hit_code == 0);
+    REQUIRE(hit_output.find("Run-until-PC result: hit") != std::string::npos);
+    REQUIRE(hit_output.find("Run-until-PC frame: 1") != std::string::npos);
+    REQUIRE(miss_code == 0);
+    REQUIRE(miss_output.find("Run-until-PC result: not-hit") != std::string::npos);
+    REQUIRE(miss_output.find("Run-until-PC frame: 1") != std::string::npos);
 
     std::filesystem::remove_all(temp_dir);
 }

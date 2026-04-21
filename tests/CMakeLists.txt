@@ -38,6 +38,7 @@ add_executable(
     ../src/frontend/display.cpp
     ../src/frontend/display_presenter.cpp
     ../src/frontend/headless.cpp
+    ../src/frontend/headless_inspect.cpp
     ../src/frontend/input.cpp
     ../src/frontend/rom_loader.cpp
     ../src/frontend/runtime.cpp
@@ -47,6 +48,7 @@ add_executable(
 target_link_libraries(vanguard8_tests PRIVATE Catch2::Catch2 vanguard8_core vanguard8_debugger)
 target_link_libraries(vanguard8_tests PRIVATE OpenGL::GL SDL2::SDL2)
 target_include_directories(vanguard8_tests PRIVATE ${PROJECT_SOURCE_DIR}/src)
+target_compile_definitions(vanguard8_tests PRIVATE VANGUARD8_SOURCE_DIR="${PROJECT_SOURCE_DIR}")
 
 include(Catch)
 catch_discover_tests(vanguard8_tests)

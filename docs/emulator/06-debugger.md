@@ -453,3 +453,95 @@ the decoded bank number while the PC is in the cartridge bank window.
 
 The command stops after the requested instruction budget is reached or when the
 CPU halts. The final line count is printed to stdout.
+
+---
+
+## Headless Observability
+
+The current repo exposes deterministic inspection primitives through
+`vanguard8_headless` for agent-driven ROM verification without requiring live
+ImGui panels. These flags consume existing `Bus`, `Z180Adapter`, and `V9938`
+read/snapshot APIs and do not add core tracking state.
+
+### Frame Selection
+
+- `--inspect-frame N` pins all inspection output to the end of completed frame
+  `N`. If omitted, inspection uses the final completed frame for the run, or
+  the stop frame when `--run-until-pc` hits.
+- Inspection is never taken mid-instruction.
+
+### Report Output
+
+- `--inspect PATH` writes a deterministic text report to `PATH`.
+- If `--inspect` is provided without `--dump-cpu` or `--dump-vdp-regs`, the
+  report includes CPU state and both VDP register blocks by default.
+- If `--inspect` is omitted, active inspection flags emit the same report text
+  to stdout under the fixed header `vanguard8 headless inspection v1`.
+- Report bodies use lowercase hex for byte, register, and address values.
+  Frame indices, master cycles, CPU T-states, and counts are decimal.
+- Report bodies use only deterministic emulator state. VRAM dump paths inside
+  the report are reduced to file basenames so report content is not tied to a
+  host directory.
+
+### CPU State
+
+`--dump-cpu` emits:
+
+- `PC`, `A`, `AF`, `BC`, `DE`, `HL`, `AF'`, `BC'`, `DE'`, `HL'`, `IX`, `IY`,
+  `SP`, `I`, and `R`
+- `IFF1`, `IFF2`, halt state, and decoded `S/Z/H/PV/N/C` flags
+- `CBAR`, `CBR`, `BBR`, decoded active ROM bank, and the current
+  logical-to-physical MMU regions
+
+The CPU block is drawn from `cpu::Z180Adapter::state_snapshot()` and public
+MMU helpers.
+
+### Memory Peeks
+
+- `--peek-mem ADDR[:LEN]` reads physical memory through
+  `core::Bus::read_memory`. `ADDR` is hex with or without a `0x` prefix.
+  `LEN` defaults to `1` and is clamped to 256 bytes per invocation.
+- `--peek-logical ADDR[:LEN]` translates each logical address through the
+  current `CBAR`/`CBR`/`BBR` state, then reports both the logical range and
+  resolved physical range. Ranges crossing an MMU region boundary are split
+  into deterministic per-region chunks.
+
+### VDP State
+
+`--dump-vdp-regs` emits, for both VDP-A and VDP-B:
+
+- V9938 registers `R#0..R#46`
+- status registers `S#0..S#9`
+- all 16 palette entries as raw bytes, decoded 9-bit RGB, and expanded RGB
+- command-state snapshot fields
+- `current_visible_width`
+
+`--dump-vram-a PATH` and `--dump-vram-b PATH` write the selected VDP's full
+64 KB VRAM as raw binary. Stdout and inspection reports include the dump size
+and SHA-256 digest so agents can regression-check the file without parsing it.
+
+### PC Stop Probe
+
+`--run-until-pc HEX[:MAX_FRAMES]` runs up to `MAX_FRAMES` frames, or the
+current `--frames` value when `MAX_FRAMES` is omitted. The final stdout summary
+records `hit` or `not-hit`, the frame index, and the end-of-frame master cycle
+where the outcome was observed.
+
+Current precision boundary:
+- The headless scheduler does not yet expose an instruction-cycle PC-hit
+  timestamp to frontend code. This flag therefore records the end-of-frame
+  observation point for the hit frame, using existing CPU breakpoint/end-PC
+  surfaces without adding core tracking state.
+
+### Agent Workflow
+
+To distinguish PacManV8 T020's three failure modes without GUI tooling:
+
+1. Use `--run-until-pc ENTRY[:MAX_FRAMES]` on the intermission entry or owner
+   loop address. A `not-hit` result indicates the state machine never reached
+   that code path in the frame budget.
+2. Use `--peek-mem` or `--peek-logical` on the relevant SRAM state bases at
+   the same `--inspect-frame` to confirm whether game-flow state transitioned.
+3. Use `--dump-vdp-regs` plus `--dump-vram-a` / `--dump-vram-b` to decide
+   whether drawing reached either VDP and whether the composed framebuffer
+   should have visible output.

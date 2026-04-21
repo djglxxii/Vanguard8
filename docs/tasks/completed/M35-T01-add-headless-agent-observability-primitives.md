@@ -1,6 +1,6 @@
 # M35-T01 — Add Headless Agent Observability Primitives
 
-Status: `planned`
+Status: `completed`
 Milestone: `35`
 Depends on: `M34-T01`
 
@@ -149,3 +149,56 @@ cmake-build-debug/src/vanguard8_headless \
     --frames 120 \
     --run-until-pc 0x0103:120
 ```
+
+## Completion summary
+
+Completed on 2026-04-21.
+
+Implemented against:
+- `docs/spec/00-overview.md`
+- `docs/spec/01-cpu.md`
+- `docs/spec/02-video.md`
+- `docs/emulator/02-emulation-loop.md`
+- `docs/emulator/03-cpu-and-bus.md`
+- `docs/emulator/04-video.md`
+- `docs/emulator/06-debugger.md`
+- `docs/emulator/milestones/35.md`
+
+Implementation notes:
+- Added the milestone-35 headless observability flags to `vanguard8_headless`:
+  `--peek-mem`, `--peek-logical`, `--dump-vram-a`, `--dump-vram-b`,
+  `--dump-vdp-regs`, `--dump-cpu`, `--inspect-frame`, `--inspect`, and
+  `--run-until-pc`.
+- Added headless-only report/VRAM formatting helpers in `src/frontend/`.
+  They consume existing `Bus`, `Z180Adapter`, and `V9938` accessors/snapshots
+  and do not add core tracking state.
+- Locked the deterministic inspection report format with
+  `tests/golden/headless_observability_report.txt`.
+- Added tests covering report format, physical/logical peeks, deterministic
+  VRAM dumps and SHA-256 digests, non-perturbation of frame/audio/event
+  digests, and `--run-until-pc` hit/not-hit summaries.
+- Documented the "Headless Observability" CLI workflow in
+  `docs/emulator/06-debugger.md` and cross-linked it from
+  `docs/emulator/00-overview.md`.
+
+Verification:
+- `cmake --build cmake-build-debug` passed.
+- `ctest --test-dir cmake-build-debug --output-on-failure` passed:
+  168/168 tests passed, with the pre-existing skipped showcase test still
+  skipped.
+- `cmake-build-debug/src/vanguard8_headless --help` listed every new
+  observability flag.
+- `python3 tools/build.py` in `/home/djglxxii/src/PacManV8` rebuilt
+  `build/pacman.rom` successfully.
+- PacManV8 smoke inspection command produced
+  `/tmp/vanguard8-m35-pacman-inspect.txt` with CPU state, both VDP register
+  blocks, and the requested `0xF8250:16` / `0xF8270:8` RAM peeks.
+- PacManV8 smoke inspection report SHA-256:
+  `e41e55d754135b1b6493552c5146628347146c3d78944969ce54a0f5970a2f4e`.
+- PacManV8 `--run-until-pc 0x0103:120` completed successfully and reported
+  `not-hit` at frame `120`, master cycle `28610400`.
+
+Known precision boundary:
+- `--run-until-pc` uses existing frontend-visible CPU breakpoint/end-PC
+  surfaces and reports the end-of-frame master cycle where the hit/not-hit
+  outcome is observed. It does not add a new core instruction-cycle timestamp.

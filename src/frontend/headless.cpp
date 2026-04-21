@@ -10,10 +10,13 @@
 #include "core/video/compositor.hpp"
 #include "debugger/trace_panel.hpp"
 #include "frontend/display.hpp"
+#include "frontend/headless_inspect.hpp"
 #include "frontend/input.hpp"
 #include "frontend/rom_loader.hpp"
 #include "frontend/video_fixture.hpp"
 
+#include <algorithm>
+#include <cctype>
 #include <exception>
 #include <filesystem>
 #include <fstream>
@@ -28,7 +31,14 @@ namespace vanguard8::frontend {
 
 namespace {
 
+struct RunUntilPcOption {
+    std::uint16_t pc = 0;
+    std::optional<std::uint64_t> max_frames;
+};
+
 struct RuntimeOptions {
+    static constexpr std::size_t max_peek_length = 256;
+
     bool help_requested = false;
     std::uint64_t frames_to_run = 0;
     bool start_paused = false;
@@ -46,6 +56,15 @@ struct RuntimeOptions {
     std::optional<std::filesystem::path> trace_path;
     std::size_t trace_instructions = 256;
     std::optional<std::filesystem::path> symbol_path;
+    std::vector<HeadlessMemoryRange> peek_mem_ranges;
+    std::vector<HeadlessMemoryRange> peek_logical_ranges;
+    std::optional<std::filesystem::path> dump_vram_a_path;
+    std::optional<std::filesystem::path> dump_vram_b_path;
+    bool dump_vdp_regs = false;
+    bool dump_cpu = false;
+    std::optional<std::uint64_t> inspect_frame;
+    std::optional<std::filesystem::path> inspect_path;
+    std::optional<RunUntilPcOption> run_until_pc;
     std::vector<std::string> pressed_keys;
     std::vector<std::string> gamepad1_buttons;
     std::vector<std::string> gamepad2_buttons;
@@ -81,6 +100,82 @@ auto normalize_hex(std::string value) -> std::string {
         ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
     }
     return value;
+}
+
+auto parse_hex_u64(const std::string& value, const char* label) -> std::uint64_t {
+    std::size_t parsed = 0;
+    const auto parsed_value = std::stoull(value, &parsed, 16);
+    if (parsed != value.size()) {
+        throw std::invalid_argument(std::string("Invalid hex value for ") + label + ": " + value);
+    }
+    return parsed_value;
+}
+
+auto parse_decimal_u64(const std::string& value, const char* label) -> std::uint64_t {
+    std::size_t parsed = 0;
+    const auto parsed_value = std::stoull(value, &parsed, 10);
+    if (parsed != value.size()) {
+        throw std::invalid_argument(std::string("Invalid decimal value for ") + label + ": " + value);
+    }
+    return parsed_value;
+}
+
+auto parse_length_u64(const std::string& value, const char* label) -> std::uint64_t {
+    std::size_t parsed = 0;
+    const int base = value.rfind("0x", 0) == 0 || value.rfind("0X", 0) == 0 ? 16 : 10;
+    const auto parsed_value = std::stoull(value, &parsed, base);
+    if (parsed != value.size()) {
+        throw std::invalid_argument(std::string("Invalid length for ") + label + ": " + value);
+    }
+    return parsed_value;
+}
+
+auto parse_memory_range(const std::string& value, const bool logical) -> HeadlessMemoryRange {
+    const auto separator = value.find(':');
+    const auto address_text = separator == std::string::npos ? value : value.substr(0, separator);
+    const auto length_text = separator == std::string::npos ? std::string{} : value.substr(separator + 1);
+    if (address_text.empty()) {
+        throw std::invalid_argument("Memory peek address is empty.");
+    }
+    const auto address = parse_hex_u64(address_text, logical ? "--peek-logical" : "--peek-mem");
+    const auto max_address = logical ? 0xFFFFULL : 0xFFFFFULL;
+    if (address > max_address) {
+        throw std::invalid_argument("Memory peek address is out of range.");
+    }
+    std::uint64_t length = 1;
+    if (!length_text.empty()) {
+        length = parse_length_u64(length_text, logical ? "--peek-logical" : "--peek-mem");
+    }
+    if (length == 0U) {
+        throw std::invalid_argument("Memory peek length must be at least 1.");
+    }
+    length = std::min<std::uint64_t>(length, RuntimeOptions::max_peek_length);
+    return HeadlessMemoryRange{
+        .address = static_cast<std::uint32_t>(address),
+        .length = static_cast<std::size_t>(length),
+    };
+}
+
+auto parse_run_until_pc(const std::string& value) -> RunUntilPcOption {
+    const auto separator = value.find(':');
+    const auto pc_text = separator == std::string::npos ? value : value.substr(0, separator);
+    const auto max_frames_text = separator == std::string::npos ? std::string{} : value.substr(separator + 1);
+    const auto pc = parse_hex_u64(pc_text, "--run-until-pc");
+    if (pc > 0xFFFFULL) {
+        throw std::invalid_argument("--run-until-pc target is outside the 16-bit PC range.");
+    }
+    return RunUntilPcOption{
+        .pc = static_cast<std::uint16_t>(pc),
+        .max_frames = max_frames_text.empty()
+                          ? std::optional<std::uint64_t>{}
+                          : std::optional<std::uint64_t>{parse_decimal_u64(max_frames_text, "--run-until-pc")},
+    };
+}
+
+auto has_observability_output(const RuntimeOptions& options) -> bool {
+    return !options.peek_mem_ranges.empty() || !options.peek_logical_ranges.empty() ||
+           options.dump_vram_a_path.has_value() || options.dump_vram_b_path.has_value() ||
+           options.dump_vdp_regs || options.dump_cpu || options.inspect_path.has_value();
 }
 
 struct FrameDumpSummary {
@@ -168,6 +263,42 @@ auto parse_options(int argc, char** argv) -> RuntimeOptions {
             options.symbol_path = argv[++index];
             continue;
         }
+        if (arg == "--peek-mem" && (index + 1) < argc) {
+            options.peek_mem_ranges.push_back(parse_memory_range(argv[++index], false));
+            continue;
+        }
+        if (arg == "--peek-logical" && (index + 1) < argc) {
+            options.peek_logical_ranges.push_back(parse_memory_range(argv[++index], true));
+            continue;
+        }
+        if (arg == "--dump-vram-a" && (index + 1) < argc) {
+            options.dump_vram_a_path = argv[++index];
+            continue;
+        }
+        if (arg == "--dump-vram-b" && (index + 1) < argc) {
+            options.dump_vram_b_path = argv[++index];
+            continue;
+        }
+        if (arg == "--dump-vdp-regs") {
+            options.dump_vdp_regs = true;
+            continue;
+        }
+        if (arg == "--dump-cpu") {
+            options.dump_cpu = true;
+            continue;
+        }
+        if (arg == "--inspect-frame" && (index + 1) < argc) {
+            options.inspect_frame = parse_decimal_u64(argv[++index], "--inspect-frame");
+            continue;
+        }
+        if (arg == "--inspect" && (index + 1) < argc) {
+            options.inspect_path = argv[++index];
+            continue;
+        }
+        if (arg == "--run-until-pc" && (index + 1) < argc) {
+            options.run_until_pc = parse_run_until_pc(argv[++index]);
+            continue;
+        }
         if (arg == "--expect-audio-hash" && (index + 1) < argc) {
             options.expect_audio_hash = std::string(argv[++index]);
             continue;
@@ -193,6 +324,9 @@ auto parse_options(int argc, char** argv) -> RuntimeOptions {
     if (options.dump_frame_path.has_value() && options.dump_fixture_path.has_value()) {
         throw std::invalid_argument("Use either --dump-frame or --dump-fixture, not both.");
     }
+    if (options.dump_fixture_path.has_value() && has_observability_output(options)) {
+        throw std::invalid_argument("Headless inspection flags require the runtime path, not --dump-fixture.");
+    }
     return options;
 }
 
@@ -217,6 +351,9 @@ auto run_headless_app(int argc, char** argv) -> int {
                "[--dump-fixture path.ppm] "
                "[--hash-frame N] [--expect-frame-hash N HASH] [--hash-audio] [--expect-audio-hash HASH] "
                "[--trace path.log] [--trace-instructions N] [--symbols path.sym] "
+               "[--inspect path.txt] [--inspect-frame N] [--peek-mem ADDR[:LEN]] "
+               "[--peek-logical ADDR[:LEN]] [--dump-cpu] [--dump-vdp-regs] "
+               "[--dump-vram-a path.bin] [--dump-vram-b path.bin] [--run-until-pc HEX[:MAX_FRAMES]] "
                "[--press-key NAME] [--gamepad1-button NAME] [--gamepad2-button NAME]\n";
         return 0;
     }
@@ -358,12 +495,57 @@ auto run_headless_app(int argc, char** argv) -> int {
     std::vector<std::uint8_t> hashed_frame;
     const auto replay_frames = replayer.has_value() ? static_cast<std::uint64_t>(replayer->frame_count()) : 0U;
     std::uint64_t session_frames_to_run = options.step_one_frame ? 1U : options.frames_to_run;
+    if (options.run_until_pc.has_value()) {
+        session_frames_to_run = options.run_until_pc->max_frames.value_or(options.frames_to_run);
+    }
     if (replayer.has_value()) {
         session_frames_to_run = session_frames_to_run == 0U ? replay_frames : std::min(session_frames_to_run, replay_frames);
     }
     if (frame_hash_target.has_value()) {
         session_frames_to_run = std::max(session_frames_to_run, *frame_hash_target);
     }
+    if (options.inspect_frame.has_value()) {
+        session_frames_to_run = std::max(session_frames_to_run, *options.inspect_frame);
+    }
+
+    HeadlessRunUntilPcSummary run_until_pc_summary;
+    if (options.run_until_pc.has_value()) {
+        run_until_pc_summary.requested = true;
+        run_until_pc_summary.target_pc = options.run_until_pc->pc;
+        run_until_pc_summary.max_frames = options.run_until_pc->max_frames.value_or(options.frames_to_run);
+        emulator.mutable_cpu().clear_breakpoint_hits();
+        (void)emulator.mutable_cpu().add_breakpoint(core::cpu::Breakpoint{
+            .type = core::cpu::BreakpointType::pc,
+            .address = options.run_until_pc->pc,
+        });
+    }
+
+    std::optional<std::string> inspection_report;
+    std::vector<HeadlessVramDumpSummary> vram_dump_summaries;
+    auto perform_inspection = [&](const std::uint64_t frame) {
+        vram_dump_summaries.clear();
+        if (options.dump_vram_a_path.has_value()) {
+            vram_dump_summaries.push_back(
+                dump_headless_vram(emulator.vdp_a(), 'a', *options.dump_vram_a_path)
+            );
+        }
+        if (options.dump_vram_b_path.has_value()) {
+            vram_dump_summaries.push_back(
+                dump_headless_vram(emulator.vdp_b(), 'b', *options.dump_vram_b_path)
+            );
+        }
+        const auto include_default_register_blocks =
+            options.inspect_path.has_value() && !options.dump_cpu && !options.dump_vdp_regs;
+        HeadlessInspectionConfig config{
+            .frame = frame,
+            .dump_cpu = options.dump_cpu || include_default_register_blocks,
+            .dump_vdp_regs = options.dump_vdp_regs || include_default_register_blocks,
+            .physical_peeks = options.peek_mem_ranges,
+            .logical_peeks = options.peek_logical_ranges,
+            .vram_dumps = vram_dump_summaries,
+        };
+        inspection_report = format_headless_inspection_report(emulator, config, run_until_pc_summary);
+    };
 
     for (std::uint64_t frame = 0; frame < session_frames_to_run; ++frame) {
         if (replayer.has_value() && frame < replay_frames) {
@@ -372,6 +554,49 @@ auto run_headless_app(int argc, char** argv) -> int {
         emulator.run_frames(1);
         if (frame_hash_target.has_value() && (frame + 1U) == *frame_hash_target) {
             hashed_frame = core::video::Compositor::compose_dual_vdp(emulator.vdp_a(), emulator.vdp_b());
+        }
+        const auto pc_at_frame_end = emulator.cpu().state_snapshot().registers.pc;
+        if (options.run_until_pc.has_value() && !run_until_pc_summary.hit &&
+            (!emulator.cpu().breakpoint_hits().empty() || pc_at_frame_end == options.run_until_pc->pc)) {
+            run_until_pc_summary.hit = true;
+            run_until_pc_summary.frame = frame + 1U;
+            run_until_pc_summary.master_cycle = emulator.master_cycle();
+            if (!options.inspect_frame.has_value()) {
+                if (has_observability_output(options)) {
+                    perform_inspection(frame + 1U);
+                }
+                break;
+            }
+        }
+        if (options.inspect_frame.has_value() && has_observability_output(options) &&
+            (frame + 1U) == *options.inspect_frame) {
+            if (options.run_until_pc.has_value() && !run_until_pc_summary.hit) {
+                run_until_pc_summary.frame = frame + 1U;
+                run_until_pc_summary.master_cycle = emulator.master_cycle();
+            }
+            perform_inspection(frame + 1U);
+        }
+    }
+
+    if (options.run_until_pc.has_value() && !run_until_pc_summary.hit) {
+        run_until_pc_summary.frame = emulator.completed_frames();
+        run_until_pc_summary.master_cycle = emulator.master_cycle();
+    }
+
+    if (has_observability_output(options) && !inspection_report.has_value()) {
+        perform_inspection(emulator.completed_frames());
+    }
+
+    if (options.inspect_path.has_value() && inspection_report.has_value()) {
+        std::ofstream output(*options.inspect_path);
+        if (!output) {
+            std::cerr << "Inspection write error: unable to open report path." << '\n';
+            return static_cast<int>(ExitCode::emulator_error);
+        }
+        output << *inspection_report;
+        if (!output) {
+            std::cerr << "Inspection write error: unable to write report." << '\n';
+            return static_cast<int>(ExitCode::emulator_error);
         }
     }
 
@@ -440,6 +665,30 @@ auto run_headless_app(int argc, char** argv) -> int {
         std::cout << "Frame dump path: " << options.dump_frame_path->string() << '\n';
         std::cout << "Frame dump size: " << runtime_dump->width << "x" << runtime_dump->height << '\n';
         std::cout << "Frame dump digest: " << runtime_dump->digest << '\n';
+    }
+    if (options.run_until_pc.has_value()) {
+        std::cout << "Run-until-PC target: 0x" << std::hex << std::nouppercase << std::setfill('0')
+                  << std::setw(4) << run_until_pc_summary.target_pc << std::dec << '\n';
+        std::cout << "Run-until-PC result: " << (run_until_pc_summary.hit ? "hit" : "not-hit") << '\n';
+        std::cout << "Run-until-PC frame: " << run_until_pc_summary.frame << '\n';
+        std::cout << "Run-until-PC master cycle: " << run_until_pc_summary.master_cycle << '\n';
+    }
+    for (const auto& dump : vram_dump_summaries) {
+        std::cout << "VDP-" << static_cast<char>(std::toupper(static_cast<unsigned char>(dump.vdp)))
+                  << " VRAM dump path: "
+                  << (dump.vdp == 'a' && options.dump_vram_a_path.has_value()
+                          ? options.dump_vram_a_path->string()
+                          : options.dump_vram_b_path.has_value() ? options.dump_vram_b_path->string()
+                                                                 : dump.path.string())
+                  << '\n';
+        std::cout << "VDP-" << static_cast<char>(std::toupper(static_cast<unsigned char>(dump.vdp)))
+                  << " VRAM SHA-256: " << dump.sha256 << '\n';
+    }
+    if (!options.inspect_path.has_value() && inspection_report.has_value()) {
+        std::cout << *inspection_report;
+    }
+    if (options.inspect_path.has_value()) {
+        std::cout << "Inspection report path: " << options.inspect_path->string() << '\n';
     }
     return static_cast<int>(ExitCode::success);
 }

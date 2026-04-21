@@ -349,7 +349,7 @@ void Core::write_logical(const std::uint16_t logical_address, const std::uint8_t
 auto Core::service_pending_interrupt(const bool int0_asserted, const bool int1_asserted)
     -> std::optional<InterruptService> {
     if (int0_asserted && iff1_ && interrupt_mode_ == 1) {
-        halted_ = false;
+        wake_from_halt_for_interrupt();
         iff1_ = false;
         iff2_ = false;
         push_word(pc_.value);
@@ -428,6 +428,9 @@ void Core::initialize_tables() {
     opcodes_[0x0E] = &Core::op_ld_c_n;
     opcodes_[0x11] = &Core::op_ld_de_nn;
     opcodes_[0x16] = &Core::op_ld_d_n;
+    opcodes_[0x1E] = &Core::op_ld_e_n;
+    opcodes_[0x26] = &Core::op_ld_h_n;
+    opcodes_[0x2E] = &Core::op_ld_l_n;
     opcodes_[0x1B] = &Core::op_dec_de;
     opcodes_[0x0F] = &Core::op_rrca;
     opcodes_[0x18] = &Core::op_jr_e;
@@ -595,12 +598,23 @@ auto Core::vectored_handler_address(const std::uint8_t fixed_code) -> std::uint1
 
 void Core::service_vectored_interrupt(const InterruptSource source, const std::uint8_t fixed_code) {
     static_cast<void>(source);
-    halted_ = false;
+    wake_from_halt_for_interrupt();
     iff1_ = false;
     iff2_ = false;
     const auto handler_address = vectored_handler_address(fixed_code);
     push_word(pc_.value);
     pc_.value = handler_address;
+}
+
+void Core::wake_from_halt_for_interrupt() {
+    // `op_halt` decrements `pc_` so a snapshot taken mid-halt points at the
+    // HALT opcode itself. Before pushing `pc_` as the interrupt return
+    // address, bump it past the HALT so `RETI` resumes at the instruction
+    // after HALT instead of re-entering halt forever.
+    if (halted_) {
+        halted_ = false;
+        pc_.value = static_cast<std::uint16_t>(pc_.value + 1U);
+    }
 }
 
 auto Core::register8_from_code(const std::uint8_t code) -> std::uint8_t& {
@@ -754,6 +768,12 @@ void Core::op_ld_b_n() { bc_.bytes.hi = fetch_byte(); }
 void Core::op_ld_c_n() { bc_.bytes.lo = fetch_byte(); }
 
 void Core::op_ld_d_n() { de_.bytes.hi = fetch_byte(); }
+
+void Core::op_ld_e_n() { de_.bytes.lo = fetch_byte(); }
+
+void Core::op_ld_h_n() { hl_.bytes.hi = fetch_byte(); }
+
+void Core::op_ld_l_n() { hl_.bytes.lo = fetch_byte(); }
 
 void Core::op_djnz_e() {
     const auto displacement = static_cast<std::int8_t>(fetch_byte());

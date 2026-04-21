@@ -175,6 +175,7 @@ class Core {
     void clear_timer_flag_on_tmdr_read(int index);
     [[nodiscard]] auto vectored_handler_address(std::uint8_t fixed_code) -> std::uint16_t;
     void service_vectored_interrupt(InterruptSource source, std::uint8_t fixed_code);
+    void wake_from_halt_for_interrupt();
     [[nodiscard]] auto register8_from_code(std::uint8_t code) -> std::uint8_t&;
     [[nodiscard]] auto register_pair_from_code(std::uint8_t code) -> Pair&;
     void update_tst_flags(std::uint8_t value);
@@ -188,6 +189,9 @@ class Core {
     void op_ld_b_n();
     void op_ld_c_n();
     void op_ld_d_n();
+    void op_ld_e_n();
+    void op_ld_h_n();
+    void op_ld_l_n();
     void op_djnz_e();
     void op_rrca();
     void op_inc_hl();

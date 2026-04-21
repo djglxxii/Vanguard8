@@ -101,6 +101,9 @@ Workflow:
 | 32 | Frontend live audio playback for interactive verification |
 | 33 | Fix instruction-granular audio timing for YM2151 busy polls |
 | 34 | Cover the timed HD64180 intermission opcode gaps exposed by PacManV8 T020 |
+| 35 | Add headless agent observability primitives for ROM verification |
+| 36 | Fix HD64180 HALT resume after interrupt |
+| 37 | Cover the timed HD64180 `LD E,n` opcode gap exposed by PacManV8 T020 |
 
 ## Milestones
 
@@ -1294,6 +1297,99 @@ Exit criteria:
   and trace paths remain behaviorally unchanged with or without inspection
 - The PacManV8 smoke command in `docs/emulator/milestones/35.md` produces a
   deterministic report covering CPU, both VDPs, and the requested RAM ranges
+
+### Milestone 36 — Fix HD64180 HALT Resume After Interrupt
+
+Objective:
+- Close the runtime CPU defect that re-blocked PacManV8 T020 after M35.
+  With M35 observability the blocker pinpointed the cause: when an
+  interrupt is accepted while the CPU is halted, the stack-pushed return
+  address is the HALT instruction's own address (because `op_halt`
+  decrements `pc_` and interrupt servicing pushes `pc_` as-is). After
+  `RETI` the CPU re-enters HALT and the foreground frame loop after
+  `HALT` never executes.
+
+Deliverables:
+- Corrected HALT-resume semantics in the extracted HD64180 runtime:
+  interrupt service pushes the address of the instruction *after* `HALT`
+  as the return target, across INT0, INT1, PRT0, and PRT1.
+- Focused extracted-core CPU tests pinning the HALT-wake contract for
+  each interrupt source, plus a repeat-wake regression.
+- Non-perturbation regression against an existing non-HALT-wake fixture
+  ROM proving frame, audio, and event-log digests are unchanged.
+- Runtime regression using only the M35 headless observability surface
+  proving the PacManV8 T020 repro now hits `0x0068` and `0x2EE3`.
+
+Closure rule:
+- Keep this milestone inside `third_party/z180/`, `src/core/cpu/`,
+  `tests/`, and the listed doc/task files only. Do not add opcode
+  coverage, interrupt-acceptance rewiring, VDP/audio/scheduler/frontend
+  work, M35 CLI changes, or PacManV8 ROM edits.
+
+Exit criteria:
+- PacManV8 T020's "What resolution would unblock it" condition is met:
+  the canonical headless runtime resumes foreground execution at the
+  instruction after `HALT` once the accepted VBlank / IM1 interrupt
+  service has completed.
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes with
+  the new HALT-wake tests included.
+- Deterministic digests for ROMs that do not depend on HALT-wake resume
+  are unchanged.
+
+### Milestone 37 — Timed HD64180 `LD E,n` Opcode Coverage for PacManV8 T020
+
+Objective:
+- Close the next real-ROM timed CPU compatibility gap exposed after M36
+  unblocked the HALT-resume path. With foreground game-flow execution
+  now resuming every VBlank, the PacManV8 blocked task
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T020-intermission-cutscenes.md`
+  now reaches the intermission panel setup path at
+  `intermission_fill_panel`, where the canonical headless runtime aborts
+  with `Unsupported timed Z180 opcode 0x1E at PC 0x332E`
+  (`LD E,n`). The preceding `LD D,n` (`0x16`) at `0x332C` already
+  executes, so only the `0x1E` form is missing. Sibling `LD E,n` sites
+  on the same active drawing block (`0x330E`, `0x3317`, `0x3321`,
+  `0x332E`, `0x3337`, `0x3341`, `0x3355`, `0x335E`, `0x3394`, `0x33A1`,
+  `0x33AE`, `0x33BB`) will hit the same handler.
+
+Deliverables:
+- Timed-core implementation of `LD E,n` (`0x1E`), plus the remaining
+  missing `LD r,n` sister forms on the same immediate-byte family
+  (`LD H,n` at `0x26`, `LD L,n` at `0x2E`), closed in one pass to avoid
+  a rebuild-per-opcode loop (precedent: milestone 34).
+- Adapter T-state timing entries for each new opcode (7 T-states each),
+  registered in the existing 7-T-state case group in
+  `src/core/cpu/z180_adapter.cpp`.
+- Focused extracted-core CPU tests pinning `E`, `H`, `L` destination
+  behavior, immediate-byte semantics, PC advancement, flag
+  preservation, and a three-opcode sequential test mirroring the
+  PacManV8 `LD D,n` → `LD E,n` → `LD A,n` pattern at `0x332C..0x3331`.
+- Non-perturbation regression against an existing fixture ROM that
+  does not exercise the new opcodes, proving frame, audio, and
+  event-log digests are byte-identical before and after.
+- Runtime regression proving the canonical PacManV8 T020 repro runs
+  past `PC=0x332E` without a timed-opcode abort and produces a stable
+  frame hash / CPU snapshot at frame 1020.
+
+Closure rule:
+- Keep this milestone inside `third_party/z180/`, `src/core/cpu/`,
+  `tests/`, and the listed doc/task files only. No general CPU opcode
+  sweep, no `DD`/`FD`/`CB` prefix work, no interrupt-controller,
+  scheduler, audio, VDP, or frontend changes, no M35 CLI changes, no
+  PacManV8 ROM edits.
+
+Exit criteria:
+- The emulator no longer aborts on the documented PacManV8 T020 path
+  with `Unsupported timed Z180 opcode 0x1E` at any of the sites listed
+  above.
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes with
+  the new opcode tests included, and no pre-existing CPU test is
+  relaxed.
+- Deterministic digests for ROMs that do not depend on the new
+  opcodes are unchanged.
+- PacManV8 T020 becomes actionable again from the emulator side; the
+  actual cutscene evidence refresh and acceptance happen in the
+  PacManV8 repo.
 
 ## Suggested Release Gates
 

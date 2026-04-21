@@ -153,3 +153,14 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 ## Milestone 35
 
 - `M35-T01` Add headless agent observability primitives for ROM verification.
+
+## Milestone 36
+
+- `M36-T01` Fix the HD64180 HALT-resume path so foreground code after
+  `HALT` actually runs on interrupt return.
+
+## Milestone 37
+
+- `M37-T01` Cover the missing timed HD64180 `LD E,n` opcode (plus sister
+  `LD H,n` / `LD L,n` forms) needed by the PacManV8 T020 intermission
+  panel setup path.

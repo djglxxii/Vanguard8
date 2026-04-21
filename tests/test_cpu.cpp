@@ -45,6 +45,20 @@ auto make_instruction_test_rom(std::initializer_list<std::uint8_t> program) -> s
     return rom;
 }
 
+auto make_halt_wake_test_rom() -> std::vector<std::uint8_t> {
+    // HALT at 0x0000; the instruction at 0x0001 is the documented resume
+    // target. 0x0038 holds a RETI so an INT0 IM1 service can return through
+    // it. 0x0002 is a second HALT for bounded `run_until_halt`-style drivers.
+    std::vector<std::uint8_t> rom(
+        vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+    rom[0x0000] = 0x76;  // HALT
+    rom[0x0001] = 0x00;  // NOP (resume target)
+    rom[0x0002] = 0x76;  // HALT
+    rom[0x0038] = 0xED;  // RETI
+    rom[0x0039] = 0x4D;
+    return rom;
+}
+
 auto run_test_program(
     const std::vector<std::uint8_t>& rom,
     const vanguard8::third_party::z180::RegisterSnapshot& initial_state,
@@ -274,6 +288,129 @@ TEST_CASE("scheduled CPU covers LD D,n used by the PacManV8 boot path", "[cpu]")
     REQUIRE(cpu.step_scheduled_instruction() == 7);
     REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.de >> 8U) == 0x56);
     REQUIRE(cpu.pc() == 0x0002);
+}
+
+TEST_CASE("scheduled CPU covers LD E,n used by the PacManV8 T020 intermission panel path", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0x1E, 0x50,  // LD E,0x50
+        0x76,        // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    const auto preserved_flags = static_cast<std::uint8_t>(
+        flag_sign | flag_zero | flag_half | flag_parity_overflow | flag_subtract | flag_carry
+    );
+    state.registers.af = static_cast<std::uint16_t>(0xAA00U | preserved_flags);
+    state.registers.de = 0x4400;
+    state.registers.hl = 0xBEEF;
+    state.registers.bc = 0x2418;
+    cpu.load_state_snapshot(state);
+
+    REQUIRE(cpu.peek_logical(cpu.pc()) == 0x1E);
+    REQUIRE(cpu.next_scheduled_tstates() == 7);
+    REQUIRE(cpu.step_scheduled_instruction() == 7);
+
+    const auto after = cpu.state_snapshot();
+    REQUIRE(static_cast<std::uint8_t>(after.registers.de & 0x00FFU) == 0x50);
+    REQUIRE(static_cast<std::uint8_t>(after.registers.de >> 8U) == 0x44);
+    REQUIRE(after.registers.hl == 0xBEEF);
+    REQUIRE(after.registers.bc == 0x2418);
+    REQUIRE(static_cast<std::uint8_t>(after.registers.af & 0x00FFU) == preserved_flags);
+    REQUIRE(cpu.pc() == 0x0002);
+}
+
+TEST_CASE("scheduled CPU covers LD H,n used by the PacManV8 T020 intermission panel path", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0x26, 0x7F,  // LD H,0x7F
+        0x76,        // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    const auto preserved_flags = static_cast<std::uint8_t>(
+        flag_sign | flag_zero | flag_half | flag_parity_overflow | flag_subtract | flag_carry
+    );
+    state.registers.af = static_cast<std::uint16_t>(0xAA00U | preserved_flags);
+    state.registers.hl = 0x00A5;
+    state.registers.de = 0xCAFE;
+    state.registers.bc = 0x1234;
+    cpu.load_state_snapshot(state);
+
+    REQUIRE(cpu.peek_logical(cpu.pc()) == 0x26);
+    REQUIRE(cpu.next_scheduled_tstates() == 7);
+    REQUIRE(cpu.step_scheduled_instruction() == 7);
+
+    const auto after = cpu.state_snapshot();
+    REQUIRE(static_cast<std::uint8_t>(after.registers.hl >> 8U) == 0x7F);
+    REQUIRE(static_cast<std::uint8_t>(after.registers.hl & 0x00FFU) == 0xA5);
+    REQUIRE(after.registers.de == 0xCAFE);
+    REQUIRE(after.registers.bc == 0x1234);
+    REQUIRE(static_cast<std::uint8_t>(after.registers.af & 0x00FFU) == preserved_flags);
+    REQUIRE(cpu.pc() == 0x0002);
+}
+
+TEST_CASE("scheduled CPU covers LD L,n used by the PacManV8 T020 intermission panel path", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0x2E, 0xC3,  // LD L,0xC3
+        0x76,        // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    const auto preserved_flags = static_cast<std::uint8_t>(
+        flag_sign | flag_zero | flag_half | flag_parity_overflow | flag_subtract | flag_carry
+    );
+    state.registers.af = static_cast<std::uint16_t>(0xAA00U | preserved_flags);
+    state.registers.hl = 0x7F00;
+    state.registers.de = 0xCAFE;
+    state.registers.bc = 0x1234;
+    cpu.load_state_snapshot(state);
+
+    REQUIRE(cpu.peek_logical(cpu.pc()) == 0x2E);
+    REQUIRE(cpu.next_scheduled_tstates() == 7);
+    REQUIRE(cpu.step_scheduled_instruction() == 7);
+
+    const auto after = cpu.state_snapshot();
+    REQUIRE(static_cast<std::uint8_t>(after.registers.hl & 0x00FFU) == 0xC3);
+    REQUIRE(static_cast<std::uint8_t>(after.registers.hl >> 8U) == 0x7F);
+    REQUIRE(after.registers.de == 0xCAFE);
+    REQUIRE(after.registers.bc == 0x1234);
+    REQUIRE(static_cast<std::uint8_t>(after.registers.af & 0x00FFU) == preserved_flags);
+    REQUIRE(cpu.pc() == 0x0002);
+}
+
+TEST_CASE("scheduled CPU covers the PacManV8 T020 LD D,n -> LD E,n -> LD A,n rectangle-fill prologue",
+          "[cpu]") {
+    // Mirrors the exact pattern at PacManV8 0x332C..0x3331:
+    //   LD D,0x44  ; height
+    //   LD E,0x50  ; width
+    //   LD A,0x22  ; fill byte
+    const auto rom = make_instruction_test_rom({
+        0x16, 0x44,  // LD D,0x44
+        0x1E, 0x50,  // LD E,0x50
+        0x3E, 0x22,  // LD A,0x22
+        0x76,        // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(cpu.step_scheduled_instruction() == 7);
+
+    const auto after = cpu.state_snapshot();
+    REQUIRE(static_cast<std::uint8_t>(after.registers.de >> 8U) == 0x44);
+    REQUIRE(static_cast<std::uint8_t>(after.registers.de & 0x00FFU) == 0x50);
+    REQUIRE(static_cast<std::uint8_t>(after.registers.af >> 8U) == 0x22);
+    REQUIRE(cpu.pc() == 0x0006);
 }
 
 TEST_CASE("scheduled CPU covers LD BC,nn used by the PacManV8 VDP-B bring-up path", "[cpu]") {
@@ -1790,6 +1927,214 @@ TEST_CASE("scheduled CPU covers CP n / CP r / CP (HL) flag semantics", "[cpu]") 
         REQUIRE((flags & flag_carry) == 0);
         REQUIRE((flags & flag_subtract) == flag_subtract);
         REQUIRE((cpu_m.state_snapshot().registers.af >> 8U) == 0x77);
+    }
+}
+
+TEST_CASE("HALT with interrupts disabled stays halted across repeated steps", "[cpu]") {
+    const auto rom = make_halt_wake_test_rom();
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    state.registers.cbar = 0x48;
+    state.registers.cbr = 0xF0;
+    state.registers.bbr = 0x04;
+    state.registers.sp = 0x8100;
+    cpu.load_state_snapshot(state);
+    cpu.set_interrupt_mode(1);
+    cpu.set_iff1(false);
+
+    cpu.step_instruction();
+    REQUIRE(cpu.halted());
+    REQUIRE(cpu.pc() == 0x0000);
+
+    for (int i = 0; i < 8; ++i) {
+        REQUIRE_FALSE(cpu.service_pending_interrupt().has_value());
+        REQUIRE(cpu.halted());
+        REQUIRE(cpu.pc() == 0x0000);
+    }
+}
+
+TEST_CASE("HALT resumes at the instruction after HALT on INT0 IM1 wake", "[cpu]") {
+    const auto rom = make_halt_wake_test_rom();
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    state.registers.cbar = 0x48;
+    state.registers.cbr = 0xF0;
+    state.registers.bbr = 0x04;
+    state.registers.sp = 0x8100;
+    cpu.load_state_snapshot(state);
+    cpu.set_interrupt_mode(1);
+    cpu.set_iff1(true);
+
+    cpu.step_instruction();
+    REQUIRE(cpu.halted());
+    REQUIRE(cpu.pc() == 0x0000);
+
+    write_vdp_register(bus, 0x81, 1, 0x20);
+    bus.mutable_vdp_a().set_vblank_flag(true);
+    bus.sync_vdp_interrupt_lines();
+    REQUIRE(bus.int0_asserted());
+
+    const auto service = cpu.service_pending_interrupt();
+    REQUIRE(service.has_value());
+    REQUIRE(service->source == vanguard8::core::cpu::InterruptSource::int0);
+    REQUIRE_FALSE(cpu.halted());
+    REQUIRE(cpu.pc() == 0x0038);
+
+    const auto sp_after_push = cpu.state_snapshot().registers.sp;
+    REQUIRE(sp_after_push == static_cast<std::uint16_t>(0x8100U - 2U));
+    const auto return_lo = bus.read_memory(cpu.translate_logical_address(sp_after_push));
+    const auto return_hi = bus.read_memory(cpu.translate_logical_address(
+        static_cast<std::uint16_t>(sp_after_push + 1U)));
+    const auto return_address = static_cast<std::uint16_t>(return_lo | (return_hi << 8));
+    REQUIRE(return_address == 0x0001);
+
+    cpu.step_instruction();  // executes RETI at 0x0038
+    REQUIRE(cpu.pc() == 0x0001);
+    REQUIRE_FALSE(cpu.halted());
+    REQUIRE(cpu.state_snapshot().registers.sp == 0x8100);
+}
+
+TEST_CASE("HALT resumes at the instruction after HALT on INT1 IM2 wake", "[cpu]") {
+    const auto rom = make_halt_wake_test_rom();
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    state.registers.cbar = 0x48;
+    state.registers.cbr = 0xF0;
+    state.registers.bbr = 0x04;
+    state.registers.sp = 0x8100;
+    cpu.load_state_snapshot(state);
+    cpu.out0(0x33, 0xE0);
+    cpu.out0(0x34, 0x02);
+    cpu.set_register_i(0x80);
+    cpu.set_interrupt_mode(2);
+    cpu.set_iff1(true);
+
+    // Vectored INT1 handler address 0x9000 (points back into ROM's 0x4000
+    // bank, which is open-bus here — we only care about the resume target
+    // bytes on the stack, not executing the handler body).
+    bus.write_memory(0xF00E0, 0x00);
+    bus.write_memory(0xF00E1, 0x90);
+
+    cpu.step_instruction();
+    REQUIRE(cpu.halted());
+    REQUIRE(cpu.pc() == 0x0000);
+
+    bus.set_int1(true);
+    REQUIRE(bus.int1_asserted());
+
+    const auto service = cpu.service_pending_interrupt();
+    REQUIRE(service.has_value());
+    REQUIRE(service->source == vanguard8::core::cpu::InterruptSource::int1);
+    REQUIRE(service->handler_address == 0x9000);
+    REQUIRE_FALSE(cpu.halted());
+    REQUIRE(cpu.pc() == 0x9000);
+
+    const auto sp_after_push = cpu.state_snapshot().registers.sp;
+    const auto return_lo = bus.read_memory(cpu.translate_logical_address(sp_after_push));
+    const auto return_hi = bus.read_memory(cpu.translate_logical_address(
+        static_cast<std::uint16_t>(sp_after_push + 1U)));
+    const auto return_address = static_cast<std::uint16_t>(return_lo | (return_hi << 8));
+    REQUIRE(return_address == 0x0001);
+}
+
+TEST_CASE("HALT resumes at the instruction after HALT on PRT0 wake", "[cpu]") {
+    const auto rom = make_halt_wake_test_rom();
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    state.registers.cbar = 0x48;
+    state.registers.cbr = 0xF0;
+    state.registers.bbr = 0x04;
+    state.registers.sp = 0x8100;
+    cpu.load_state_snapshot(state);
+    cpu.out0(0x33, 0xE0);
+    cpu.set_register_i(0x80);
+    cpu.set_interrupt_mode(1);
+    cpu.set_iff1(true);
+
+    bus.write_memory(0xF00E4, 0x00);
+    bus.write_memory(0xF00E5, 0xA0);
+
+    cpu.step_instruction();
+    REQUIRE(cpu.halted());
+    REQUIRE(cpu.pc() == 0x0000);
+
+    write_internal_16(cpu, 0x0C, 1);
+    write_internal_16(cpu, 0x0E, 1);
+    cpu.out0(0x10, 0x11);
+    cpu.advance_tstates(20);
+
+    const auto service = cpu.service_pending_interrupt();
+    REQUIRE(service.has_value());
+    REQUIRE(service->source == vanguard8::core::cpu::InterruptSource::prt0);
+    REQUIRE(service->handler_address == 0xA000);
+    REQUIRE_FALSE(cpu.halted());
+    REQUIRE(cpu.pc() == 0xA000);
+
+    const auto sp_after_push = cpu.state_snapshot().registers.sp;
+    const auto return_lo = bus.read_memory(cpu.translate_logical_address(sp_after_push));
+    const auto return_hi = bus.read_memory(cpu.translate_logical_address(
+        static_cast<std::uint16_t>(sp_after_push + 1U)));
+    REQUIRE(static_cast<std::uint16_t>(return_lo | (return_hi << 8)) == 0x0001);
+}
+
+TEST_CASE("Repeated HALT wake cycles each resume at the instruction after HALT", "[cpu]") {
+    // Variant of the HALT-wake test that cycles HALT -> service -> RETI twice
+    // to prove the fix is stable across back-to-back vblank-style wakes, the
+    // observed shape of the PacManV8 idle_loop.
+    std::vector<std::uint8_t> rom(
+        vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+    rom[0x0000] = 0x76;  // HALT
+    rom[0x0001] = 0x18; rom[0x0002] = 0xFD;  // JR -3 (back to HALT)
+    rom[0x0038] = 0xFB;  // EI
+    rom[0x0039] = 0xED; rom[0x003A] = 0x4D;  // RETI
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    state.registers.cbar = 0x48;
+    state.registers.cbr = 0xF0;
+    state.registers.bbr = 0x04;
+    state.registers.sp = 0x8100;
+    cpu.load_state_snapshot(state);
+    cpu.set_interrupt_mode(1);
+    cpu.set_iff1(true);
+
+    write_vdp_register(bus, 0x81, 1, 0x20);
+
+    for (int cycle = 0; cycle < 2; ++cycle) {
+        cpu.step_instruction();  // HALT
+        REQUIRE(cpu.halted());
+        REQUIRE(cpu.pc() == 0x0000);
+
+        bus.mutable_vdp_a().set_vblank_flag(true);
+        bus.sync_vdp_interrupt_lines();
+        REQUIRE(bus.int0_asserted());
+
+        const auto service = cpu.service_pending_interrupt();
+        REQUIRE(service.has_value());
+        REQUIRE(service->source == vanguard8::core::cpu::InterruptSource::int0);
+        REQUIRE(cpu.pc() == 0x0038);
+
+        bus.mutable_vdp_a().set_vblank_flag(false);
+        bus.sync_vdp_interrupt_lines();
+
+        cpu.step_instruction();  // EI
+        cpu.step_instruction();  // RETI
+        REQUIRE(cpu.pc() == 0x0001);
+        REQUIRE(cpu.state_snapshot().registers.sp == 0x8100);
+        REQUIRE_FALSE(cpu.halted());
+
+        cpu.step_instruction();  // JR -3 (back to HALT at 0x0000)
+        REQUIRE(cpu.pc() == 0x0000);
     }
 }
 

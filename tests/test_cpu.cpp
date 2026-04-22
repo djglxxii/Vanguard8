@@ -1607,6 +1607,161 @@ TEST_CASE("scheduled CPU covers conditional JR Z / JP Z,nn / JP NZ,nn / RET NZ",
     }
 }
 
+TEST_CASE("scheduled CPU covers RET NC / RET C for PacManV8 intermission_advance_review_index (M38)", "[cpu]") {
+    constexpr auto preserved_flags = static_cast<std::uint8_t>(
+        flag_sign | flag_zero | flag_half | flag_parity_overflow | flag_subtract | flag_carry
+    );
+
+    SECTION("RET NC (0xD0) taken with carry clear pops SP and costs 11, leaves flags unchanged") {
+        const auto rom = make_instruction_test_rom({0xD0, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.sp = 0x8100;
+        // carry clear; keep the other flag bits set so we can check none of them move.
+        state.registers.af = static_cast<std::uint16_t>(
+            0x0000U | (preserved_flags & static_cast<std::uint8_t>(~flag_carry))
+        );
+        cpu.load_state_snapshot(state);
+        bus.write_memory(0xF0100, 0x34);
+        bus.write_memory(0xF0101, 0x12);
+
+        const auto flags_before = static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU);
+        REQUIRE(cpu.next_scheduled_tstates() == 11);
+        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.pc() == 0x1234);
+        REQUIRE(cpu.state_snapshot().registers.sp == 0x8102);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == flags_before);
+    }
+
+    SECTION("RET NC (0xD0) not taken with carry set advances PC by 1 in 5 T-states, leaves SP and flags unchanged") {
+        const auto rom = make_instruction_test_rom({0xD0, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.sp = 0x8100;
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | preserved_flags);
+        cpu.load_state_snapshot(state);
+
+        const auto flags_before = static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU);
+        REQUIRE(cpu.next_scheduled_tstates() == 5);
+        REQUIRE(cpu.step_scheduled_instruction() == 5);
+        REQUIRE(cpu.pc() == 0x0001);
+        REQUIRE(cpu.state_snapshot().registers.sp == 0x8100);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == flags_before);
+    }
+
+    SECTION("RET C (0xD8) taken with carry set pops SP and costs 11, leaves flags unchanged") {
+        const auto rom = make_instruction_test_rom({0xD8, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.sp = 0x8100;
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | preserved_flags);
+        cpu.load_state_snapshot(state);
+        bus.write_memory(0xF0100, 0x78);
+        bus.write_memory(0xF0101, 0x56);
+
+        const auto flags_before = static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU);
+        REQUIRE(cpu.next_scheduled_tstates() == 11);
+        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.pc() == 0x5678);
+        REQUIRE(cpu.state_snapshot().registers.sp == 0x8102);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == flags_before);
+    }
+
+    SECTION("RET C (0xD8) not taken with carry clear advances PC by 1 in 5 T-states, leaves SP and flags unchanged") {
+        const auto rom = make_instruction_test_rom({0xD8, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.sp = 0x8100;
+        // carry clear with other flags set.
+        state.registers.af = static_cast<std::uint16_t>(
+            0x0000U | (preserved_flags & static_cast<std::uint8_t>(~flag_carry))
+        );
+        cpu.load_state_snapshot(state);
+
+        const auto flags_before = static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU);
+        REQUIRE(cpu.next_scheduled_tstates() == 5);
+        REQUIRE(cpu.step_scheduled_instruction() == 5);
+        REQUIRE(cpu.pc() == 0x0001);
+        REQUIRE(cpu.state_snapshot().registers.sp == 0x8100);
+        REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == flags_before);
+    }
+
+    SECTION("intermission_advance_review_index pattern: RET NC guards the INC/store path") {
+        // Mirror PacManV8 0x2F70..0x2F7A:
+        //   LD A,(addr)  ; 3A lo hi
+        //   CP n         ; FE 02
+        //   RET NC       ; D0  — taken when A >= n (carry clear after CP)
+        //   INC A        ; 3C
+        //   LD (addr),A  ; 32 lo hi
+        //   RET          ; C9
+        // We drive the subroutine via CALL so the outer RET/early-return land on a HALT.
+        constexpr std::uint16_t review_index_addr = 0x8277;
+        const auto rom = make_instruction_test_rom({
+            0x31, 0x00, 0x82,              // 0x0000: LD SP,0x8200
+            0xCD, 0x10, 0x00,              // 0x0003: CALL 0x0010
+            0x76,                          // 0x0006: HALT (return target)
+            0x00, 0x00, 0x00,              // 0x0007..0x0009 padding
+            0x00, 0x00, 0x00,              // 0x000A..0x000C padding
+            0x00, 0x00, 0x00,              // 0x000D..0x000F padding
+            // 0x0010: intermission_advance_review_index
+            0x3A, 0x77, 0x82,              // LD A,(review_index)
+            0xFE, 0x02,                    // CP 2
+            0xD0,                          // RET NC
+            0x3C,                          // INC A
+            0x32, 0x77, 0x82,              // LD (review_index),A
+            0xC9,                          // RET
+        });
+
+        SECTION("carry-clear early-return leaves the stored byte untouched") {
+            vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+            vanguard8::core::cpu::Z180Adapter cpu{bus};
+            auto state = cpu.state_snapshot();
+            state.registers.cbar = 0x48;
+            state.registers.cbr = 0xF0;
+            state.registers.bbr = 0x04;
+            cpu.load_state_snapshot(state);
+            // A == n (2): CP leaves carry clear, so RET NC is taken and the
+            // stored byte must NOT be incremented.
+            bus.write_memory(0xF0000U + (review_index_addr - 0x8000U), 0x02);
+
+            cpu.run_until_halt(64);
+            REQUIRE(bus.read_memory(0xF0000U + (review_index_addr - 0x8000U)) == 0x02);
+        }
+
+        SECTION("carry-set fall-through increments the stored byte") {
+            vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+            vanguard8::core::cpu::Z180Adapter cpu{bus};
+            auto state = cpu.state_snapshot();
+            state.registers.cbar = 0x48;
+            state.registers.cbr = 0xF0;
+            state.registers.bbr = 0x04;
+            cpu.load_state_snapshot(state);
+            // A < n (1 < 2): CP leaves carry set, so RET NC falls through,
+            // INC A runs, and the stored byte becomes 0x02.
+            bus.write_memory(0xF0000U + (review_index_addr - 0x8000U), 0x01);
+
+            cpu.run_until_halt(64);
+            REQUIRE(bus.read_memory(0xF0000U + (review_index_addr - 0x8000U)) == 0x02);
+        }
+    }
+}
+
 TEST_CASE("scheduled CPU covers DJNZ and carry-conditional JR used by the PacManV8 T020 path", "[cpu]") {
     SECTION("DJNZ (0x10) decrements B, takes the branch in 13 T-states, and leaves flags untouched") {
         const auto rom = make_instruction_test_rom({0x10, 0x02, 0x76, 0x00, 0x76});

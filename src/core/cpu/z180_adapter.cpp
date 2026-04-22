@@ -415,6 +415,10 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
         return (core_.register_snapshot().af & flag_zero) == 0U ? 11 : 5;
     case 0xC8:
         return (core_.register_snapshot().af & flag_zero) != 0U ? 11 : 5;
+    case 0xD0:
+        return (core_.register_snapshot().af & flag_carry) == 0U ? 11 : 5;
+    case 0xD8:
+        return (core_.register_snapshot().af & flag_carry) != 0U ? 11 : 5;
     case 0x22:
         return 16;
     case 0x32:

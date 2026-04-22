@@ -462,6 +462,8 @@ void Core::initialize_tables() {
     opcodes_[0xCA] = &Core::op_jp_z_nn;
     opcodes_[0xC0] = &Core::op_ret_nz;
     opcodes_[0xC8] = &Core::op_ret_z;
+    opcodes_[0xD0] = &Core::op_ret_nc;
+    opcodes_[0xD8] = &Core::op_ret_c;
     opcodes_[0xC9] = &Core::op_ret;
     opcodes_[0xCD] = &Core::op_call_nn;
     opcodes_[0xD3] = &Core::op_out_n_a;
@@ -1031,6 +1033,18 @@ void Core::op_ret_z() {
 
 void Core::op_ret_nz() {
     if ((af_.bytes.lo & flag_zero) == 0U) {
+        pc_.value = pop_word();
+    }
+}
+
+void Core::op_ret_nc() {
+    if ((af_.bytes.lo & flag_carry) == 0U) {
+        pc_.value = pop_word();
+    }
+}
+
+void Core::op_ret_c() {
+    if ((af_.bytes.lo & flag_carry) != 0U) {
         pc_.value = pop_word();
     }
 }

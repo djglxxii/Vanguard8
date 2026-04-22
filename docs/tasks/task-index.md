@@ -164,3 +164,9 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 - `M37-T01` Cover the missing timed HD64180 `LD E,n` opcode (plus sister
   `LD H,n` / `LD L,n` forms) needed by the PacManV8 T020 intermission
   panel setup path.
+
+## Milestone 38
+
+- `M38-T01` Cover the missing timed HD64180 `RET NC` opcode (plus
+  carry-family sister `RET C` form) needed by the PacManV8 T020
+  intermission review-index advance path.

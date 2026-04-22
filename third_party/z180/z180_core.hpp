@@ -237,6 +237,8 @@ class Core {
     void op_dec_de();
     void op_ret_z();
     void op_ret_nz();
+    void op_ret_nc();
+    void op_ret_c();
     void op_jr_e();
     void op_halt();
     void op_jp_nn();

@@ -1,14 +1,30 @@
 # Current Milestone Lock
 
-- Active milestone: `37`
-- Title: `Timed HD64180 LD E,n Opcode Coverage for PacManV8 T020`
-- Status: `ready_for_verification`
+- Active milestone: `38`
+- Title: `Timed HD64180 RET NC Opcode Coverage for PacManV8 T020`
+- Status: `accepted`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
-- Contract file: `docs/emulator/milestones/37.md`
+- Contract file: `docs/emulator/milestones/38.md`
 
 Execution rules:
-- Only milestone `37` task files present in `docs/tasks/active/` may be
-  executed.
+- Milestone `38` is accepted on 2026-04-21. Task `M38-T01` is in
+  `docs/tasks/completed/`. Timed-core support for `RET NC` (`0xD0`)
+  and `RET C` (`0xD8`) was verified via `ctest` at `178/178`
+  (177 prior + 1 new test case covering five sections) and by the
+  PacManV8 T020 runtime evidence showing the scene-1 → scene-2
+  review-index advance now executes past `PC=0x2F75` and produces
+  stable frame SHA-256 hashes at frame `1770`
+  (`082dd26d090aa2632128d266bddd6faa0c50b5b96819dfc7e6f02f3276d93066`,
+  digest `3498303648502710181`), frame `2520`
+  (`c80b7468c3a56d2383582b717f17bc36fde775f5821ab4311081d796e4f0a2ff`,
+  digest `10606555846525264891`), and frame `2640`
+  (`31f8226ca0fe920a1b85e33ecd0625ba0846439a3a15d146e1497c817285d34c`,
+  digest `6526782969573701363`) across repeat runs, without the
+  `Unsupported timed Z180 opcode 0xD0 at PC 0x2F75` abort.
+- No new milestone is active until a milestone `39` contract is
+  defined in `docs/emulator/milestones/` and this lock file is
+  updated to point at it. Do not open new task files under
+  `docs/tasks/active/` without that contract.
 - Milestone `31` is accepted.
 - Milestone `32` is accepted. The frontend audio plumbing shipped on
   2026-04-19; the underlying CPU/audio co-scheduling defect that made
@@ -30,27 +46,13 @@ Execution rules:
   by the PacManV8 T020 runtime evidence showing
   `GAME_FLOW_CURRENT_STATE` now advances past its initial ATTRACT
   value.
-- Milestone `37` is `ready_for_verification`. Added timed-core support
-  for `LD E,n` (`0x1E`), `LD H,n` (`0x26`), and `LD L,n` (`0x2E`)
-  (precedent: M34 family closure). Four new focused CPU tests pin
-  each destination register, immediate-byte semantics, `PC+2`
-  advancement, flag preservation, and the exact
-  `LD D,n → LD E,n → LD A,n` sequence at PacManV8 `0x332C..0x3331`.
-  Adapter T-state timing entries added to the existing 7-T-state
-  case group in `src/core/cpu/z180_adapter.cpp`. `ctest` is green at
-  `177/177` (173 prior + 4 new), no pre-existing test relaxed. The
-  canonical PacManV8 T020 repro
-  (`vanguard8_headless --rom build/pacman.rom --frames 1020 ...`)
-  runs to completion without the `Unsupported timed Z180 opcode 0x1E
-  at PC 0x332E` abort, and three repeat runs emit identical frame
-  SHA-256 `a79b667a...` and event-log digest `11584233142677547359`,
-  confirming determinism.
-- Keep milestone `37` work inside the allowed paths declared in
-  `docs/emulator/milestones/37.md`: `third_party/z180/`, `src/core/cpu/`,
-  `tests/`, and the doc/task files listed in the contract.
-- Do not bundle new opcode coverage beyond the three `LD r,n` forms,
-  interrupt-acceptance rewiring, HALT-wake changes, VDP / audio /
-  scheduler / frontend work, M35 CLI changes, or PacManV8 ROM edits
-  into this milestone.
+- Milestone `37` is accepted on 2026-04-21. Task `M37-T01` is in
+  `docs/tasks/completed/`. Timed-core support for `LD E,n` (`0x1E`),
+  `LD H,n` (`0x26`), and `LD L,n` (`0x2E`) was verified via `ctest`
+  at `177/177` (173 prior + 4 new) and by the PacManV8 T020 runtime
+  evidence showing scene-1 intermission drawing now captures at
+  frame `1020` with stable frame SHA-256 `a79b667a...` and event-log
+  digest `11584233142677547359` across three repeat runs, without
+  the `Unsupported timed Z180 opcode 0x1E at PC 0x332E` abort.
 - Canonical Vanguard8 headless binary for verification is
   `cmake-build-debug/src/vanguard8_headless`.

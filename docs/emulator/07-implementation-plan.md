@@ -1391,6 +1391,69 @@ Exit criteria:
   actual cutscene evidence refresh and acceptance happen in the
   PacManV8 repo.
 
+### Milestone 38 — Timed HD64180 `RET NC` Opcode Coverage for PacManV8 T020
+
+Objective:
+- Close the next real-ROM timed CPU compatibility gap exposed after
+  M37 unblocked the scene-1 intermission panel setup path. With
+  `LD E,n`, `LD H,n`, and `LD L,n` now timed, the PacManV8 blocked
+  task
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T020-intermission-cutscenes.md`
+  renders the first intermission scene and advances past it. The
+  canonical headless runtime then aborts while advancing from scene
+  1 to scene 2 with `Unsupported timed Z180 opcode 0xD0 at PC
+  0x2F75` (`RET NC`) inside `intermission_advance_review_index`.
+  `RET Z` (`0xC8`) and `RET NZ` (`0xC0`) already execute in the
+  intermission path, so only the carry-conditional forms are
+  missing.
+
+Deliverables:
+- Timed-core implementation of `RET NC` (`0xD0`), plus the remaining
+  missing carry-conditional sister form `RET C` (`0xD8`), closed in
+  one pass to avoid a rebuild-per-opcode loop (precedent:
+  milestones 34 and 37). `RET C` is used in other accepted runtime
+  modules — `src/ghost_house.asm`, `src/movement.asm`, and
+  `src/ghost_ai.asm` — per the T020 blocker's look-ahead.
+- Adapter T-state timing entries for each new opcode:
+  **11 T-states** for the taken branch, **5 T-states** for the
+  not-taken branch, registered in the existing `RET cc` timing
+  groups in `src/core/cpu/z180_adapter.cpp` alongside `0xC8`
+  (`RET Z`) and `0xC0` (`RET NZ`).
+- Focused extracted-core CPU tests pinning taken and not-taken
+  semantics for both opcodes (PC/SP behavior, flag preservation,
+  cycle classification) and a review-index pattern test mirroring
+  the PacManV8 `intermission_advance_review_index` sequence at
+  `0x2F70..0x2F7A`.
+- Non-perturbation regression against an existing fixture ROM that
+  does not exercise the new opcodes, proving frame, audio, and
+  event-log digests are byte-identical before and after.
+- Runtime regression proving the canonical PacManV8 T020 repro runs
+  past `PC=0x2F75` without a timed-opcode abort and produces stable
+  frame hashes / CPU snapshots at the scene-2, scene-3, and
+  intermission completion frames (`1770`, `2520`, `2640`).
+
+Closure rule:
+- Keep this milestone inside `third_party/z180/`, `src/core/cpu/`,
+  `tests/`, and the listed doc/task files only. No general CPU
+  opcode sweep, no parity (`RET PO` / `RET PE`) or sign (`RET P` /
+  `RET M`) conditional returns, no `DD`/`FD`/`CB` prefix work, no
+  interrupt-controller, scheduler, audio, VDP, or frontend changes,
+  no M35 CLI changes, no PacManV8 ROM edits.
+
+Exit criteria:
+- The emulator no longer aborts on the documented PacManV8 T020
+  path with `Unsupported timed Z180 opcode 0xD0` (or at any `RET C`
+  site in `ghost_house.asm`, `movement.asm`, or `ghost_ai.asm`
+  reached by this ROM).
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes
+  with the new opcode tests included, and no pre-existing CPU test
+  is relaxed.
+- Deterministic digests for ROMs that do not depend on the new
+  opcodes are unchanged.
+- PacManV8 T020 becomes actionable past scene 1 from the emulator
+  side; the actual cutscene evidence refresh and acceptance happen
+  in the PacManV8 repo.
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:

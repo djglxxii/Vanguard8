@@ -194,7 +194,11 @@ class Core {
     void op_ld_l_n();
     void op_djnz_e();
     void op_rrca();
+    void op_inc_bc();
+    void op_dec_bc();
+    void op_inc_de();
     void op_inc_hl();
+    void op_dec_hl();
     void op_jr_nz_e();
     void op_jr_nc_e();
     void op_jr_z_e();
@@ -232,6 +236,7 @@ class Core {
     void op_or_e();
     void op_or_h();
     void op_or_l();
+    void op_or_mem_hl();
     void op_or_a();
     void apply_or_flags();
     void op_dec_de();
@@ -259,6 +264,12 @@ class Core {
     void op_push_bc();
     void op_push_de();
     void op_push_hl();
+    void op_ex_de_hl();
+    void op_cb_prefix();
+    void op_cb_srl_a();
+    void op_cb_srl_h();
+    void op_cb_rr_l();
+    void op_cb_bit_a(std::uint8_t bit);
     void op_ed_prefix();
     void op_ed_in0_r_n(std::uint8_t reg_code);
     void op_ed_out0_n_r(std::uint8_t reg_code);

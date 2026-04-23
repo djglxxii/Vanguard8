@@ -376,6 +376,7 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0xB4:
     case 0xB5:
     case 0xB7:
+    case 0xEB:
     case 0xF3:
     case 0xFB:
         return 4;
@@ -405,8 +406,12 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0x29:
     case 0x39:
         return 11;
+    case 0x03:
+    case 0x0B:
+    case 0x13:
     case 0x1B:
     case 0x23:
+    case 0x2B:
         return 6;
     case 0x34:
     case 0x35:
@@ -432,6 +437,7 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0x26:
     case 0x2E:
     case 0x7E:
+    case 0xB6:
     case 0xC6:
     case 0xE6:
     case 0xF6:
@@ -460,6 +466,8 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0xD3:
     case 0xDB:
         return 11;
+    case 0xCB:
+        return cb_instruction_tstates(peek_logical(static_cast<std::uint16_t>(pc() + 1U)));
     case 0xED:
         return ed_instruction_tstates(peek_logical(static_cast<std::uint16_t>(pc() + 1U)));
     case 0xC5:
@@ -471,6 +479,26 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
         {
             std::ostringstream stream;
             stream << "Unsupported timed Z180 opcode 0x" << std::uppercase << std::hex
+                   << static_cast<int>(opcode) << " at PC 0x" << pc();
+            throw std::runtime_error(stream.str());
+        }
+    }
+}
+
+auto Z180Adapter::cb_instruction_tstates(const std::uint8_t opcode) const -> std::uint64_t {
+    switch (opcode) {
+    case 0x1D:
+    case 0x3C:
+    case 0x3F:
+    case 0x67:
+    case 0x6F:
+    case 0x77:
+    case 0x7F:
+        return 8;
+    default:
+        {
+            std::ostringstream stream;
+            stream << "Unsupported timed Z180 opcode 0xCB 0x" << std::uppercase << std::hex
                    << static_cast<int>(opcode) << " at PC 0x" << pc();
             throw std::runtime_error(stream.str());
         }

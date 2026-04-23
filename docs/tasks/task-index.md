@@ -170,3 +170,22 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 - `M38-T01` Cover the missing timed HD64180 `RET NC` opcode (plus
   carry-family sister `RET C` form) needed by the PacManV8 T020
   intermission review-index advance path.
+
+## Milestone 39
+
+- `M39-T01` Cover the missing timed HD64180 16-bit pair INC/DEC
+  opcodes (`DEC BC`, `INC BC`, `INC DE`, `DEC HL`) and the narrow
+  CB-prefix dispatch surface (`SRL A`, `BIT 4..7,A`) needed by the
+  PacManV8 T021 pattern-replay validation path.
+
+## Milestone 40
+
+- `M40-T01` Cover the missing timed HD64180 `EX DE,HL` opcode and the
+  immediate same-path `OR (HL)` look-ahead gap needed by the PacManV8
+  T021 pattern-replay validation path.
+
+## Milestone 41
+
+- `M41-T01` Cover the missing timed HD64180 CB-prefix `SRL H` opcode
+  and the immediate same-path `RR L` look-ahead gap needed by the
+  PacManV8 T021 pattern-replay validation path.

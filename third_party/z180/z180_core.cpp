@@ -2,6 +2,7 @@
 
 #include <iomanip>
 #include <sstream>
+#include <utility>
 
 namespace vanguard8::third_party::z180 {
 
@@ -401,12 +402,15 @@ void Core::initialize_tables() {
 
     opcodes_[0x00] = &Core::op_nop;
     opcodes_[0x01] = &Core::op_ld_bc_nn;
+    opcodes_[0x03] = &Core::op_inc_bc;
     opcodes_[0x04] = &Core::op_inc_r_main;
     opcodes_[0x05] = &Core::op_dec_r_main;
     opcodes_[0x0C] = &Core::op_inc_r_main;
     opcodes_[0x0D] = &Core::op_dec_r_main;
     opcodes_[0x09] = &Core::op_add_hl_ss_main;
+    opcodes_[0x0B] = &Core::op_dec_bc;
     opcodes_[0x10] = &Core::op_djnz_e;
+    opcodes_[0x13] = &Core::op_inc_de;
     opcodes_[0x14] = &Core::op_inc_r_main;
     opcodes_[0x15] = &Core::op_dec_r_main;
     opcodes_[0x1C] = &Core::op_inc_r_main;
@@ -440,6 +444,7 @@ void Core::initialize_tables() {
     opcodes_[0x22] = &Core::op_ld_mem_nn_hl;
     opcodes_[0x23] = &Core::op_inc_hl;
     opcodes_[0x2A] = &Core::op_ld_hl_mem_nn;
+    opcodes_[0x2B] = &Core::op_dec_hl;
     opcodes_[0x31] = &Core::op_ld_sp_nn;
     opcodes_[0x32] = &Core::op_ld_mem_nn_a;
     opcodes_[0x3A] = &Core::op_ld_a_mem_nn;
@@ -468,6 +473,7 @@ void Core::initialize_tables() {
     opcodes_[0xCD] = &Core::op_call_nn;
     opcodes_[0xD3] = &Core::op_out_n_a;
     opcodes_[0xDB] = &Core::op_in_a_n;
+    opcodes_[0xCB] = &Core::op_cb_prefix;
     opcodes_[0xED] = &Core::op_ed_prefix;
     opcodes_[0xB0] = &Core::op_or_b;
     opcodes_[0xB1] = &Core::op_or_c;
@@ -475,6 +481,7 @@ void Core::initialize_tables() {
     opcodes_[0xB3] = &Core::op_or_e;
     opcodes_[0xB4] = &Core::op_or_h;
     opcodes_[0xB5] = &Core::op_or_l;
+    opcodes_[0xB6] = &Core::op_or_mem_hl;
     opcodes_[0xB7] = &Core::op_or_a;
     opcodes_[0xC1] = &Core::op_pop_bc;
     opcodes_[0xC5] = &Core::op_push_bc;
@@ -483,6 +490,7 @@ void Core::initialize_tables() {
     opcodes_[0xC6] = &Core::op_add_a_n;
     opcodes_[0xE1] = &Core::op_pop_hl;
     opcodes_[0xE5] = &Core::op_push_hl;
+    opcodes_[0xEB] = &Core::op_ex_de_hl;
     opcodes_[0xE6] = &Core::op_and_n;
     opcodes_[0xF6] = &Core::op_or_n;
     opcodes_[0xFE] = &Core::op_cp_n;
@@ -792,7 +800,15 @@ void Core::op_rrca() {
     af_.bytes.lo = static_cast<std::uint8_t>((af_.bytes.lo & (flag_sign | flag_zero | flag_parity_overflow)) | carry);
 }
 
+void Core::op_inc_bc() { bc_.value = static_cast<std::uint16_t>(bc_.value + 1U); }
+
+void Core::op_dec_bc() { bc_.value = static_cast<std::uint16_t>(bc_.value - 1U); }
+
+void Core::op_inc_de() { de_.value = static_cast<std::uint16_t>(de_.value + 1U); }
+
 void Core::op_inc_hl() { hl_.value = static_cast<std::uint16_t>(hl_.value + 1U); }
+
+void Core::op_dec_hl() { hl_.value = static_cast<std::uint16_t>(hl_.value - 1U); }
 
 void Core::op_jr_nz_e() {
     const auto displacement = static_cast<std::int8_t>(fetch_byte());
@@ -986,6 +1002,7 @@ void Core::op_or_c() { af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | b
 void Core::op_or_d() { af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | de_.bytes.hi); apply_or_flags(); }
 void Core::op_or_h() { af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | hl_.bytes.hi); apply_or_flags(); }
 void Core::op_or_l() { af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | hl_.bytes.lo); apply_or_flags(); }
+void Core::op_or_mem_hl() { af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi | read_logical(hl_.value)); apply_or_flags(); }
 void Core::op_or_a() { apply_or_flags(); }
 
 void Core::apply_cp_flags(const std::uint8_t a_value, const std::uint8_t operand) {
@@ -1114,7 +1131,101 @@ void Core::op_push_de() { push_word(de_.value); }
 
 void Core::op_push_hl() { push_word(hl_.value); }
 
+void Core::op_ex_de_hl() { std::swap(de_.value, hl_.value); }
+
 void Core::op_ei() { ei_delay_ = 2; }
+
+void Core::op_cb_prefix() {
+    const auto opcode = fetch_byte();
+    switch (opcode) {
+    case 0x1D:
+        op_cb_rr_l();
+        return;
+    case 0x3C:
+        op_cb_srl_h();
+        return;
+    case 0x3F:
+        op_cb_srl_a();
+        return;
+    case 0x67:
+    case 0x6F:
+    case 0x77:
+    case 0x7F:
+        op_cb_bit_a(static_cast<std::uint8_t>((opcode >> 3U) & 0x07U));
+        return;
+    default:
+        {
+            std::ostringstream stream;
+            stream << "Unsupported timed Z180 opcode 0xCB 0x" << std::uppercase << std::hex
+                   << static_cast<int>(opcode) << " at PC 0x"
+                   << static_cast<std::uint16_t>(pc_.value - 2U);
+            throw std::runtime_error(stream.str());
+        }
+    }
+}
+
+void Core::op_cb_srl_a() {
+    const auto old_a = af_.bytes.hi;
+    const auto result = static_cast<std::uint8_t>(old_a >> 1U);
+    af_.bytes.hi = result;
+
+    auto flags = static_cast<std::uint8_t>(old_a & flag_carry);
+    if (result == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if (has_even_parity(result)) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    af_.bytes.lo = flags;
+}
+
+void Core::op_cb_srl_h() {
+    const auto old_h = hl_.bytes.hi;
+    const auto result = static_cast<std::uint8_t>(old_h >> 1U);
+    hl_.bytes.hi = result;
+
+    auto flags = static_cast<std::uint8_t>(old_h & flag_carry);
+    if (result == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if (has_even_parity(result)) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    af_.bytes.lo = flags;
+}
+
+void Core::op_cb_rr_l() {
+    const auto old_l = hl_.bytes.lo;
+    const auto old_carry = static_cast<std::uint8_t>(af_.bytes.lo & flag_carry);
+    const auto result =
+        static_cast<std::uint8_t>((old_l >> 1U) | (old_carry != 0U ? 0x80U : 0x00U));
+    hl_.bytes.lo = result;
+
+    auto flags = static_cast<std::uint8_t>(old_l & flag_carry);
+    if ((result & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_sign);
+    }
+    if (result == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if (has_even_parity(result)) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    af_.bytes.lo = flags;
+}
+
+void Core::op_cb_bit_a(const std::uint8_t bit) {
+    const auto mask = static_cast<std::uint8_t>(1U << bit);
+    const auto bit_set = (af_.bytes.hi & mask) != 0U;
+    auto flags = static_cast<std::uint8_t>((af_.bytes.lo & flag_carry) | flag_half);
+    if (!bit_set) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero | flag_parity_overflow);
+    }
+    if (bit == 7U && bit_set) {
+        flags = static_cast<std::uint8_t>(flags | flag_sign);
+    }
+    af_.bytes.lo = flags;
+}
 
 void Core::op_ed_prefix() {
     const auto opcode = fetch_byte();

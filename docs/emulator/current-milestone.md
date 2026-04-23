@@ -1,12 +1,81 @@
 # Current Milestone Lock
 
-- Active milestone: `38`
-- Title: `Timed HD64180 RET NC Opcode Coverage for PacManV8 T020`
-- Status: `accepted`
+- Active milestone: `41`
+- Title: `Timed HD64180 CB-Prefix SRL H and RR L Coverage for PacManV8 T021`
+- Status: `blocked`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
-- Contract file: `docs/emulator/milestones/38.md`
+- Contract file: `docs/emulator/milestones/41.md`
 
 Execution rules:
+- Milestone `41` is blocked on 2026-04-23 after `M41-T01` implemented
+  the authorized `SRL H` (`0xCB 0x3C`) and `RR L` (`0xCB 0x1D`) timed
+  CB-prefix surface and verified it with focused CPU coverage
+  (67 cases, 815 assertions), full `ctest` (190/190 passed), the
+  non-perturbation fixture replay (byte-identical digests to M40),
+  and the declared headless smoke proof. The PacManV8 T021 replay
+  validation harness now runs past the previous `PC=0x1302` `SRL H`
+  blocker and the immediate `RR L` sites, then reaches a new
+  out-of-scope timed opcode: `Unsupported timed Z180 opcode 0x37 at
+  PC 0x1315` (`SCF`, Set Carry Flag). `M41-T01` now lives in
+  `docs/tasks/blocked/` with the incompletion summary and
+  verification evidence. No new milestone is active until a
+  follow-up contract is defined in `docs/emulator/milestones/` and
+  this lock file is updated to point at it.
+- Milestone `41` was activated on 2026-04-22 to close the next
+  real-ROM timed CPU compatibility gap exposed after M40. The
+  PacManV8 blocked task
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`
+  reported `Unsupported timed Z180 opcode 0xCB 0x3C at PC 0x1302`
+  (`SRL H`) in the `collision_prepare_tile` divide-by-eight path,
+  and identified the immediate same-path `RR L` (`0xCB 0x1D`)
+  look-ahead gap. The matching task file is
+  `docs/tasks/blocked/M41-T01-timed-srl-h-and-rr-l-opcode-coverage.md`.
+  Authorized implementation scope was limited to those two CB-prefix
+  sub-opcodes, focused tests, non-perturbation evidence, and the
+  declared verification commands.
+- Milestone `40` is blocked on 2026-04-22 after `M40-T01` implemented
+  the authorized `EX DE,HL` (`0xEB`) and `OR (HL)` (`0xB6`) timed
+  opcode surface and verified it with focused CPU coverage, full
+  `ctest`, and the declared headless smoke proof. The PacManV8 T021
+  replay validation harness now runs past the previous `PC=0x11DA`
+  `EX DE,HL` blocker and the immediate `OR (HL)` site, then reaches a
+  new out-of-scope timed CB-prefix opcode:
+  `Unsupported timed Z180 opcode 0xCB 0x3C at PC 0x1302` (`SRL H` in
+  `collision_prepare_tile`). `M40-T01` now lives in
+  `docs/tasks/blocked/` with the incompletion summary and verification
+  evidence. Milestone `41` is the follow-up contract that authorizes
+  `CB 3C` and the immediate `CB 1D` look-ahead.
+- Milestone `40` was activated on 2026-04-22 to close the next real-ROM
+  timed CPU compatibility gap exposed after M39. The PacManV8 blocked
+  task
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`
+  now reports `Unsupported timed Z180 opcode 0xEB at PC 0x11DA`
+  (`EX DE,HL`) in `collision_init`, and identifies the immediate
+  same-path `OR (HL)` (`0xB6`) look-ahead gap. The matching task file
+  is now
+  `docs/tasks/blocked/M40-T01-timed-ex-de-hl-and-or-hl-opcode-coverage.md`.
+  Authorized implementation scope is limited to those two opcodes,
+  focused tests, non-perturbation evidence, and the declared
+  verification commands.
+- Milestone `39` is blocked on 2026-04-22 after `M39-T01` completed the
+  authorized timed opcode surface but the PacManV8 T021 replay validation
+  harness reached a new out-of-scope timed opcode:
+  `Unsupported timed Z180 opcode 0xEB at PC 0x11DA` (`EX DE,HL`).
+  `M39-T01` now lives in `docs/tasks/blocked/` with the incompletion
+  summary and verification evidence. Milestone `40` is the follow-up
+  contract that authorizes `0xEB` and the immediate `0xB6` look-ahead.
+- Milestone `39` was planned on 2026-04-22 to close the next real-ROM
+  timed CPU compatibility gap exposed by the PacManV8 blocked task
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`.
+  The canonical headless runtime currently aborts with
+  `Unsupported timed Z180 opcode 0xB at PC 0x1209` (`DEC BC` in
+  `collision_init`) along the T021 replay validation path. The
+  milestone covers `DEC BC` (`0x0B`), `INC BC` (`0x03`), `INC DE`
+  (`0x13`), `DEC HL` (`0x2B`), and a narrow CB-prefix dispatch surface
+  for `SRL A` (`CB 3F`) and `BIT 4..7,A` (`CB 67`/`6F`/`77`/`7F`),
+  per the look-ahead in the T021 blocker. The matching `M39-T01` task
+  was executed and moved to `docs/tasks/blocked/` after the follow-on
+  out-of-scope `0xEB` blocker was exposed.
 - Milestone `38` is accepted on 2026-04-21. Task `M38-T01` is in
   `docs/tasks/completed/`. Timed-core support for `RET NC` (`0xD0`)
   and `RET C` (`0xD8`) was verified via `ctest` at `178/178`
@@ -21,10 +90,6 @@ Execution rules:
   (`31f8226ca0fe920a1b85e33ecd0625ba0846439a3a15d146e1497c817285d34c`,
   digest `6526782969573701363`) across repeat runs, without the
   `Unsupported timed Z180 opcode 0xD0 at PC 0x2F75` abort.
-- No new milestone is active until a milestone `39` contract is
-  defined in `docs/emulator/milestones/` and this lock file is
-  updated to point at it. Do not open new task files under
-  `docs/tasks/active/` without that contract.
 - Milestone `31` is accepted.
 - Milestone `32` is accepted. The frontend audio plumbing shipped on
   2026-04-19; the underlying CPU/audio co-scheduling defect that made

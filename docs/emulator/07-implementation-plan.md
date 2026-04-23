@@ -104,6 +104,10 @@ Workflow:
 | 35 | Add headless agent observability primitives for ROM verification |
 | 36 | Fix HD64180 HALT resume after interrupt |
 | 37 | Cover the timed HD64180 `LD E,n` opcode gap exposed by PacManV8 T020 |
+| 38 | Cover the timed HD64180 `RET NC` opcode gap exposed by PacManV8 T020 |
+| 39 | Cover timed HD64180 pair INC/DEC and narrow CB-prefix gaps exposed by PacManV8 T021 |
+| 40 | Cover timed HD64180 `EX DE,HL` and `OR (HL)` gaps exposed by PacManV8 T021 |
+| 41 | Cover timed HD64180 CB-prefix `SRL H` and `RR L` gaps exposed by PacManV8 T021 |
 
 ## Milestones
 
@@ -1453,6 +1457,211 @@ Exit criteria:
 - PacManV8 T020 becomes actionable past scene 1 from the emulator
   side; the actual cutscene evidence refresh and acceptance happen
   in the PacManV8 repo.
+
+### Milestone 39 — Timed HD64180 16-bit Pair INC/DEC and CB-Prefix Coverage for PacManV8 T021
+
+Objective:
+- Close the next real-ROM timed CPU compatibility gap exposed after
+  M38 unblocked the carry-conditional `RET cc` path. With the
+  M37/M38 timed load and conditional-return surface now landed, the
+  PacManV8 blocked task
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`
+  reaches its replay-validation entry path and the canonical
+  headless runtime aborts with
+  `Unsupported timed Z180 opcode 0xB at PC 0x1209` (`DEC BC`)
+  inside `collision_init`. The blocker's look-ahead also enumerates
+  `INC DE` (`0x13`) in the same loop, `DEC HL` (`0x2B`) in
+  `ghost_mode_tick` / score and dot bookkeeping, and the entirely
+  missing CB-prefix dispatch surface for `SRL A` (`CB 3F`) and
+  `BIT 4..7,A` (`CB 67`/`6F`/`77`/`7F`) used by existing
+  movement/collision code and the T021 replay input decoder.
+
+Deliverables:
+- Timed-core implementation of `DEC BC` (`0x0B`), plus the look-ahead
+  16-bit pair INC/DEC forms `INC DE` (`0x13`) and `DEC HL` (`0x2B`),
+  plus the BC-pair sister `INC BC` (`0x03`), closed in one pass to
+  avoid a rebuild-per-opcode loop on the same active path (precedent:
+  milestones 34, 37, 38).
+- Adapter T-state timing entries for each new 16-bit pair INC/DEC
+  opcode: **6 T-states**, registered alongside the already-covered
+  `0x1B` (`DEC DE`) and `0x23` (`INC HL`) in the existing 6-T-state
+  group in `src/core/cpu/z180_adapter.cpp`.
+- Narrow CB-prefix dispatch handler registered against
+  `opcodes_[0xCB]` in `Core::install_opcode_table()` that fetches the
+  next byte and routes only the listed CB sub-opcodes:
+  - `SRL A` (`CB 3F`) — shift-right-logical on `A`, bit 0 → C, bit 7
+    ← 0, S/Z/PV from result, H and N cleared.
+  - `BIT 4,A` (`CB 67`), `BIT 5,A` (`CB 6F`), `BIT 6,A` (`CB 77`),
+    `BIT 7,A` (`CB 7F`) — Z set to inverse of tested bit, H set, N
+    cleared, S/PV per standard `BIT b,r` semantics for `r=A`, C and
+    `A` unchanged.
+  Any other CB sub-opcode preserves the existing fail-fast
+  `std::runtime_error` contract.
+- Adapter T-state entry routing `case 0xCB:` to a new
+  `cb_instruction_tstates(subop)` helper that returns **8 T-states**
+  for the listed CB register-form sub-opcodes (matching the Z80
+  timing convention already used by the adapter for the 16-bit pair
+  INC/DEC forms).
+- Focused extracted-core CPU tests pinning each new opcode's
+  register/PC/flag/cycle behavior, including a `collision_init`-style
+  pattern test mirroring the PacManV8 sequence around `PC=0x1209`,
+  and explicit negative tests confirming an out-of-scope CB sub-opcode
+  (`RES 0,B` (`CB 80`)) and an out-of-scope main-table opcode
+  (`INC SP` (`0x33`)) still raise the existing unsupported-opcode
+  runtime error.
+- Non-perturbation regression against an existing fixture ROM that
+  does not exercise the new opcodes, proving frame, audio, and
+  event-log digests are byte-identical before and after.
+- Runtime regression proving the canonical PacManV8 T021
+  `tools/pattern_replay_tests.py` repro runs past `PC=0x1209` without
+  a timed-opcode abort and reaches at least the first authored
+  replay checkpoint with stable digests across repeat runs.
+
+Closure rule:
+- Keep this milestone inside `third_party/z180/`, `src/core/cpu/`,
+  `tests/`, and the listed doc/task files only. No general CPU
+  opcode sweep, no `INC SP` / `DEC SP`, no broader CB-prefix
+  coverage (no `RES`/`SET`, no `BIT b,r` for `r ≠ A`, no `(HL)`
+  targets, no rotate/shift forms other than `SRL A`), no
+  `DD CB`/`FD CB` indexed CB variants, no `DD`/`FD` prefix work, no
+  interrupt-controller, scheduler, audio, VDP, or frontend changes,
+  no M35 CLI changes, no PacManV8 ROM edits.
+
+Exit criteria:
+- The emulator no longer aborts on the documented PacManV8 T021
+  path with `Unsupported timed Z180 opcode 0xB` (or at any
+  `INC DE`, `DEC HL`, `INC BC`, `SRL A`, or `BIT 4..7,A` site
+  reached by this ROM along the replay validation path).
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes
+  with the new opcode tests included, and no pre-existing CPU test
+  is relaxed.
+- Deterministic digests for ROMs that do not depend on the new
+  opcodes are unchanged.
+- PacManV8 T021 becomes actionable from the emulator side; the
+  actual replay-checkpoint evidence and acceptance still happen in
+  the PacManV8 repo.
+
+### Milestone 40 — Timed HD64180 EX DE,HL and OR (HL) Coverage for PacManV8 T021
+
+Objective:
+- Close the next real-ROM timed CPU compatibility gap exposed after
+  M39. The PacManV8 blocked task
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`
+  now reports that the T021 replay validation path runs past the M39
+  opcode surface and aborts with `Unsupported timed Z180 opcode 0xEB
+  at PC 0x11DA` (`EX DE,HL`) inside `collision_init`. The same ROM
+  bytes and source context show an immediate follow-on `OR (HL)`
+  (`0xB6`) in the same `.set_pellet` path.
+
+Deliverables:
+- Timed-core implementation of `EX DE,HL` (`0xEB`): swap the full
+  16-bit `DE` and `HL` pairs, leave all flags untouched, advance
+  `PC` by 1.
+- Adapter T-state timing entry for `EX DE,HL`: **4 T-states**.
+- Timed-core implementation of `OR (HL)` (`0xB6`): read the byte at
+  logical address `HL`, compute `A <- A | (HL)`, set S/Z/PV from the
+  result, clear H/N/C, advance `PC` by 1.
+- Adapter T-state timing entry for `OR (HL)`: **7 T-states**,
+  matching the existing indirect memory-operand timing convention.
+- Focused extracted-core CPU tests pinning both opcodes'
+  register/memory/PC/flag/cycle behavior, including a short
+  `collision_init`-style sequence around `EX DE,HL -> OR (HL) ->
+  LD (HL),A -> EX DE,HL`, plus a negative test proving a nearby
+  out-of-scope exchange opcode such as `EX (SP),HL` (`0xE3`) still
+  raises the existing unsupported-opcode runtime error.
+- Non-perturbation regression against an existing fixture ROM that
+  does not exercise the new opcodes, proving frame, audio, and
+  event-log digests are byte-identical before and after.
+- Runtime regression proving the canonical PacManV8 T021
+  `tools/pattern_replay_tests.py` repro runs past `PC=0x11DA` and the
+  immediate `OR (HL)` site without a timed-opcode abort, or records a
+  later out-of-scope opcode as a new blocker.
+
+Closure rule:
+- Keep this milestone inside `third_party/z180/`, `src/core/cpu/`,
+  `tests/`, and the listed doc/task files only. No general CPU
+  opcode sweep, no broader exchange-family coverage, no broader
+  logical/arithmetic coverage, no interrupt-controller, scheduler,
+  audio, VDP, frontend, debugger, save-state, observability, or
+  PacManV8 ROM changes.
+
+Exit criteria:
+- The emulator no longer aborts on the documented PacManV8 T021 path
+  with `Unsupported timed Z180 opcode 0xEB at PC 0x11DA` or at the
+  immediate `OR (HL)` (`0xB6`) site.
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes
+  with the new opcode tests included, and no pre-existing CPU test
+  is relaxed.
+- Deterministic digests for ROMs that do not depend on the new
+  opcodes are unchanged.
+- PacManV8 T021 becomes actionable from the emulator side; the
+  actual replay-checkpoint evidence and acceptance still happen in
+  the PacManV8 repo.
+
+### Milestone 41 — Timed HD64180 CB-Prefix `SRL H` and `RR L` Coverage for PacManV8 T021
+
+Objective:
+- Close the next real-ROM timed CPU compatibility gap exposed after
+  M40. The PacManV8 blocked task
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`
+  now reports that the T021 replay validation path runs past the M40
+  `EX DE,HL` / `OR (HL)` surface and aborts with `Unsupported timed
+  Z180 opcode 0xCB 0x3C at PC 0x1302` (`SRL H`) inside the
+  `collision_prepare_tile` divide-by-eight sequence. The same ROM
+  bytes and source context show an immediate follow-on `RR L`
+  (`0xCB 0x1D`) forming a `srl h -> rr l` pair that repeats three
+  times in a row.
+
+Deliverables:
+- Timed-core implementation of `SRL H` (`0xCB 0x3C`): shift `H` right
+  by one logical bit, bit 7 of new `H` cleared, old bit 0 of `H` →
+  carry. Update S (cleared), Z, H (cleared), P/V (parity), N
+  (cleared); `PC` advances by 2.
+- Timed-core implementation of `RR L` (`0xCB 0x1D`): rotate `L` right
+  through carry, new bit 7 = old carry, new carry = old bit 0. Update
+  S, Z, H (cleared), P/V (parity), N (cleared); `PC` advances by 2.
+- Adapter T-state timing entries for `CB 3C` and `CB 1D`: both
+  **8 T-states**, routed through the existing M39
+  `cb_instruction_tstates` helper.
+- Extension of the existing `Core::op_cb_prefix` dispatch to cover
+  the two new sub-opcodes while preserving the current fail-fast
+  contract for every still-unsupported CB sub-opcode.
+- Focused extracted-core CPU tests pinning both opcodes'
+  register/memory/PC/flag/cycle behavior, including a short
+  `collision_prepare_tile`-style sequence running `SRL H -> RR L`
+  three times to confirm `HL_final == HL_initial >> 3`, plus a
+  negative test proving a nearby out-of-scope CB sub-opcode such as
+  `SRL L` (`CB 3D`) or `RR H` (`CB 1C`) still raises the existing
+  unsupported-opcode runtime error.
+- Non-perturbation regression against an existing fixture ROM that
+  does not exercise the new opcodes, proving frame, audio, and
+  event-log digests are byte-identical before and after.
+- Runtime regression proving the canonical PacManV8 T021
+  `tools/pattern_replay_tests.py` repro runs past `PC=0x1302` and the
+  immediate `RR L` site without a timed-opcode abort, or records a
+  later out-of-scope opcode as a new blocker.
+
+Closure rule:
+- Keep this milestone inside `third_party/z180/`, `src/core/cpu/`,
+  `tests/`, and the listed doc/task files only. No general CPU
+  opcode sweep, no broader CB-prefix coverage (no other SRL or RR
+  register forms, no `(HL)`-target CB forms, no `RES`/`SET`, no
+  additional `BIT b,r`, no index-register CB variants), no
+  interrupt-controller, scheduler, audio, VDP, frontend, debugger,
+  save-state, observability, or PacManV8 ROM changes.
+
+Exit criteria:
+- The emulator no longer aborts on the documented PacManV8 T021 path
+  with `Unsupported timed Z180 opcode 0xCB 0x3C at PC 0x1302` or at
+  the immediate `RR L` (`0xCB 0x1D`) site.
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes
+  with the new opcode tests included, and no pre-existing CPU test
+  is relaxed.
+- Deterministic digests for ROMs that do not depend on the new
+  opcodes are unchanged.
+- PacManV8 T021 becomes actionable from the emulator side; the
+  actual replay-checkpoint evidence and acceptance still happen in
+  the PacManV8 repo.
 
 ## Suggested Release Gates
 

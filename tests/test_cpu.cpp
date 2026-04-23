@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <functional>
+#include <stdexcept>
+#include <string>
 #include <vector>
 
 namespace {
@@ -78,6 +80,18 @@ auto default_register_snapshot() -> vanguard8::third_party::z180::RegisterSnapsh
     vanguard8::core::Bus bus{};
     vanguard8::core::cpu::Z180Adapter cpu{bus};
     return cpu.state_snapshot().registers;
+}
+
+void require_runtime_error_contains(
+    const std::function<void()>& action,
+    const std::string& expected
+) {
+    try {
+        action();
+        FAIL("expected std::runtime_error");
+    } catch (const std::runtime_error& error) {
+        REQUIRE(std::string(error.what()).find(expected) != std::string::npos);
+    }
 }
 
 void write_vdp_register(
@@ -738,6 +752,650 @@ TEST_CASE("scheduled CPU covers DEC DE used by the PacManV8 VDP-B framebuffer co
         REQUIRE(cpu.state_snapshot().registers.de == 0xFFFF);
         REQUIRE(
             static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == preserved_flags
+        );
+    }
+}
+
+TEST_CASE("scheduled CPU covers M39 16-bit pair INC/DEC for PacManV8 T021", "[cpu]") {
+    struct PairCase {
+        const char* label;
+        std::uint8_t opcode;
+        char pair;
+        std::uint16_t before;
+        std::uint16_t after;
+    };
+
+    const auto set_pair =
+        [](vanguard8::third_party::z180::RegisterSnapshot& registers, const char pair, const std::uint16_t value) {
+            switch (pair) {
+            case 'b':
+                registers.bc = value;
+                return;
+            case 'd':
+                registers.de = value;
+                return;
+            case 'h':
+                registers.hl = value;
+                return;
+            default:
+                FAIL("unknown register pair");
+                return;
+            }
+        };
+    const auto get_pair =
+        [](const vanguard8::third_party::z180::RegisterSnapshot& registers, const char pair) -> std::uint16_t {
+            switch (pair) {
+            case 'b':
+                return registers.bc;
+            case 'd':
+                return registers.de;
+            case 'h':
+                return registers.hl;
+            default:
+                FAIL("unknown register pair");
+                return 0;
+            }
+        };
+
+    const PairCase cases[] = {
+        {"INC BC increments without touching flags", 0x03, 'b', 0x1234, 0x1235},
+        {"INC BC wraps 0xFFFF to 0x0000", 0x03, 'b', 0xFFFF, 0x0000},
+        {"DEC BC decrements without touching flags", 0x0B, 'b', 0x1234, 0x1233},
+        {"DEC BC wraps 0x0000 to 0xFFFF", 0x0B, 'b', 0x0000, 0xFFFF},
+        {"INC DE increments without touching flags", 0x13, 'd', 0x1234, 0x1235},
+        {"INC DE wraps 0xFFFF to 0x0000", 0x13, 'd', 0xFFFF, 0x0000},
+        {"DEC HL decrements without touching flags", 0x2B, 'h', 0x1234, 0x1233},
+        {"DEC HL wraps 0x0000 to 0xFFFF", 0x2B, 'h', 0x0000, 0xFFFF},
+    };
+
+    for (const auto& pair_case : cases) {
+        INFO(pair_case.label);
+        const auto rom = make_instruction_test_rom({
+            pair_case.opcode,
+            0x76,  // HALT
+        });
+
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        const auto preserved_flags = static_cast<std::uint8_t>(
+            flag_sign | flag_zero | flag_half | flag_parity_overflow | flag_subtract | flag_carry
+        );
+        state.registers.af = static_cast<std::uint16_t>(0xA500U | preserved_flags);
+        state.registers.bc = 0x4567;
+        state.registers.de = 0x89AB;
+        state.registers.hl = 0xCDEF;
+        state.registers.sp = 0x8123;
+        set_pair(state.registers, pair_case.pair, pair_case.before);
+        cpu.load_state_snapshot(state);
+        const auto before = cpu.state_snapshot().registers;
+
+        REQUIRE(cpu.next_scheduled_tstates() == 6);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(get_pair(after, pair_case.pair) == pair_case.after);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == preserved_flags);
+        REQUIRE(after.af == before.af);
+        REQUIRE(after.sp == before.sp);
+        if (pair_case.pair != 'b') {
+            REQUIRE(after.bc == before.bc);
+        }
+        if (pair_case.pair != 'd') {
+            REQUIRE(after.de == before.de);
+        }
+        if (pair_case.pair != 'h') {
+            REQUIRE(after.hl == before.hl);
+        }
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+}
+
+TEST_CASE("scheduled CPU runs the PacManV8 collision_init DEC BC loop pattern", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0x0B,        // DEC BC
+        0x78,        // LD A,B
+        0xB1,        // OR C
+        0x20, 0xFB,  // JR NZ,-5
+        0x76,        // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    state.registers.bc = 0x0002;
+    cpu.load_state_snapshot(state);
+
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
+    REQUIRE(cpu.state_snapshot().registers.bc == 0x0001);
+    REQUIRE(cpu.step_scheduled_instruction() == 4);
+    REQUIRE(cpu.step_scheduled_instruction() == 4);
+    REQUIRE(cpu.step_scheduled_instruction() == 12);
+    REQUIRE(cpu.pc() == 0x0000);
+
+    cpu.run_until_halt(8);
+    REQUIRE(cpu.state_snapshot().registers.bc == 0x0000);
+    REQUIRE((cpu.state_snapshot().registers.af & flag_zero) == flag_zero);
+}
+
+TEST_CASE("scheduled CPU covers narrow M39 CB-prefix opcodes for PacManV8 T021", "[cpu]") {
+    SECTION("SRL A (CB 3F) shifts old bit 0 into carry and reports 8 T-states") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x3F, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x8100U | flag_sign | flag_zero | flag_half | flag_subtract);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        const auto af = cpu.state_snapshot().registers.af;
+        REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x40);
+        REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) == flag_carry);
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+
+    SECTION("SRL A (CB 3F) sets Z and P/V when the result is zero") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x3F, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.af = 0x0100;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        const auto af = cpu.state_snapshot().registers.af;
+        REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x00);
+        REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_zero | flag_parity_overflow | flag_carry));
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+
+    struct BitCase {
+        std::uint8_t opcode;
+        std::uint8_t bit;
+    };
+
+    const BitCase bit_cases[] = {
+        {0x67, 4},
+        {0x6F, 5},
+        {0x77, 6},
+        {0x7F, 7},
+    };
+
+    for (const auto& bit_case : bit_cases) {
+        INFO("BIT " << static_cast<int>(bit_case.bit) << ",A clear case");
+        const auto rom = make_instruction_test_rom({0xCB, bit_case.opcode, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_carry | flag_subtract);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        auto af = cpu.state_snapshot().registers.af;
+        REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x00);
+        REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_half | flag_zero | flag_parity_overflow | flag_carry));
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+
+    for (const auto& bit_case : bit_cases) {
+        INFO("BIT " << static_cast<int>(bit_case.bit) << ",A set case");
+        const auto rom = make_instruction_test_rom({0xCB, bit_case.opcode, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        const auto accumulator = static_cast<std::uint8_t>(1U << bit_case.bit);
+        state.registers.af = static_cast<std::uint16_t>(
+            (static_cast<std::uint16_t>(accumulator) << 8U) | flag_carry | flag_zero | flag_subtract
+        );
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        const auto af = cpu.state_snapshot().registers.af;
+        REQUIRE(static_cast<std::uint8_t>(af >> 8U) == accumulator);
+        auto expected_flags = static_cast<std::uint8_t>(flag_half | flag_carry);
+        if (bit_case.bit == 7U) {
+            expected_flags = static_cast<std::uint8_t>(expected_flags | flag_sign);
+        }
+        REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) == expected_flags);
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+}
+
+TEST_CASE("scheduled CPU keeps M39 out-of-scope opcodes unsupported", "[cpu]") {
+    SECTION("CB 80 reports the unsupported CB sub-opcode and PC") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x80, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        require_runtime_error_contains(
+            [&cpu]() { (void)cpu.step_scheduled_instruction(); },
+            "Unsupported timed Z180 opcode 0xCB 0x80 at PC"
+        );
+    }
+
+    SECTION("INC SP (0x33) remains outside the timed 16-bit INC/DEC surface") {
+        const auto rom = make_instruction_test_rom({0x33, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        require_runtime_error_contains(
+            [&cpu]() { (void)cpu.step_scheduled_instruction(); },
+            "Unsupported timed Z180 opcode 0x33 at PC"
+        );
+    }
+}
+
+TEST_CASE("scheduled CPU covers EX DE,HL used by PacManV8 T021 collision_init", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0xEB,  // EX DE,HL
+        0x76,  // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    const auto preserved_flags = static_cast<std::uint8_t>(
+        flag_sign | flag_zero | flag_half | flag_parity_overflow | flag_subtract | flag_carry
+    );
+    state.registers.af = static_cast<std::uint16_t>(0x5A00U | preserved_flags);
+    state.registers.bc = 0x2468;
+    state.registers.de = 0x1234;
+    state.registers.hl = 0xABCD;
+    state.registers.sp = 0x8123;
+    state.registers.ix = 0x4567;
+    state.registers.iy = 0x89AB;
+    cpu.load_state_snapshot(state);
+    const auto before = cpu.state_snapshot().registers;
+
+    REQUIRE(cpu.peek_logical(cpu.pc()) == 0xEB);
+    REQUIRE(cpu.next_scheduled_tstates() == 4);
+    REQUIRE(cpu.step_scheduled_instruction() == 4);
+    const auto after = cpu.state_snapshot().registers;
+
+    REQUIRE(after.de == 0xABCD);
+    REQUIRE(after.hl == 0x1234);
+    REQUIRE(after.af == before.af);
+    REQUIRE(after.bc == before.bc);
+    REQUIRE(after.sp == before.sp);
+    REQUIRE(after.ix == before.ix);
+    REQUIRE(after.iy == before.iy);
+    REQUIRE(cpu.pc() == 0x0001);
+}
+
+TEST_CASE("scheduled CPU covers OR (HL) used by PacManV8 T021 collision_init", "[cpu]") {
+    SECTION("typical: reads logical HL, updates A, clears H/N/C, and reports 7 T-states") {
+        const auto rom = make_instruction_test_rom({
+            0xB6,  // OR (HL)
+            0x76,  // HALT
+        });
+
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.af = static_cast<std::uint16_t>(0x4200U | flag_half | flag_subtract | flag_carry);
+        state.registers.hl = 0x8123;
+        cpu.load_state_snapshot(state);
+        bus.write_memory(0xF0123, 0x24);
+
+        REQUIRE(cpu.peek_logical(cpu.pc()) == 0xB6);
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        const auto af = cpu.state_snapshot().registers.af;
+
+        REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x66);
+        REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) == flag_parity_overflow);
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+
+    SECTION("zero result sets Z and P/V") {
+        const auto rom = make_instruction_test_rom({
+            0xB6,  // OR (HL)
+            0x76,  // HALT
+        });
+
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_sign | flag_half | flag_subtract | flag_carry);
+        state.registers.hl = 0x8124;
+        cpu.load_state_snapshot(state);
+        bus.write_memory(0xF0124, 0x00);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        const auto af = cpu.state_snapshot().registers.af;
+
+        REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x00);
+        REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_zero | flag_parity_overflow));
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+
+    SECTION("sign-bit result with odd parity sets S and clears P/V") {
+        const auto rom = make_instruction_test_rom({
+            0xB6,  // OR (HL)
+            0x76,  // HALT
+        });
+
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_zero | flag_half | flag_subtract | flag_carry);
+        state.registers.hl = 0x8125;
+        cpu.load_state_snapshot(state);
+        bus.write_memory(0xF0125, 0x80);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        const auto af = cpu.state_snapshot().registers.af;
+
+        REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x80);
+        REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) == flag_sign);
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+}
+
+TEST_CASE("scheduled CPU runs the PacManV8 collision_init pellet mask exchange pattern", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0xEB,              // EX DE,HL
+        0x3A, 0x12, 0x82,  // LD A,(0x8212)
+        0xB6,              // OR (HL)
+        0x77,              // LD (HL),A
+        0xEB,              // EX DE,HL
+        0x76,              // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    auto state = cpu.state_snapshot();
+    state.registers.cbar = 0x48;
+    state.registers.cbr = 0xF0;
+    state.registers.bbr = 0x04;
+    state.registers.de = 0x8120;
+    state.registers.hl = 0x9000;
+    state.registers.af = static_cast<std::uint16_t>(0xAA00U | flag_carry);
+    cpu.load_state_snapshot(state);
+    bus.write_memory(0xF0120, 0x10);
+    bus.write_memory(0xF0212, 0x04);
+
+    REQUIRE(cpu.step_scheduled_instruction() == 4);
+    REQUIRE(cpu.state_snapshot().registers.de == 0x9000);
+    REQUIRE(cpu.state_snapshot().registers.hl == 0x8120);
+    REQUIRE(cpu.step_scheduled_instruction() == 13);
+    REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af >> 8U) == 0x04);
+    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af >> 8U) == 0x14);
+    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(bus.read_memory(0xF0120) == 0x14);
+    REQUIRE(cpu.step_scheduled_instruction() == 4);
+
+    const auto final_state = cpu.state_snapshot();
+    REQUIRE(final_state.registers.de == 0x8120);
+    REQUIRE(final_state.registers.hl == 0x9000);
+    REQUIRE(static_cast<std::uint8_t>(final_state.registers.af & 0x00FFU) == flag_parity_overflow);
+    REQUIRE(cpu.pc() == 0x0007);
+}
+
+TEST_CASE("scheduled CPU keeps M40 out-of-scope exchange opcodes unsupported", "[cpu]") {
+    const auto rom = make_instruction_test_rom({
+        0xE3,  // EX (SP),HL
+        0x76,  // HALT
+    });
+
+    vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+    require_runtime_error_contains(
+        [&cpu]() { (void)cpu.step_scheduled_instruction(); },
+        "Unsupported timed Z180 opcode 0xE3 at PC"
+    );
+}
+
+TEST_CASE("scheduled CPU covers SRL H used by PacManV8 T021 collision_prepare_tile", "[cpu]") {
+    SECTION("typical case: H shifted right, old bit 0 -> carry, reports 8 T-states") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x3C, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x8155;
+        state.registers.af = static_cast<std::uint16_t>(0xAA00U | flag_sign | flag_zero | flag_half | flag_subtract);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.hl >> 8U) == 0x40);
+        REQUIRE(static_cast<std::uint8_t>(after.hl & 0x00FFU) == 0x55);
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xAA);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == flag_carry);
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+
+    SECTION("zero result sets Z and P/V and keeps carry from old bit 0") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x3C, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x0177;
+        state.registers.af = 0x0000;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.hl >> 8U) == 0x00);
+        REQUIRE(static_cast<std::uint8_t>(after.hl & 0x00FFU) == 0x77);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_zero | flag_parity_overflow | flag_carry));
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+
+    SECTION("no-carry case: H = 0x80 shifts to 0x40 with carry cleared") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x3C, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x8000;
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_carry);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.hl >> 8U) == 0x40);
+        REQUIRE(static_cast<std::uint8_t>(after.hl & 0x00FFU) == 0x00);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == 0x00);
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+}
+
+TEST_CASE("scheduled CPU covers RR L used by PacManV8 T021 collision_prepare_tile", "[cpu]") {
+    SECTION("entry carry clear, no carry out: L = 0x02 -> 0x01, C=0") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x1D, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x5502;
+        state.registers.af = static_cast<std::uint16_t>(0x3300U | flag_sign | flag_zero | flag_half | flag_subtract);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.hl >> 8U) == 0x55);
+        REQUIRE(static_cast<std::uint8_t>(after.hl & 0x00FFU) == 0x01);
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x33);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == 0x00);
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+
+    SECTION("entry carry set: L = 0x02 rotates in high bit, new sign, no carry out") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x1D, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x0002;
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_carry);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.hl & 0x00FFU) == 0x81);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_sign | flag_parity_overflow));
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+
+    SECTION("carry-out to zero: L = 0x01, entry carry clear -> 0x00, C=1, Z=1") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x1D, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x0001;
+        state.registers.af = 0x0000;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.hl & 0x00FFU) == 0x00);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_zero | flag_parity_overflow | flag_carry));
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+
+    SECTION("sign-bit injection: L = 0x00 with entry carry -> 0x80, S=1, C=0") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x1D, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x0000;
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_carry | flag_zero);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.hl & 0x00FFU) == 0x80);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == flag_sign);
+        REQUIRE(cpu.pc() == 0x0002);
+    }
+}
+
+TEST_CASE("scheduled CPU runs the PacManV8 collision_prepare_tile divide-by-eight sequence", "[cpu]") {
+    SECTION("HL = 0x1234 shifted right by three via three SRL H / RR L pairs") {
+        const auto rom = make_instruction_test_rom({
+            0xCB, 0x3C,  // SRL H
+            0xCB, 0x1D,  // RR L
+            0xCB, 0x3C,  // SRL H
+            0xCB, 0x1D,  // RR L
+            0xCB, 0x3C,  // SRL H
+            0xCB, 0x1D,  // RR L
+            0x76,        // HALT
+        });
+
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x1234;
+        state.registers.af = 0x0000;
+        cpu.load_state_snapshot(state);
+
+        for (int step = 0; step < 6; ++step) {
+            REQUIRE(cpu.step_scheduled_instruction() == 8);
+        }
+
+        const auto after = cpu.state_snapshot().registers;
+        REQUIRE(after.hl == 0x0246);
+        // Final carry = bit 2 of the original HL (last bit shifted out). 0x1234 bit 2 = 1.
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == flag_carry);
+        REQUIRE(cpu.pc() == 0x000C);
+    }
+
+    SECTION("HL = 0x0007 shifted right by three cascades low bits out through carry") {
+        const auto rom = make_instruction_test_rom({
+            0xCB, 0x3C,  // SRL H
+            0xCB, 0x1D,  // RR L
+            0xCB, 0x3C,  // SRL H
+            0xCB, 0x1D,  // RR L
+            0xCB, 0x3C,  // SRL H
+            0xCB, 0x1D,  // RR L
+            0x76,        // HALT
+        });
+
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x0007;
+        state.registers.af = 0x0000;
+        cpu.load_state_snapshot(state);
+
+        for (int step = 0; step < 6; ++step) {
+            REQUIRE(cpu.step_scheduled_instruction() == 8);
+        }
+
+        const auto after = cpu.state_snapshot().registers;
+        REQUIRE(after.hl == 0x0000);
+        REQUIRE((after.af & flag_carry) == flag_carry);
+        REQUIRE((after.af & flag_zero) == flag_zero);
+        REQUIRE(cpu.pc() == 0x000C);
+    }
+}
+
+TEST_CASE("scheduled CPU keeps M41 out-of-scope CB-prefix opcodes unsupported", "[cpu]") {
+    SECTION("SRL L (CB 3D) reports the unsupported CB sub-opcode and PC") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x3D, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        require_runtime_error_contains(
+            [&cpu]() { (void)cpu.step_scheduled_instruction(); },
+            "Unsupported timed Z180 opcode 0xCB 0x3D at PC"
+        );
+    }
+
+    SECTION("RR H (CB 1C) reports the unsupported CB sub-opcode and PC") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x1C, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        require_runtime_error_contains(
+            [&cpu]() { (void)cpu.step_scheduled_instruction(); },
+            "Unsupported timed Z180 opcode 0xCB 0x1C at PC"
         );
     }
 }

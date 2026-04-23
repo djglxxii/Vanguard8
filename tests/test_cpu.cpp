@@ -2420,6 +2420,135 @@ TEST_CASE("scheduled CPU covers RET NC / RET C for PacManV8 intermission_advance
     }
 }
 
+TEST_CASE("scheduled CPU covers SCF used by PacManV8 T021 collision_prepare_tile (M42)", "[cpu]") {
+    SECTION("entry C=0, H=1, N=1, S/Z/PV set: after SCF C=1, H=0, N=0, S/Z/PV preserved, A untouched") {
+        const auto rom = make_instruction_test_rom({0x37, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        const auto entry_flags = static_cast<std::uint8_t>(
+            flag_sign | flag_zero | flag_half | flag_parity_overflow | flag_subtract
+        );
+        state.registers.af = static_cast<std::uint16_t>(0x5A00U | entry_flags);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.peek_logical(cpu.pc()) == 0x37);
+        REQUIRE(cpu.next_scheduled_tstates() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x5A);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_sign | flag_zero | flag_parity_overflow | flag_carry));
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+
+    SECTION("entry C=1, H=0, N=0, S/Z/PV clear: carry stays set, H/N stay clear, S/Z/PV stay clear") {
+        const auto rom = make_instruction_test_rom({0x37, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_carry);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x00);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == flag_carry);
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+
+    SECTION("registers other than F untouched") {
+        const auto rom = make_instruction_test_rom({0x37, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x5A00U | flag_half | flag_subtract);
+        state.registers.bc = 0x1122;
+        state.registers.de = 0x3344;
+        state.registers.hl = 0x5566;
+        state.registers.sp = 0x8123;
+        state.registers.ix = 0x7788;
+        state.registers.iy = 0x99AA;
+        state.registers.af_alt = 0xBBCC;
+        state.registers.bc_alt = 0xDDEE;
+        state.registers.de_alt = 0xFF00;
+        state.registers.hl_alt = 0x1357;
+        cpu.load_state_snapshot(state);
+        const auto before = cpu.state_snapshot().registers;
+
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == static_cast<std::uint8_t>(before.af >> 8U));
+        REQUIRE(after.bc == before.bc);
+        REQUIRE(after.de == before.de);
+        REQUIRE(after.hl == before.hl);
+        REQUIRE(after.sp == before.sp);
+        REQUIRE(after.ix == before.ix);
+        REQUIRE(after.iy == before.iy);
+        REQUIRE(after.af_alt == before.af_alt);
+        REQUIRE(after.bc_alt == before.bc_alt);
+        REQUIRE(after.de_alt == before.de_alt);
+        REQUIRE(after.hl_alt == before.hl_alt);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == flag_carry);
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+
+    SECTION("SCF -> RET idiom returns to the stacked address with carry set and S/Z/PV preserved") {
+        const auto rom = make_instruction_test_rom({
+            0x37,  // SCF
+            0xC9,  // RET
+            0x76,  // HALT
+        });
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        auto state = cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.sp = 0x8100;
+        state.registers.af = static_cast<std::uint16_t>(
+            0x2400U | flag_sign | flag_zero | flag_parity_overflow | flag_half | flag_subtract
+        );
+        cpu.load_state_snapshot(state);
+        // Stacked return target: 0x0234 (a HALT-free byte — only PC/SP/flags are inspected).
+        bus.write_memory(0xF0100, 0x34);
+        bus.write_memory(0xF0101, 0x02);
+
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        REQUIRE(cpu.pc() == 0x0001);
+        REQUIRE(cpu.state_snapshot().registers.sp == 0x8100);
+
+        REQUIRE(cpu.peek_logical(cpu.pc()) == 0xC9);
+        REQUIRE(cpu.step_scheduled_instruction() == 10);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(cpu.pc() == 0x0234);
+        REQUIRE(after.sp == 0x8102);
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x24);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_sign | flag_zero | flag_parity_overflow | flag_carry));
+    }
+
+    SECTION("CCF (0x3F) remains unsupported as an out-of-scope sister opcode") {
+        const auto rom = make_instruction_test_rom({0x3F, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        require_runtime_error_contains(
+            [&cpu]() { (void)cpu.step_scheduled_instruction(); },
+            "Unsupported timed Z180 opcode 0x3F at PC"
+        );
+    }
+}
+
 TEST_CASE("scheduled CPU covers DJNZ and carry-conditional JR used by the PacManV8 T020 path", "[cpu]") {
     SECTION("DJNZ (0x10) decrements B, takes the branch in 13 T-states, and leaves flags untouched") {
         const auto rom = make_instruction_test_rom({0x10, 0x02, 0x76, 0x00, 0x76});

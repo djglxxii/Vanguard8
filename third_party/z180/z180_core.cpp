@@ -424,6 +424,7 @@ void Core::initialize_tables() {
     opcodes_[0x30] = &Core::op_jr_nc_e;
     opcodes_[0x34] = &Core::op_inc_r_main;
     opcodes_[0x35] = &Core::op_dec_r_main;
+    opcodes_[0x37] = &Core::op_scf;
     opcodes_[0x38] = &Core::op_jr_c_e;
     opcodes_[0x39] = &Core::op_add_hl_ss_main;
     opcodes_[0x3C] = &Core::op_inc_r_main;
@@ -1132,6 +1133,11 @@ void Core::op_push_de() { push_word(de_.value); }
 void Core::op_push_hl() { push_word(hl_.value); }
 
 void Core::op_ex_de_hl() { std::swap(de_.value, hl_.value); }
+
+void Core::op_scf() {
+    constexpr auto preserved = static_cast<std::uint8_t>(flag_sign | flag_zero | flag_parity_overflow);
+    af_.bytes.lo = static_cast<std::uint8_t>((af_.bytes.lo & preserved) | flag_carry);
+}
 
 void Core::op_ei() { ei_delay_ = 2; }
 

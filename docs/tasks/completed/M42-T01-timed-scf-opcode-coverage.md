@@ -141,3 +141,115 @@ cmake-build-debug/src/vanguard8_headless \
     --rom /home/djglxxii/src/PacManV8/build/pacman.rom \
     --frames 60 --hash-frame 60
 ```
+
+## Completion summary
+
+Completed on 2026-04-23.
+
+Implemented against `docs/spec/01-cpu.md`,
+`docs/emulator/02-emulation-loop.md`,
+`docs/emulator/03-cpu-and-bus.md`,
+`docs/emulator/07-implementation-plan.md`,
+`docs/emulator/milestones/42.md`, and
+`/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`.
+
+Fix:
+- Added one timed-core opcode handler in
+  `third_party/z180/z180_core.cpp`:
+  - `Core::op_scf()` — preserves the S/Z/P/V bits of F, clears
+    H/N, and sets C. Implemented as
+    `af_.bytes.lo = (af_.bytes.lo & (flag_sign | flag_zero |
+    flag_parity_overflow)) | flag_carry;`. `A` and every other
+    register are untouched; `PC` advances through the standard
+    one-byte fetch.
+- Declared the handler in `third_party/z180/z180_core.hpp`
+  adjacent to the existing `op_ex_de_hl` declaration.
+- Registered the opcode in the dispatch table next to the existing
+  `JR cc,e` entries:
+  - `opcodes_[0x37] = &Core::op_scf;`
+- Added `case 0x37:` to the adapter's 4-T-state `current_instruction_tstates()` case list in
+  `src/core/cpu/z180_adapter.cpp`, alongside the other
+  4-T-state opcodes (`0xEB`, `0xAF`, ...).
+- No flag semantics were added for `CCF`, `DAA`, `CPL`, or any
+  other flag-manipulation opcode. No changes to interrupt
+  acceptance, HALT-wake semantics, M35 observability surface,
+  M37–M41 handlers, VDP, audio, scheduler, frontend, debugger,
+  save-state, or PacManV8 ROM code.
+
+Tests added to `tests/test_cpu.cpp`:
+- `scheduled CPU covers SCF used by PacManV8 T021
+  collision_prepare_tile (M42)`, containing five sections:
+  - Entry `C=0, H=1, N=1` with `S/Z/PV` all set and `A=0x5A`:
+    after execution `F = S|Z|PV|C`, `A=0x5A`, `PC` advances by 1,
+    adapter reports 4 T-states.
+  - Entry `C=1, H=0, N=0` with `S/Z/PV` all clear and `A=0x00`:
+    after execution `F = C`, `A=0x00`, `PC` advances by 1,
+    adapter reports 4 T-states.
+  - Register-preservation case: populates every register pair
+    (`AF`, `BC`, `DE`, `HL`, `SP`, `IX`, `IY`, `AF'`, `BC'`,
+    `DE'`, `HL'`) with distinct non-trivial values; after `SCF`
+    only `F` changes (the documented way) while `A` and every
+    other register pair retain their pre-execution values.
+  - Sequential `SCF -> RET` idiom: stacks a return target (`0x0234`)
+    at the SRAM stack, executes `SCF` then `RET`; `PC` equals
+    `0x0234`, `SP` advanced by 2, `F = S|Z|PV|C` (S/Z/PV
+    preserved from SCF entry, carry set).
+  - Negative guard: `CCF` (`0x3F`) still raises
+    `std::runtime_error` whose message contains
+    `Unsupported timed Z180 opcode 0x3F at PC`.
+
+Non-perturbation:
+- Full `ctest --test-dir cmake-build-debug --output-on-failure`:
+  `190 / 191` pass with `1` skipped (`showcase milestone 7 late
+  loop leaves VDP-A in Graphic 6 and produces a 512 wide frame`),
+  same skip set as before. No pre-existing test was modified or
+  relaxed.
+- `vanguard8_headless_replay_regression` ctest entry passes with
+  the pinned frame hash
+  `e46b5246bda293e09e199967b99ac352f931c04e2ad88e775b06a3b93ccb838c`
+  and audio hash
+  `48beda9f68f15ac4e3fca3f8b54ebea7832a906d358cc49867ae508287039ddf`
+  unchanged, confirming byte-identical frame, audio, and event-log
+  digests on a fixture ROM that does not exercise SCF.
+
+Runtime regression against PacManV8 T021:
+- Rebuilt PacManV8 ROM (`build/pacman.rom`) on 2026-04-23 with
+  no PacManV8-side edits.
+- `python3 tools/pattern_replay_tests.py
+  --evidence-dir tests/evidence/T021-pattern-replay-and-fidelity-testing`
+  no longer aborts with `Unsupported timed Z180 opcode 0x37 at
+  PC 0x1315`. The headless binary now runs to the requested
+  `--frames 60` checkpoint and produces a valid inspection
+  report (end-of-frame state `PC=0x0067`, `halted=true`,
+  `IFF1=true`, `IFF2=true` — the expected idle resting point).
+  Representative frame evidence from the canonical headless
+  smoke command:
+  - Frame SHA-256 (60):
+    `4a63cec305375edd4b20e85ba9830d83888e2eaf4327a29c229cfc7ce7a79693`
+  - Event log digest: `6563162820683566367`
+  - Event log size: `12840`
+  - Master cycles: `14305200`; CPU T-states: `7152600`.
+- The PacManV8 `pattern_replay_tests.py` harness now fails with
+  `pattern_replay_tests.py error: inspection report did not
+  contain logical 0x8270:13` — this is **not** a new unsupported
+  timed opcode, and the inspection report is in fact being
+  generated correctly. The mismatch is between the PacManV8
+  harness regex `BYTE_ROW_PATTERN = r"^\\s+0x([0-9a-f]{4}):..."`
+  (expects 4-digit hex row prefixes) and Vanguard 8's
+  `src/frontend/headless_inspect.cpp::append_byte_row`, which
+  formats logical-peek row display addresses using `hex20`
+  (5-digit), emitting `  0x08270:` instead of `  0x8270:`. That
+  row-format mismatch sits outside M42's allowed paths
+  (`src/frontend/` is not in scope); it becomes the next T021
+  blocker to route through a follow-up milestone — most
+  naturally a narrow inspection-report formatting fix in
+  Vanguard 8, but the PacManV8 harness side is also viable.
+
+Files changed:
+- `third_party/z180/z180_core.hpp`
+- `third_party/z180/z180_core.cpp`
+- `src/core/cpu/z180_adapter.cpp`
+- `tests/test_cpu.cpp`
+- `docs/emulator/current-milestone.md`
+- `docs/tasks/active/M42-T01-timed-scf-opcode-coverage.md`
+  (moved to `docs/tasks/completed/`)

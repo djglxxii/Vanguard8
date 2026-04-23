@@ -265,6 +265,7 @@ class Core {
     void op_push_de();
     void op_push_hl();
     void op_ex_de_hl();
+    void op_scf();
     void op_cb_prefix();
     void op_cb_srl_a();
     void op_cb_srl_h();

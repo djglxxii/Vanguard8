@@ -360,6 +360,7 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0x2D:
     case 0x3C:
     case 0x3D:
+    case 0x37:
     case 0x0F:
     case 0x78:
     case 0x79:

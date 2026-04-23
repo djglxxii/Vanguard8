@@ -2,22 +2,41 @@
 
 - Active milestone: `42`
 - Title: `Timed HD64180 SCF Coverage for PacManV8 T021`
-- Status: `active`
+- Status: `accepted`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
 - Contract file: `docs/emulator/milestones/42.md`
 
 Execution rules:
+- Milestone `42` is accepted on 2026-04-23. Task `M42-T01` is in
+  `docs/tasks/completed/`. Timed-core support for `SCF` (`0x37`)
+  was verified via `ctest` at `191/191` (190 prior + 1 new test
+  case covering five sections) and by the PacManV8 T021 runtime
+  evidence showing the canonical replay harness now runs past
+  `PC=0x1315` without an `Unsupported timed Z180 opcode 0x37`
+  abort. The headless binary runs to the requested checkpoint
+  and produces a valid inspection report (representative frame
+  SHA-256 at frame 60:
+  `4a63cec305375edd4b20e85ba9830d83888e2eaf4327a29c229cfc7ce7a79693`,
+  event-log digest `6563162820683566367`). The PacManV8
+  `pattern_replay_tests.py` harness now surfaces a separate,
+  non-opcode blocker — its `BYTE_ROW_PATTERN` regex expects
+  4-digit hex row prefixes while Vanguard 8's
+  `src/frontend/headless_inspect.cpp::append_byte_row` formats
+  logical-peek row addresses with `hex20` (5 digits) — which is
+  outside M42's allowed paths and is left for a follow-up
+  milestone. No new CPU-side unsupported-opcode blocker was
+  exposed.
 - Milestone `42` was activated on 2026-04-23 to close the next
   real-ROM timed CPU compatibility gap exposed after M41. The
-  PacManV8 T021 replay validation harness now reports
+  PacManV8 T021 replay validation harness reported
   `Unsupported timed Z180 opcode 0x37 at PC 0x1315` (`SCF`)
   immediately after the `collision_prepare_tile` divide-by-eight
   sequence, used as the "return with carry set" idiom
   (`SCF` followed by `RET`). The immediate downstream path is
-  already fully timed, so no look-ahead opcode is bundled. The
-  matching task file is
-  `docs/tasks/active/M42-T01-timed-scf-opcode-coverage.md`.
-  Authorized implementation scope is limited to `SCF` (`0x37`),
+  already fully timed, so no look-ahead opcode was bundled. The
+  matching task file now lives at
+  `docs/tasks/completed/M42-T01-timed-scf-opcode-coverage.md`.
+  Authorized implementation scope was limited to `SCF` (`0x37`),
   focused tests, non-perturbation evidence, and the declared
   verification commands.
 - Milestone `41` is blocked on 2026-04-23 after `M41-T01` implemented

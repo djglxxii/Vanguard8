@@ -109,6 +109,8 @@ Workflow:
 | 40 | Cover timed HD64180 `EX DE,HL` and `OR (HL)` gaps exposed by PacManV8 T021 |
 | 41 | Cover timed HD64180 CB-prefix `SRL H` and `RR L` gaps exposed by PacManV8 T021 |
 | 42 | Cover timed HD64180 `SCF` gap exposed by PacManV8 T021 |
+| 43 | Fix the logical peek-row prefix mismatch exposed by PacManV8 T021 |
+| 44 | Finish the remaining Vanguard8-side PacManV8 T021 blockers in one milestone |
 
 ## Milestones
 
@@ -1717,6 +1719,20 @@ Exit criteria:
 
 ### Milestone 43 — Logical Peek Row Prefix Format for PacManV8 T021
 
+Status note, 2026-04-23:
+- The in-scope Vanguard8 fix is implemented and locally verified:
+  logical peek rows now emit `0xHHHH:`, physical peek rows keep
+  `0xHHHHH:`, the headless observability golden/assertions are
+  refreshed, full `ctest` passes, and a direct PacManV8 smoke run
+  shows `logical 0x8270 ...` followed by `  0x8270:`.
+- Milestone acceptance remains blocked externally because the
+  checked-in PacManV8 harness still defines
+  `BYTE_ROW_PATTERN = re.compile(r"^\\s+0x([0-9a-f]{4}):((?: [0-9a-f]{2})+)$")`,
+  which matches literal `\s` instead of leading whitespace and
+  therefore still raises `inspection report did not contain
+  logical 0x8270:13` against the corrected Vanguard8 report.
+  Milestone 43 does not authorize PacManV8 edits.
+
 Objective:
 - Close the next real-ROM T021 blocker exposed after M42 added
   the authorized `SCF` timed opcode coverage. With SCF running,
@@ -1767,6 +1783,66 @@ Exit criteria:
   `inspection report did not contain logical 0x8270:13`; any
   remaining T021 failure is a new, distinct blocker and is
   routed to a future milestone.
+
+### Milestone 44 — PacManV8 T021 Remaining Compatibility Closure
+
+Status note, 2026-04-23:
+- M39 through M43 each closed one distinct PacManV8 T021 blocker,
+  but the latest blocked-task log at
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`
+  shows the replay still surfaces additional Vanguard8-side gaps
+  after the earlier parser mismatch was cleared on the PacManV8 side.
+- The current confirmed Vanguard8 blocker is `Unsupported timed
+  Z180 opcode 0x93 at PC 0x0FAE` (`SUB E`) in
+  `ghost_update_all_targets`, and the same blocked-task log already
+  identifies same-path `SUB C` (`0x91`) sites as the most plausible
+  immediate follow-on traps.
+- This milestone intentionally replaces the one-blocker-per-milestone
+  pattern for the rest of T021. Do not create M45+ micro-milestones
+  for each additional opcode or narrow headless/reporting gap unless
+  the subsystem scope changes beyond the boundaries below.
+
+Objective:
+- Finish the remaining Vanguard8-side compatibility work required for
+  PacManV8 T021 to run end-to-end. Use the blocked task above as the
+  authoritative runtime blocker ledger and clear the remaining timed
+  HD64180 and narrow headless observability/reporting gaps in one
+  milestone.
+
+Deliverables:
+- Timed extracted-core coverage for every missing opcode directly
+  confirmed by the PacManV8 T021 replay path, beginning with
+  `SUB E` (`0x93`) and any same-path immediate sister or look-ahead
+  forms already evidenced by the blocked-task log.
+- Narrow headless replay, inspection, or reporting fixes only when the
+  blocked task or a direct repro proves the failure is caused by
+  Vanguard8's emitted output or CLI surface rather than PacManV8.
+- Focused CPU/headless regression coverage and non-perturbation proof
+  for each newly covered behavior.
+- A single active task and blocker ledger for the remaining T021 work
+  (`M44-T01`) instead of more per-opcode milestones.
+
+Closure rule:
+- Keep this milestone inside `third_party/z180/`, `src/core/cpu/`,
+  `src/frontend/headless*`, `tests/`, and the listed doc/task files
+  only. Do not broaden into a general CPU completion pass, and do not
+  edit PacManV8 sources from this repo. Only implement behavior
+  directly proven by the T021 replay path or its immediate same-path
+  look-ahead.
+
+Exit criteria:
+- The canonical PacManV8 T021 `tools/pattern_replay_tests.py`
+  command completes end-to-end against the current Vanguard8 tree
+  without a Vanguard8-side timed-opcode abort or headless/report-format
+  mismatch.
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes
+  with focused new coverage included, and no existing regression is
+  relaxed.
+- Deterministic digests for unaffected fixture ROMs remain unchanged
+  unless a deliberate change is explicitly recorded.
+- Any remaining T021 failure is explicit and proven external to
+  Vanguard8 or outside the documented milestone scope, not another
+  undiscovered in-scope micro-milestone.
 
 ## Suggested Release Gates
 

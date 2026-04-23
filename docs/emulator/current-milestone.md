@@ -1,12 +1,80 @@
 # Current Milestone Lock
 
-- Active milestone: `43`
-- Title: `Logical Peek Row Prefix Format for PacManV8 T021`
-- Status: `active`
+- Active milestone: `44`
+- Title: `PacManV8 T021 Remaining Compatibility Closure`
+- Status: `blocked`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
-- Contract file: `docs/emulator/milestones/43.md`
+- Contract file: `docs/emulator/milestones/44.md`
 
 Execution rules:
+- Milestone `44` is blocked on 2026-04-23 after `M44-T01`
+  completed the in-scope Vanguard8 timed-opcode work exposed by the
+  PacManV8 T021 replay path. Timed support for `SUB E` (`0x93`),
+  same-path `SUB C` (`0x91`), and follow-on `CPL` (`0x2F`) was added
+  with focused CPU coverage. `ctest --test-dir cmake-build-debug
+  --output-on-failure` passed at `193/193` with the usual showcase
+  skip, and the direct frame-444 repro now completes with frame hash
+  `4a63cec305375edd4b20e85ba9830d83888e2eaf4327a29c229cfc7ce7a79693`
+  instead of aborting on `0x93`. The canonical PacManV8 T021 harness
+  now runs without a Vanguard8 timed-opcode abort or headless report
+  mismatch, but fails PacManV8 fidelity assertions: both replay cases
+  observe score/dots `0/0` and Pac-Man tile `(14, 26)` where the
+  harness expects progressed movement/scoring. The observed reports
+  still show `active=1`, advancing `replay_frame`, and replay-driven
+  `last_dir` changes, so the remaining blocker is PacManV8
+  gameplay/expectation state outside milestone 44's allowed Vanguard8
+  scope. `M44-T01` has been moved to `docs/tasks/blocked/`.
+- Milestone `44` was activated on 2026-04-23 after reviewing the
+  latest blocker ledger in
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`.
+  Milestones `39` through `43` each closed one distinct T021 blocker,
+  but the replay path still exposes additional Vanguard8-side gaps.
+  The current confirmed blocker is
+  `Unsupported timed Z180 opcode 0x93 at PC 0xFAE` (`SUB E`) in
+  `ghost_update_all_targets`, and the same blocked-task log identifies
+  same-path `SUB C` (`0x91`) sites as the most plausible immediate
+  follow-on traps. Milestone `44` replaces the prior
+  one-blocker-per-milestone pattern for the rest of T021.
+- Matching task file:
+  `docs/tasks/blocked/M44-T01-pacmanv8-t021-remaining-compatibility-closure.md`
+  after the 2026-04-23 incompletion summary. During execution, every
+  newly surfaced in-scope T021 blocker was recorded in that single
+  task file instead of opening `M45+` micro-milestones.
+- Authorized implementation scope is limited to timed HD64180 opcode
+  coverage and narrow headless replay, inspection, or reporting fixes
+  directly proven by the T021 repro path inside `third_party/z180/`,
+  `src/core/cpu/`, `src/frontend/headless*`, `tests/`, and the listed
+  doc/task files. No PacManV8 source edits from this repo, and no
+  unrelated VDP, audio, scheduler, debugger, save-state, or desktop
+  GUI work.
+- The PacManV8 blocked-task log dated 2026-04-23 also confirms the
+  earlier parser mismatch was fixed on the PacManV8 side and the replay
+  now advances past the M43 row-prefix issue, so the remaining blockers
+  are back on the Vanguard8 side unless proven otherwise.
+- Milestone `43` is blocked on 2026-04-23 after `M43-T01`
+  completed the in-scope Vanguard8 emitter-side change:
+  logical peek rows now emit 4-digit `0xHHHH:` prefixes,
+  physical peek rows still emit 5-digit `0xHHHHH:` prefixes,
+  the headless observability golden/assertions were refreshed,
+  `ctest --test-dir cmake-build-debug --output-on-failure`
+  passed at `191/191` with the usual showcase skip, and
+  `vanguard8_headless_replay_regression` remained pinned. A
+  direct PacManV8 smoke run with `--peek-logical 8270:13
+  --peek-mem F0270:13` now emits:
+  `logical 0x8270 physical 0xf0270 region ca1 length 13`
+  followed by row prefix `  0x8270:`. The canonical PacManV8
+  `pattern_replay_tests.py` command still exits with
+  `inspection report did not contain logical 0x8270:13`, but
+  the remaining blocker is external to Vanguard8:
+  `/home/djglxxii/src/PacManV8/tools/pattern_replay_tests.py`
+  currently defines
+  `BYTE_ROW_PATTERN = re.compile(r"^\\s+0x([0-9a-f]{4}):((?: [0-9a-f]{2})+)$")`,
+  which matches a literal `\s` sequence rather than leading
+  whitespace and therefore cannot match even the corrected
+  Vanguard8 report. Milestone `43` forbids PacManV8 harness
+  edits, so `M43-T01` was moved to `docs/tasks/blocked/`. No
+  new Vanguard8 milestone is active until that external parser
+  mismatch is resolved or a new milestone contract is defined.
 - Milestone `43` was activated on 2026-04-23 to close the next
   real-ROM T021 blocker exposed after M42 added the authorized
   `SCF` (`0x37`) timed opcode coverage. With SCF running, the
@@ -24,7 +92,9 @@ Execution rules:
   fix is narrow and emitter-side — logical-peek rows must use
   a 16-bit width matching the block header's `logical 0xHHHH`
   format — and the matching task file is
-  `docs/tasks/active/M43-T01-logical-peek-row-prefix-format.md`.
+  `docs/tasks/blocked/M43-T01-logical-peek-row-prefix-format.md`
+  (moved there after the external PacManV8 parser blocker was
+  confirmed).
   Authorized implementation scope is limited to the logical-peek
   row format, refreshed tests/golden, and the declared
   verification commands. No CPU opcode work, no physical-peek

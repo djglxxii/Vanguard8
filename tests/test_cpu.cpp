@@ -2807,6 +2807,109 @@ TEST_CASE("scheduled CPU covers ADD A,r / ADD A,(HL) and 16-bit ADD/SBC families
     }
 }
 
+TEST_CASE("scheduled CPU covers SUB C and SUB E used by the PacManV8 T021 ghost targeting path", "[cpu]") {
+    SECTION("SUB C (0x91) subtracts C from A, sets Z/N, and costs 4 T-states") {
+        const auto rom = make_instruction_test_rom({0x91, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x4200U | flag_carry);
+        state.registers.bc = 0x0042;
+        state.registers.de = 0x1234;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x00);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_zero | flag_subtract));
+        REQUIRE(static_cast<std::uint8_t>(after.bc & 0x00FFU) == 0x42);
+        REQUIRE(after.de == 0x1234);
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+
+    SECTION("SUB E (0x93) reports half-borrow and signed overflow without carry") {
+        const auto rom = make_instruction_test_rom({0x93, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.af = 0x8000;
+        state.registers.de = 0x0001;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x7F);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_half | flag_parity_overflow | flag_subtract));
+        REQUIRE(static_cast<std::uint8_t>(after.de & 0x00FFU) == 0x01);
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+
+    SECTION("SUB E (0x93) reports sign, half-borrow, and carry when A<E") {
+        const auto rom = make_instruction_test_rom({0x93, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.af = 0x1000;
+        state.registers.de = 0x0021;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xEF);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_sign | flag_half | flag_subtract | flag_carry));
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+
+    SECTION("SUB D (0x92) remains unsupported as an out-of-scope sister opcode") {
+        const auto rom = make_instruction_test_rom({0x92, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        require_runtime_error_contains(
+            [&cpu]() { (void)cpu.next_scheduled_tstates(); },
+            "Unsupported timed Z180 opcode 0x92 at PC"
+        );
+    }
+}
+
+TEST_CASE("scheduled CPU covers CPL used by the PacManV8 T021 ghost_abs_a path", "[cpu]") {
+    SECTION("CPL (0x2F) complements A, sets H/N, preserves S/Z/PV/C, and costs 4 T-states") {
+        const auto rom = make_instruction_test_rom({0x2F, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        constexpr auto preserved_flags = static_cast<std::uint8_t>(
+            flag_sign | flag_zero | flag_parity_overflow | flag_carry
+        );
+        state.registers.af = static_cast<std::uint16_t>(0x3500U | preserved_flags);
+        state.registers.bc = 0x1122;
+        state.registers.de = 0x3344;
+        state.registers.hl = 0x5566;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xCA);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(preserved_flags | flag_half | flag_subtract));
+        REQUIRE(after.bc == 0x1122);
+        REQUIRE(after.de == 0x3344);
+        REQUIRE(after.hl == 0x5566);
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+}
+
 TEST_CASE("scheduled CPU covers CP n / CP r / CP (HL) flag semantics", "[cpu]") {
     SECTION("CP n (0xFE) with A==n sets Z and keeps A unchanged") {
         const auto rom = make_instruction_test_rom({0xFE, 0x42, 0x76});

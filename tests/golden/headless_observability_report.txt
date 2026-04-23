@@ -116,5 +116,5 @@ physical 0x00000 length 4
 
 [peek-logical]
 logical 0x0000 physical 0x00000 region flat length 4
-  0x00000: 76 00 00 00
+  0x0000: 76 00 00 00
 

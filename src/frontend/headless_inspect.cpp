@@ -92,10 +92,12 @@ auto logical_region_end_exclusive(const std::uint16_t logical, const std::uint8_
 void append_byte_row(
     std::ostream& stream,
     const std::uint32_t display_address,
+    const int display_width,
     const std::vector<std::uint8_t>& bytes,
     const std::size_t offset
 ) {
-    stream << "  " << hex20(display_address + static_cast<std::uint32_t>(offset)) << ":";
+    stream << "  "
+           << hex_value(display_address + static_cast<std::uint32_t>(offset), display_width) << ":";
     const auto count = std::min(bytes_per_dump_row, bytes.size() - offset);
     for (std::size_t index = 0; index < count; ++index) {
         stream << ' ' << std::hex << std::nouppercase << std::setfill('0') << std::setw(2)
@@ -125,7 +127,7 @@ void append_physical_peek(
     const auto bytes = read_physical_bytes(emulator, range.address, range.length);
     stream << "physical " << hex20(range.address) << " length " << range.length << '\n';
     for (std::size_t offset = 0; offset < bytes.size(); offset += bytes_per_dump_row) {
-        append_byte_row(stream, range.address, bytes, offset);
+        append_byte_row(stream, range.address, 5, bytes, offset);
     }
 }
 
@@ -147,7 +149,7 @@ void append_logical_peek(
         stream << "logical " << hex16(logical) << " physical " << hex20(physical) << " region "
                << logical_region_name(logical, cbar) << " length " << chunk_length << '\n';
         for (std::size_t offset = 0; offset < bytes.size(); offset += bytes_per_dump_row) {
-            append_byte_row(stream, logical, bytes, offset);
+            append_byte_row(stream, logical, 4, bytes, offset);
         }
         consumed += chunk_length;
     }

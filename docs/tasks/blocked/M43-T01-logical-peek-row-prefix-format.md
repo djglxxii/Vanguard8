@@ -1,6 +1,6 @@
 # M43-T01 — Logical Peek Row Prefix Format for PacManV8 T021
 
-Status: `active`
+Status: `blocked`
 Milestone: `43`
 Depends on: `M42-T01`
 
@@ -145,3 +145,96 @@ cmake-build-debug/src/vanguard8_headless \
     --peek-logical 8270:13 \
     --peek-mem F0270:13
 ```
+
+## Incompletion Summary
+
+Date: 2026-04-23
+
+Implemented against:
+- `docs/spec/00-overview.md`
+- `docs/emulator/02-emulation-loop.md`
+- `docs/emulator/07-implementation-plan.md`
+- `docs/emulator/milestones/43.md`
+- `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`
+
+Completed within M43 scope:
+- Updated [src/frontend/headless_inspect.cpp](/home/djglxxii/src/Vanguard8/src/frontend/headless_inspect.cpp)
+  so `append_byte_row` now receives an explicit display-address
+  width. The physical peek path passes width `5`, preserving
+  `0xHHHHH:` row prefixes for 20-bit physical addresses; the
+  logical peek path passes width `4`, emitting `0xHHHH:` row
+  prefixes for 16-bit logical addresses. The logical block
+  header line format remains unchanged.
+- Tightened
+  [tests/test_headless.cpp](/home/djglxxii/src/Vanguard8/tests/test_headless.cpp)
+  so the existing headless peek test explicitly requires both
+  `  0xf0250: 12 34` and `  0x8250: 12 34`.
+- Refreshed
+  [tests/golden/headless_observability_report.txt](/home/djglxxii/src/Vanguard8/tests/golden/headless_observability_report.txt)
+  so the logical peek row prefix is `  0x0000:` while the
+  physical peek row remains `  0x00000:`.
+
+Verification completed:
+- `cd /home/djglxxii/src/PacManV8 && python3 tools/build.py`
+  passed and rebuilt `build/pacman.rom`.
+- `cd /home/djglxxii/src/Vanguard8 && cmake --build
+  cmake-build-debug` passed.
+- Focused golden proof:
+  `cmake-build-debug/tests/vanguard8_tests "headless --inspect emits the committed observability report format"`
+  passed after the golden refresh.
+- Full regression suite:
+  `ctest --test-dir cmake-build-debug --output-on-failure`
+  passed at `191/191`, with the pre-existing showcase
+  milestone-7 test skipped.
+- `vanguard8_headless_replay_regression` remained green inside the
+  full `ctest` run, preserving its pinned frame hash
+  `e46b5246bda293e09e199967b99ac352f931c04e2ad88e775b06a3b93ccb838c`
+  and audio hash
+  `48beda9f68f15ac4e3fca3f8b54ebea7832a906d358cc49867ae508287039ddf`.
+- The Vanguard8-side headless smoke command passed:
+  ```bash
+  cd /home/djglxxii/src/Vanguard8
+  cmake-build-debug/src/vanguard8_headless \
+      --rom /home/djglxxii/src/PacManV8/build/pacman.rom \
+      --frames 60 --hash-frame 60 \
+      --peek-logical 8270:13 \
+      --peek-mem F0270:13
+  ```
+  and emitted:
+  ```text
+  [peek-mem]
+  physical 0xf0270 length 13
+    0xf0270: ...
+
+  [peek-logical]
+  logical 0x8270 physical 0xf0270 region ca1 length 13
+    0x8270: ...
+  ```
+  confirming the logical row prefix is now exactly 4 hex digits
+  while the physical row prefix remains 5 hex digits.
+
+Blocker:
+- The canonical PacManV8 primary-proof command still exits with:
+  ```text
+  pattern_replay_tests.py error: inspection report did not contain logical 0x8270:13
+  ```
+- Direct reproduction against the same rebuilt Vanguard8 binary
+  shows the inspection report is now correct, so the remaining
+  failure is external to Vanguard8. The checked-in PacManV8
+  harness currently defines:
+  ```python
+  BYTE_ROW_PATTERN = re.compile(r"^\\s+0x([0-9a-f]{4}):((?: [0-9a-f]{2})+)$")
+  ```
+  which matches a literal `\s` sequence rather than actual
+  leading whitespace and therefore cannot match either the old
+  or the corrected Vanguard8 row output.
+- Milestone 43 explicitly forbids PacManV8 harness edits, so the
+  task cannot be completed inside this repo even though the
+  authorized Vanguard8 fix is implemented and verified.
+
+Resolution needed:
+- Fix the PacManV8 parser regex in
+  `/home/djglxxii/src/PacManV8/tools/pattern_replay_tests.py`
+  or define a follow-up cross-repo milestone that authorizes
+  that harness correction. No further Vanguard8 changes are
+  authorized under M43.

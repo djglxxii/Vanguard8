@@ -203,4 +203,17 @@ Derived from `docs/emulator/07-implementation-plan.md`.
   `headless_inspect.cpp` (4 hex digits for 16-bit logical rows,
   keep 5 hex digits for 20-bit physical rows) so the PacManV8
   T021 `pattern_replay_tests.py` harness can parse the
-  inspection report.
+  inspection report. Status: blocked externally after the
+  Vanguard8 emitter-side fix shipped; the remaining mismatch is
+  in PacManV8's checked-in parser regex.
+
+## Milestone 44
+
+- `M44-T01` Close the remaining Vanguard8-side PacManV8 T021
+  blockers in one task, starting from timed `SUB E` / likely
+  `SUB C` and any further replay-proven opcode or headless-report
+  gaps, instead of opening new per-blocker micro-milestones.
+  Status: blocked externally after timed `SUB E`, `SUB C`, and
+  replay-proven `CPL` coverage shipped; the remaining T021 failure is
+  PacManV8 fidelity/gameplay state, not a Vanguard8 timed-opcode or
+  headless report-format blocker.

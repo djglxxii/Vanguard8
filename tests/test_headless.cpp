@@ -418,7 +418,8 @@ TEST_CASE("headless inspection reports physical and logical memory peeks from th
     REQUIRE(emulator.mutable_bus().read_memory(0xF0251) == 0x34);
     REQUIRE(output.find("physical 0xf0250 length 2") != std::string::npos);
     REQUIRE(output.find("logical 0x8250 physical 0xf0250 region ca1 length 2") != std::string::npos);
-    REQUIRE(output.find("0xf0250: 12 34") != std::string::npos);
+    REQUIRE(output.find("  0xf0250: 12 34") != std::string::npos);
+    REQUIRE(output.find("  0x8250: 12 34") != std::string::npos);
 
     std::filesystem::remove_all(temp_dir);
 }

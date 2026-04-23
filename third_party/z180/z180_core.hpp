@@ -223,12 +223,14 @@ class Core {
     void op_ld_a_n();
     void op_add_a_r_main();
     void op_add_a_n();
+    void op_sub_a_r_main();
     void op_add_hl_ss_main();
     void op_and_n();
     void op_or_n();
     void op_cp_n();
     void op_cp_r_main();
     void apply_add_flags(std::uint8_t old_a, std::uint8_t operand, std::uint16_t result);
+    void apply_sub_flags(std::uint8_t old_a, std::uint8_t operand, std::uint8_t result);
     void apply_cp_flags(std::uint8_t a_value, std::uint8_t operand);
     void op_or_b();
     void op_or_c();
@@ -265,6 +267,7 @@ class Core {
     void op_push_de();
     void op_push_hl();
     void op_ex_de_hl();
+    void op_cpl();
     void op_scf();
     void op_cb_prefix();
     void op_cb_srl_a();

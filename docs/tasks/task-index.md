@@ -196,3 +196,11 @@ Derived from `docs/emulator/07-implementation-plan.md`.
   the PacManV8 T021 pattern-replay validation path's "return with
   carry set" idiom after the `collision_prepare_tile`
   divide-by-eight sequence.
+
+## Milestone 43
+
+- `M43-T01` Fix the logical-peek row-prefix format emitted by
+  `headless_inspect.cpp` (4 hex digits for 16-bit logical rows,
+  keep 5 hex digits for 20-bit physical rows) so the PacManV8
+  T021 `pattern_replay_tests.py` harness can parse the
+  inspection report.

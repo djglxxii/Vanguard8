@@ -1,12 +1,34 @@
 # Current Milestone Lock
 
-- Active milestone: `42`
-- Title: `Timed HD64180 SCF Coverage for PacManV8 T021`
-- Status: `accepted`
+- Active milestone: `43`
+- Title: `Logical Peek Row Prefix Format for PacManV8 T021`
+- Status: `active`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
-- Contract file: `docs/emulator/milestones/42.md`
+- Contract file: `docs/emulator/milestones/43.md`
 
 Execution rules:
+- Milestone `43` was activated on 2026-04-23 to close the next
+  real-ROM T021 blocker exposed after M42 added the authorized
+  `SCF` (`0x37`) timed opcode coverage. With SCF running, the
+  PacManV8 T021 `pattern_replay_tests.py` harness no longer
+  aborts at `PC=0x1315`, and the headless binary now runs to the
+  requested `--inspect-frame` checkpoint and produces a valid
+  inspection report. The harness then fails with
+  `pattern_replay_tests.py error: inspection report did not
+  contain logical 0x8270:13`. The root cause is emitter-side:
+  `src/frontend/headless_inspect.cpp::append_byte_row` formats
+  both `[peek-mem]` (20-bit physical) and `[peek-logical]`
+  (16-bit logical) row prefixes with `hex20`, producing 5-digit
+  logical-row prefixes (`  0x08270:`) that silently fail the
+  harness's 4-digit `BYTE_ROW_PATTERN` regex. The authoritative
+  fix is narrow and emitter-side — logical-peek rows must use
+  a 16-bit width matching the block header's `logical 0xHHHH`
+  format — and the matching task file is
+  `docs/tasks/active/M43-T01-logical-peek-row-prefix-format.md`.
+  Authorized implementation scope is limited to the logical-peek
+  row format, refreshed tests/golden, and the declared
+  verification commands. No CPU opcode work, no physical-peek
+  format changes, no other observability surface changes.
 - Milestone `42` is accepted on 2026-04-23. Task `M42-T01` is in
   `docs/tasks/completed/`. Timed-core support for `SCF` (`0x37`)
   was verified via `ctest` at `191/191` (190 prior + 1 new test
@@ -23,9 +45,8 @@ Execution rules:
   4-digit hex row prefixes while Vanguard 8's
   `src/frontend/headless_inspect.cpp::append_byte_row` formats
   logical-peek row addresses with `hex20` (5 digits) — which is
-  outside M42's allowed paths and is left for a follow-up
-  milestone. No new CPU-side unsupported-opcode blocker was
-  exposed.
+  outside M42's allowed paths and is routed to milestone `43`.
+  No new CPU-side unsupported-opcode blocker was exposed.
 - Milestone `42` was activated on 2026-04-23 to close the next
   real-ROM timed CPU compatibility gap exposed after M41. The
   PacManV8 T021 replay validation harness reported

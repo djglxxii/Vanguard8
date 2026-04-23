@@ -1715,6 +1715,59 @@ Exit criteria:
   actual replay-checkpoint evidence and acceptance still happen in
   the PacManV8 repo.
 
+### Milestone 43 — Logical Peek Row Prefix Format for PacManV8 T021
+
+Objective:
+- Close the next real-ROM T021 blocker exposed after M42 added
+  the authorized `SCF` timed opcode coverage. With SCF running,
+  the PacManV8 `pattern_replay_tests.py` harness now reaches the
+  inspection-report parse step and fails with `inspection report
+  did not contain logical 0x8270:13`. The cause is a width
+  mismatch inside Vanguard 8's own inspection output:
+  `src/frontend/headless_inspect.cpp::append_byte_row` uses
+  `hex20` (5 hex digits) for every row prefix, including on the
+  `[peek-logical]` path where logical addresses are 16-bit. The
+  harness regex expects 4 hex digits after `0x` and silently
+  fails to match. This blocker is not a Z180 opcode gap.
+
+Deliverables:
+- Row-prefix width distinction inside
+  `src/frontend/headless_inspect.cpp` so the `[peek-logical]`
+  path emits `  0xHHHH: ...` (16-bit) while `[peek-mem]` keeps
+  `  0xHHHHH: ...` (20-bit). The block header line format is
+  unchanged.
+- Refreshed `tests/golden/headless_observability_report.txt`
+  reflecting the new logical-row width (the physical-row width
+  stays as it was).
+- Tightened peek-format assertions in `tests/test_headless.cpp`
+  requiring both widths explicitly.
+- Runtime regression proving the canonical PacManV8 T021
+  `tools/pattern_replay_tests.py` command now parses the
+  inspection report and either passes outright or records its
+  next distinct blocker explicitly.
+
+Closure rule:
+- Keep this milestone inside `src/frontend/headless_inspect.*`,
+  `tests/`, and the listed doc/task files only. No CPU opcode
+  work. No changes to the physical-peek path. No changes to the
+  inspection-report header line, VRAM dump format, event log
+  format, VDP register dump format, or any other observability
+  surface. No PacManV8 harness regex edits.
+
+Exit criteria:
+- Logical peek rows emit a 4-digit hex prefix; physical peek
+  rows keep their 5-digit hex prefix.
+- The headless observability golden comparison passes against
+  the refreshed golden file, and the peek-format assertions
+  pass.
+- `ctest --test-dir cmake-build-debug --output-on-failure`
+  passes, and `vanguard8_headless_replay_regression` still
+  matches its pinned frame and audio hashes.
+- PacManV8 T021 `pattern_replay_tests.py` no longer fails with
+  `inspection report did not contain logical 0x8270:13`; any
+  remaining T021 failure is a new, distinct blocker and is
+  routed to a future milestone.
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:

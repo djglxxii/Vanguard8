@@ -189,3 +189,10 @@ Derived from `docs/emulator/07-implementation-plan.md`.
 - `M41-T01` Cover the missing timed HD64180 CB-prefix `SRL H` opcode
   and the immediate same-path `RR L` look-ahead gap needed by the
   PacManV8 T021 pattern-replay validation path.
+
+## Milestone 42
+
+- `M42-T01` Cover the missing timed HD64180 `SCF` opcode needed by
+  the PacManV8 T021 pattern-replay validation path's "return with
+  carry set" idiom after the `collision_prepare_tile`
+  divide-by-eight sequence.

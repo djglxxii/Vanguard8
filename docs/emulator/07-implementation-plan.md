@@ -108,6 +108,7 @@ Workflow:
 | 39 | Cover timed HD64180 pair INC/DEC and narrow CB-prefix gaps exposed by PacManV8 T021 |
 | 40 | Cover timed HD64180 `EX DE,HL` and `OR (HL)` gaps exposed by PacManV8 T021 |
 | 41 | Cover timed HD64180 CB-prefix `SRL H` and `RR L` gaps exposed by PacManV8 T021 |
+| 42 | Cover timed HD64180 `SCF` gap exposed by PacManV8 T021 |
 
 ## Milestones
 
@@ -1659,6 +1660,57 @@ Exit criteria:
   is relaxed.
 - Deterministic digests for ROMs that do not depend on the new
   opcodes are unchanged.
+- PacManV8 T021 becomes actionable from the emulator side; the
+  actual replay-checkpoint evidence and acceptance still happen in
+  the PacManV8 repo.
+
+### Milestone 42 — Timed HD64180 `SCF` Coverage for PacManV8 T021
+
+Objective:
+- Close the next real-ROM timed CPU compatibility gap exposed after
+  M41 added the authorized `SRL H` and `RR L` CB-prefix coverage for
+  PacManV8 T021. The PacManV8 T021 replay validation path now runs
+  past the M41 CB-prefix surface and aborts with `Unsupported timed
+  Z180 opcode 0x37 at PC 0x1315` (`SCF`) immediately after the
+  `collision_prepare_tile` divide-by-eight sequence. The idiom is
+  `SCF` followed by `RET` — "return with carry set" signaling the
+  collision-check outcome.
+
+Deliverables:
+- Timed-core implementation of `SCF` (`0x37`): set carry (C = 1),
+  clear half-carry (H = 0) and add/subtract (N = 0), leave S/Z/P/V
+  and all registers other than F untouched, advance `PC` by 1.
+- Adapter T-state timing entry for `SCF`: **4 T-states**.
+- Focused extracted-core CPU tests pinning register/flag/PC/cycle
+  behavior, including both entry-carry states, explicit S/Z/P/V
+  preservation, a register-preservation case across all pairs, a
+  short `SCF -> RET` idiom test, plus a negative test proving the
+  sister `CCF` (`0x3F`) opcode still raises the existing
+  unsupported-opcode runtime error.
+- Non-perturbation regression against an existing fixture ROM that
+  does not exercise the new opcode, proving frame, audio, and
+  event-log digests are byte-identical before and after.
+- Runtime regression proving the canonical PacManV8 T021
+  `tools/pattern_replay_tests.py` repro runs past `PC=0x1315`
+  without a timed-opcode abort, or records a later out-of-scope
+  opcode as a new blocker.
+
+Closure rule:
+- Keep this milestone inside `third_party/z180/`, `src/core/cpu/`,
+  `tests/`, and the listed doc/task files only. No general CPU
+  opcode sweep, no broader flag-manipulation coverage (no `CCF`,
+  `DAA`, `CPL`), no interrupt-controller, scheduler, audio, VDP,
+  frontend, debugger, save-state, observability, or PacManV8 ROM
+  changes.
+
+Exit criteria:
+- The emulator no longer aborts on the documented PacManV8 T021
+  path with `Unsupported timed Z180 opcode 0x37 at PC 0x1315`.
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes
+  with the new opcode tests included, and no pre-existing CPU test
+  is relaxed.
+- Deterministic digests for ROMs that do not depend on the new
+  opcode are unchanged.
 - PacManV8 T021 becomes actionable from the emulator side; the
   actual replay-checkpoint evidence and acceptance still happen in
   the PacManV8 repo.

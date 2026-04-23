@@ -1,12 +1,25 @@
 # Current Milestone Lock
 
-- Active milestone: `41`
-- Title: `Timed HD64180 CB-Prefix SRL H and RR L Coverage for PacManV8 T021`
-- Status: `blocked`
+- Active milestone: `42`
+- Title: `Timed HD64180 SCF Coverage for PacManV8 T021`
+- Status: `active`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
-- Contract file: `docs/emulator/milestones/41.md`
+- Contract file: `docs/emulator/milestones/42.md`
 
 Execution rules:
+- Milestone `42` was activated on 2026-04-23 to close the next
+  real-ROM timed CPU compatibility gap exposed after M41. The
+  PacManV8 T021 replay validation harness now reports
+  `Unsupported timed Z180 opcode 0x37 at PC 0x1315` (`SCF`)
+  immediately after the `collision_prepare_tile` divide-by-eight
+  sequence, used as the "return with carry set" idiom
+  (`SCF` followed by `RET`). The immediate downstream path is
+  already fully timed, so no look-ahead opcode is bundled. The
+  matching task file is
+  `docs/tasks/active/M42-T01-timed-scf-opcode-coverage.md`.
+  Authorized implementation scope is limited to `SCF` (`0x37`),
+  focused tests, non-perturbation evidence, and the declared
+  verification commands.
 - Milestone `41` is blocked on 2026-04-23 after `M41-T01` implemented
   the authorized `SRL H` (`0xCB 0x3C`) and `RR L` (`0xCB 0x1D`) timed
   CB-prefix surface and verified it with focused CPU coverage

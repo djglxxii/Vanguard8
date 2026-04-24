@@ -343,6 +343,9 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     if (opcode >= 0x80U && opcode <= 0x87U) {
         return opcode == 0x86U ? 7 : 4;
     }
+    if (opcode >= 0xA0U && opcode <= 0xA7U) {
+        return opcode == 0xA6U ? 7 : 4;
+    }
 
     switch (opcode) {
     case 0x00:

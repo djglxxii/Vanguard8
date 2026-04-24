@@ -111,6 +111,7 @@ Workflow:
 | 42 | Cover timed HD64180 `SCF` gap exposed by PacManV8 T021 |
 | 43 | Fix the logical peek-row prefix mismatch exposed by PacManV8 T021 |
 | 44 | Finish the remaining Vanguard8-side PacManV8 T021 blockers in one milestone |
+| 45 | Cover timed HD64180 `AND r` / `AND (HL)` gaps exposed by PacManV8 T021 |
 
 ## Milestones
 
@@ -1843,6 +1844,79 @@ Exit criteria:
 - Any remaining T021 failure is explicit and proven external to
   Vanguard8 or outside the documented milestone scope, not another
   undiscovered in-scope micro-milestone.
+
+### Milestone 45 — Timed HD64180 `AND r` / `AND (HL)` Coverage for PacManV8 T021
+
+Status note, 2026-04-23:
+- M45 completed its in-scope `AND r` / `AND (HL)` timed CPU
+  coverage and is blocked on the next distinct out-of-scope T021
+  opcode: `Unsupported timed Z180 opcode 0xD6 at PC 0x3EA`
+  (`SUB n` in PacManV8 `movement_distance_to_next_center_px`).
+  The next change requires a follow-up milestone contract; M45 is not
+  broadened beyond the documented `AND` family.
+- Milestone 44 cleared the then-current T021 timed-opcode gaps
+  (`SUB E`, `SUB C`, `CPL`) and was moved to blocked when the replay
+  path exposed a PacManV8-side fidelity issue outside M44's allowed
+  Vanguard8 scope. The PacManV8 team has since resolved that fidelity
+  issue, and the canonical T021 harness now aborts on a new
+  Vanguard8-side timed-opcode gap:
+
+  ```text
+  terminate called after throwing an instance of 'std::runtime_error'
+    what():  Unsupported timed Z180 opcode 0xA3 at PC 0x125B
+  ```
+
+  This is `AND E` (`0xA3`) in `collision_consume_tile`. The
+  PacManV8 blocked-task log also identifies `AND (HL)` (`0xA6`) at
+  `PC=0x1260` as the strongly suspected immediate follow-on.
+- Per M44's philosophy, keep the remaining T021 Vanguard8-side
+  closure inside a single milestone per opcode family rather than
+  one milestone per opcode. M45 covers the full base `AND r`
+  register family plus `AND (HL)` in one pass. If a new out-of-scope
+  gap surfaces after M45, open a new milestone contract; do not
+  broaden this one.
+
+Objective:
+- Close the confirmed `AND E` timed-opcode gap and the suspected
+  `AND (HL)` follow-on, and in the same pass cover the rest of the
+  base `AND r` register forms so the T021 replay path cannot abort
+  again on a sister `AND r` opcode inside the same rebuild cycle.
+
+Deliverables:
+- Timed extracted-core coverage for `AND B`/`C`/`D`/`E`/`H`/`L`/`A`
+  (`0xA0`–`0xA5`, `0xA7`) and `AND (HL)` (`0xA6`).
+- Focused CPU regression tests pinning operand/result, flags (S, Z,
+  H=1, P/V, N=0, C=0), `PC` advance, and adapter T-state
+  classification for each opcode, including a memory-read exercise
+  for `AND (HL)`.
+- A negative guard preserving the existing fail-fast contract for a
+  still-out-of-scope sister form (for example `OR E` / `0xB3` or
+  `XOR E` / `0xAB`).
+- Non-perturbation fixture regression proof against an existing
+  fixture ROM that does not exercise the newly covered opcodes.
+- Task `M45-T01` captures the full opcode list, per-opcode test
+  references, verification evidence, and — if a new out-of-scope
+  blocker is surfaced — the precise next repro.
+
+Closure rule:
+- Keep this milestone inside `third_party/z180/`, `src/core/cpu/`,
+  `tests/`, and the listed doc/task files only. Do not broaden into
+  `OR r`, `XOR r`, `CP r`, rotate/shift, index-register, or
+  ED-prefix forms without a T021 repro. Do not edit PacManV8 sources
+  from this repo.
+
+Exit criteria:
+- Every opcode in Allowed scope is dispatched by the timed
+  extracted core with a matching focused test.
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes
+  with the new coverage included and no pre-existing regression
+  relaxed.
+- Deterministic digests for unaffected fixture ROMs remain unchanged
+  unless a deliberate change is explicitly recorded.
+- The canonical PacManV8 T021 `tools/pattern_replay_tests.py`
+  command either completes end-to-end against the current Vanguard8
+  tree or stops on a new distinct blocker that is explicitly out of
+  M45 scope and is recorded for the next milestone contract.
 
 ## Suggested Release Gates
 

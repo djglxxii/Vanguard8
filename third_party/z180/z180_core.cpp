@@ -462,6 +462,9 @@ void Core::initialize_tables() {
     for (std::size_t i = 0x80U; i <= 0x87U; ++i) {
         opcodes_[i] = &Core::op_add_a_r_main;
     }
+    for (std::size_t i = 0xA0U; i <= 0xA7U; ++i) {
+        opcodes_[i] = &Core::op_and_r_main;
+    }
     opcodes_[0x91] = &Core::op_sub_a_r_main;
     opcodes_[0x93] = &Core::op_sub_a_r_main;
     opcodes_[0x76] = &Core::op_halt;
@@ -977,6 +980,17 @@ void Core::op_add_hl_ss_main() {
 
 void Core::op_and_n() {
     af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi & fetch_byte());
+    apply_and_flags();
+}
+
+void Core::op_and_r_main() {
+    const auto reg_code = static_cast<std::uint8_t>(last_opcode_ & 0x07U);
+    const auto operand = (reg_code == 0x06U) ? read_logical(hl_.value) : register8_from_code(reg_code);
+    af_.bytes.hi = static_cast<std::uint8_t>(af_.bytes.hi & operand);
+    apply_and_flags();
+}
+
+void Core::apply_and_flags() {
     af_.bytes.lo = flag_half;
     if ((af_.bytes.hi & 0x80U) != 0U) {
         af_.bytes.lo = static_cast<std::uint8_t>(af_.bytes.lo | flag_sign);

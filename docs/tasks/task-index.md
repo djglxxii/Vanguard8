@@ -217,3 +217,11 @@ Derived from `docs/emulator/07-implementation-plan.md`.
   replay-proven `CPL` coverage shipped; the remaining T021 failure is
   PacManV8 fidelity/gameplay state, not a Vanguard8 timed-opcode or
   headless report-format blocker.
+
+## Milestone 45
+
+- `M45-T01` Cover the timed HD64180 `AND r` register family and
+  `AND (HL)` needed by the PacManV8 T021 pellet-consumption path.
+  Status: blocked after the in-scope `AND` surface shipped; the
+  replay path now reaches a new out-of-scope timed `SUB n` (`0xD6`)
+  blocker at `PC=0x03EA`.

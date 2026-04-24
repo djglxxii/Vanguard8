@@ -2881,6 +2881,160 @@ TEST_CASE("scheduled CPU covers SUB C and SUB E used by the PacManV8 T021 ghost 
     }
 }
 
+TEST_CASE("scheduled CPU covers AND r and AND (HL) used by PacManV8 T021 pellet consumption", "[cpu]") {
+    struct AndRegisterCase {
+        const char* name;
+        std::uint8_t opcode;
+        std::uint16_t af;
+        std::uint16_t bc;
+        std::uint16_t de;
+        std::uint16_t hl;
+        std::uint8_t expected_a;
+        std::uint8_t expected_flags;
+    };
+
+    SECTION("AND B/C/D/E/H/L/A each update A and Z80 logical flags in 4 T-states") {
+        const std::vector<AndRegisterCase> cases{
+            {
+                "AND B (0xA0) zero result",
+                0xA0,
+                static_cast<std::uint16_t>(0xF000U | 0x00FFU),
+                0x0F22,
+                0x3344,
+                0x5566,
+                0x00,
+                static_cast<std::uint8_t>(flag_half | flag_zero | flag_parity_overflow),
+            },
+            {
+                "AND C (0xA1) sign result with odd parity",
+                0xA1,
+                static_cast<std::uint16_t>(0xF000U | 0x00FFU),
+                0x2280,
+                0x3344,
+                0x5566,
+                0x80,
+                static_cast<std::uint8_t>(flag_half | flag_sign),
+            },
+            {
+                "AND D (0xA2) even-parity low result",
+                0xA2,
+                static_cast<std::uint16_t>(0xF300U | 0x00FFU),
+                0x1122,
+                0x0312,
+                0x5566,
+                0x03,
+                static_cast<std::uint8_t>(flag_half | flag_parity_overflow),
+            },
+            {
+                "AND E (0xA3) confirmed T021 blocker",
+                0xA3,
+                static_cast<std::uint16_t>(0x3300U | 0x00FFU),
+                0x1122,
+                0x4412,
+                0x5566,
+                0x12,
+                static_cast<std::uint8_t>(flag_half | flag_parity_overflow),
+            },
+            {
+                "AND H (0xA4) masks against H",
+                0xA4,
+                static_cast<std::uint16_t>(0xCC00U | 0x00FFU),
+                0x1122,
+                0x3344,
+                0x0C66,
+                0x0C,
+                static_cast<std::uint8_t>(flag_half | flag_parity_overflow),
+            },
+            {
+                "AND L (0xA5) odd-parity bit result",
+                0xA5,
+                static_cast<std::uint16_t>(0x7F00U | 0x00FFU),
+                0x1122,
+                0x3344,
+                0x5540,
+                0x40,
+                flag_half,
+            },
+            {
+                "AND A (0xA7) self-mask",
+                0xA7,
+                static_cast<std::uint16_t>(0xAA00U | 0x00FFU),
+                0x1122,
+                0x3344,
+                0x5566,
+                0xAA,
+                static_cast<std::uint8_t>(flag_half | flag_sign | flag_parity_overflow),
+            },
+        };
+
+        for (const auto& c : cases) {
+            INFO(c.name);
+            const auto rom = make_instruction_test_rom({c.opcode, 0x76});
+            vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+            vanguard8::core::cpu::Z180Adapter cpu{bus};
+            auto state = cpu.state_snapshot();
+            state.registers.af = c.af;
+            state.registers.bc = c.bc;
+            state.registers.de = c.de;
+            state.registers.hl = c.hl;
+            cpu.load_state_snapshot(state);
+
+            REQUIRE(cpu.next_scheduled_tstates() == 4);
+            REQUIRE(cpu.step_scheduled_instruction() == 4);
+            const auto after = cpu.state_snapshot().registers;
+
+            REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == c.expected_a);
+            REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == c.expected_flags);
+            REQUIRE(after.bc == c.bc);
+            REQUIRE(after.de == c.de);
+            REQUIRE(after.hl == c.hl);
+            REQUIRE(cpu.pc() == 0x0001);
+        }
+    }
+
+    SECTION("AND (HL) (0xA6) reads logical HL, applies logical flags, and costs 7 T-states") {
+        const auto rom = make_instruction_test_rom({0xA6, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        auto state = cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.af = static_cast<std::uint16_t>(0xF000U | 0x00FFU);
+        state.registers.hl = 0x8126;
+        cpu.load_state_snapshot(state);
+        bus.write_memory(0xF0126, 0x80);
+        (void)cpu.add_breakpoint(vanguard8::core::cpu::Breakpoint{
+            .type = vanguard8::core::cpu::BreakpointType::memory_read,
+            .address = 0x8126,
+            .value = 0x80,
+        });
+
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        const auto after = cpu.state_snapshot().registers;
+
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x80);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                static_cast<std::uint8_t>(flag_half | flag_sign));
+        REQUIRE(cpu.breakpoint_hits().size() == 1);
+        REQUIRE(cpu.breakpoint_hits().front().address == 0x8126);
+        REQUIRE(cpu.breakpoint_hits().front().value == 0x80);
+        REQUIRE(cpu.pc() == 0x0001);
+    }
+
+    SECTION("XOR E (0xAB) remains unsupported as an out-of-scope sister opcode") {
+        const auto rom = make_instruction_test_rom({0xAB, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        require_runtime_error_contains(
+            [&cpu]() { (void)cpu.next_scheduled_tstates(); },
+            "Unsupported timed Z180 opcode 0xAB at PC"
+        );
+    }
+}
+
 TEST_CASE("scheduled CPU covers CPL used by the PacManV8 T021 ghost_abs_a path", "[cpu]") {
     SECTION("CPL (0x2F) complements A, sets H/N, preserves S/Z/PV/C, and costs 4 T-states") {
         const auto rom = make_instruction_test_rom({0x2F, 0x76});

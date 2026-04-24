@@ -1,12 +1,66 @@
 # Current Milestone Lock
 
-- Active milestone: `44`
-- Title: `PacManV8 T021 Remaining Compatibility Closure`
+- Active milestone: `45`
+- Title: `Timed HD64180 AND r / AND (HL) Coverage for PacManV8 T021`
 - Status: `blocked`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
-- Contract file: `docs/emulator/milestones/44.md`
+- Contract file: `docs/emulator/milestones/45.md`
 
 Execution rules:
+- Milestone `45` is blocked on 2026-04-23 after `M45-T01`
+  completed the in-scope timed `AND r` / `AND (HL)` surface:
+  `AND B` (`0xA0`), `AND C` (`0xA1`), `AND D` (`0xA2`),
+  `AND E` (`0xA3`), `AND H` (`0xA4`), `AND L` (`0xA5`),
+  `AND (HL)` (`0xA6`), and `AND A` (`0xA7`). Focused CPU coverage
+  pins operand/result behavior, flags, `PC` advance, 4/7 T-state
+  classification, the `AND (HL)` memory-read path, and a negative
+  `XOR E` (`0xAB`) out-of-scope guard. `cmake --build
+  cmake-build-debug` passed, `ctest --test-dir cmake-build-debug
+  --output-on-failure` passed at `194/194` with the usual showcase
+  skip, and the direct frame-40 repro now exits cleanly with event-log
+  digest `9745782898622768779` and frame SHA-256
+  `4a63cec305375edd4b20e85ba9830d83888e2eaf4327a29c229cfc7ce7a79693`.
+  The canonical PacManV8 T021 harness now advances past the M45
+  `AND E` / `AND (HL)` sites, then stops on a new out-of-scope timed
+  opcode: `Unsupported timed Z180 opcode 0xD6 at PC 0x3EA`
+  (`SUB n` in PacManV8 `movement_distance_to_next_center_px`,
+  `/home/djglxxii/src/PacManV8/src/movement.asm:326`). `M45-T01`
+  has been moved to
+  `docs/tasks/blocked/M45-T01-timed-and-r-and-and-hl-opcode-coverage.md`.
+  No new Vanguard8 milestone is active until a follow-up contract is
+  defined.
+- Milestone `45` was planned on 2026-04-23 after the PacManV8
+  team resolved the out-of-scope fidelity issue that had blocked
+  `M44-T01`. The canonical PacManV8 T021 harness now surfaces a
+  new Vanguard8-side timed-opcode gap:
+  `Unsupported timed Z180 opcode 0xA3 at PC 0x125B` (`AND E` in
+  `collision_consume_tile`). The blocked-task log at
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`
+  also identifies `AND (HL)` (`0xA6`) at `PC=0x1260` as the
+  strongly suspected immediate follow-on.
+- Per the user's 2026-04-23 direction, and continuing M44's
+  philosophy of consolidating remaining T021 closure work,
+  milestone `45` covers the full base `AND r` register family
+  (`0xA0`–`0xA5`, `0xA7`) plus `AND (HL)` (`0xA6`) in one pass
+  so the T021 replay path cannot abort again on a sister
+  `AND r` opcode inside the same rebuild cycle. If a further
+  out-of-scope gap surfaces after M45, a new milestone contract
+  is opened — M45 is not broadened.
+- Authorized implementation scope is limited to timed extracted-
+  core coverage for the `AND` family opcodes above, focused
+  tests, non-perturbation regressions, and the listed doc/task
+  files inside `third_party/z180/`, `src/core/cpu/`, `tests/`,
+  `docs/emulator/07-implementation-plan.md`,
+  `docs/emulator/current-milestone.md`,
+  `docs/emulator/milestones/45.md`, and the `docs/tasks/`
+  queues. No PacManV8 source edits from this repo, and no
+  unrelated VDP, audio, scheduler, debugger, save-state,
+  headless format, or desktop GUI work. No speculative
+  broadening into `OR r`, `XOR r`, `CP r`, rotate/shift,
+  index-register, or ED-prefix families without a fresh T021
+  repro.
+- Matching task file:
+  `docs/tasks/blocked/M45-T01-timed-and-r-and-and-hl-opcode-coverage.md`.
 - Milestone `44` is blocked on 2026-04-23 after `M44-T01`
   completed the in-scope Vanguard8 timed-opcode work exposed by the
   PacManV8 T021 replay path. Timed support for `SUB E` (`0x93`),

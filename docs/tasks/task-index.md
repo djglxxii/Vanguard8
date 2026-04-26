@@ -225,3 +225,35 @@ Derived from `docs/emulator/07-implementation-plan.md`.
   Status: blocked after the in-scope `AND` surface shipped; the
   replay path now reaches a new out-of-scope timed `SUB n` (`0xD6`)
   blocker at `PC=0x03EA`.
+
+## Milestone 46
+
+- `M46-T01` Cover the remaining timed HD64180 ALU register/
+  immediate tail needed by the PacManV8 T021 replay path: the
+  register-form families `ADC A,r` (`0x88..0x8F`), `SUB r`
+  (`0x90..0x97`), `SBC A,r` (`0x98..0x9F`), and `XOR r`
+  (`0xA8..0xAF`), plus the matching immediates `ADC A,n` (`0xCE`),
+  `SUB n` (`0xD6`), `SBC A,n` (`0xDE`), and `XOR n` (`0xEE`), and
+  remove the now-redundant explicit dispatch entries for `0x91`,
+  `0x93`, and `0xAF`. Implements the PacManV8 T021 blocked-task
+  `### Recommended fix (Vanguard8 repo)` section verbatim. Status:
+  completed; the canonical PacManV8 T021 harness now passes both
+  replay cases end-to-end.
+
+## Milestone 47
+
+- `M47-T01` Replace the milestone-2-era hand-written Z180 stub in
+  `third_party/z180/z180_core.{hpp,cpp}` with the full MAME
+  HD64180 / Z180 CPU device sources at a pinned upstream commit,
+  shrink `src/core/cpu/z180_adapter.{hpp,cpp}` to bus glue
+  (delete `current_instruction_tstates()`,
+  `cb_instruction_tstates()`, `ed_instruction_tstates()`, and
+  every `"Unsupported timed Z180 opcode …"` throw site), rewrite
+  `tests/test_cpu.cpp` against spec-pinned integration tests
+  plus behavioral coverage for previously unsupported instruction
+  classes (`LDIR`, `IX`-based prologue, CB-prefix bit ops,
+  `JP (HL)` jump-table, `RST n` round-trip, `IM 2` + INT2 vector
+  fetch), re-pin replay-fixture digests, and update
+  `third_party/z180/README.md` and the ROM-readiness audit to
+  reflect the new shipped state. Retires the one-opcode-per-
+  milestone pattern. Status: active.

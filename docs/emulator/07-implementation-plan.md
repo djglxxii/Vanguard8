@@ -112,6 +112,7 @@ Workflow:
 | 43 | Fix the logical peek-row prefix mismatch exposed by PacManV8 T021 |
 | 44 | Finish the remaining Vanguard8-side PacManV8 T021 blockers in one milestone |
 | 45 | Cover timed HD64180 `AND r` / `AND (HL)` gaps exposed by PacManV8 T021 |
+| 46 | Cover timed HD64180 ALU register/immediate tail (`ADC`/`SUB`/`SBC`/`XOR`) gaps exposed by PacManV8 T021 |
 
 ## Milestones
 
@@ -1917,6 +1918,184 @@ Exit criteria:
   command either completes end-to-end against the current Vanguard8
   tree or stops on a new distinct blocker that is explicitly out of
   M45 scope and is recorded for the next milestone contract.
+
+### Milestone 46 — Timed HD64180 ALU Register/Immediate Tail Coverage for PacManV8 T021
+
+Status note, 2026-04-24:
+- M45 closed the in-scope `AND r` / `AND (HL)` timed CPU coverage
+  and was moved to blocked when the canonical PacManV8 T021 replay
+  harness advanced past the AND sites and reached a new
+  out-of-scope timed-opcode gap:
+
+  ```text
+  terminate called after throwing an instance of 'std::runtime_error'
+    what():  Unsupported timed Z180 opcode 0xD6 at PC 0x3EA
+  ```
+
+  `0xD6` is `SUB n` in PacManV8
+  `movement_distance_to_next_center_px:326`. The PacManV8
+  blocked-task log contains a dedicated
+  `### Recommended fix (Vanguard8 repo)` section that authorizes
+  closing the entire remaining register/immediate ALU timed-opcode
+  tail in a single Vanguard8 patch instead of one milestone per
+  sister opcode. M46 adopts that recommendation verbatim as its
+  scope contract.
+
+Objective:
+- Close the full register-form ALU tail (`ADC A,r`, `SUB r`,
+  `SBC A,r`, `XOR r`) and the matching immediate peers (`ADC A,n`,
+  `SUB n`, `SBC A,n`, `XOR n`) in a single pass so the PacManV8
+  T021 replay path cannot abort again on a sister register-form or
+  immediate-form ALU opcode inside the same rebuild cycle.
+
+Deliverables:
+- Timed extracted-core coverage in
+  `Z180Adapter::current_instruction_tstates()` for:
+  - `ADC A,r` (`0x88..0x8F`; `0x8E` = `ADC A,(HL)`)
+  - `SUB r`   (`0x90..0x97`; `0x96` = `SUB (HL)`)
+  - `SBC A,r` (`0x98..0x9F`; `0x9E` = `SBC A,(HL)`)
+  - `XOR r`   (`0xA8..0xAF`; `0xAE` = `XOR (HL)`)
+  expressed as range-checks alongside the existing `LD r,r'`,
+  `ADD A,r`, and `AND r` range-checks.
+- Removal of the now-redundant explicit dispatch entries for
+  `0x91` (`SUB C`), `0x93` (`SUB E`), and `0xAF` (`XOR A`) from
+  the existing `return 4` switch block.
+- Addition of `ADC A,n` (`0xCE`), `SUB n` (`0xD6`), `SBC A,n`
+  (`0xDE`), and `XOR n` (`0xEE`) to the existing uniform-7-cycle
+  `return 7` case-label group.
+- Focused CPU regression tests pinning operand/result, flags, `PC`
+  advance, adapter T-state classification (4 for register forms,
+  7 for `(HL)` and immediate forms), and the memory-read path for
+  each `(HL)` form.
+- A negative guard preserving the existing fail-fast contract for a
+  still-out-of-scope sister form (for example a rotate/shift family
+  base or an ED-prefix opcode).
+- Non-perturbation fixture regression proof against an existing
+  fixture ROM that does not exercise the newly covered opcodes.
+- Task `M46-T01` captures the full opcode list, per-opcode test
+  references, verification evidence, and — if a new out-of-scope
+  blocker is surfaced — the precise next repro.
+
+Closure rule:
+- Keep this milestone inside `third_party/z180/`, `src/core/cpu/`,
+  `tests/`, and the listed doc/task files only. Do not broaden into
+  rotate/shift, index-register, or ED-prefix forms without a T021
+  repro. Do not touch the existing explicit `OR r` (`0xB0..0xB7`)
+  or `CP r` (`0xB8..0xBF`) entries — the recommended fix explicitly
+  excludes those ranges. Do not edit PacManV8 sources from this
+  repo.
+
+Exit criteria:
+- Every opcode in Allowed scope is dispatched by the timed
+  extracted core with a matching focused test.
+- The three redundant explicit entries (`0x91`, `0x93`, `0xAF`)
+  have been removed from the `return 4` switch block.
+- `ctest --test-dir cmake-build-debug --output-on-failure` passes
+  with the new coverage included and no pre-existing regression
+  relaxed.
+- Deterministic digests for unaffected fixture ROMs remain unchanged
+  unless a deliberate change is explicitly recorded.
+- The canonical PacManV8 T021 `tools/pattern_replay_tests.py`
+  command either completes end-to-end against the current Vanguard8
+  tree or stops on a new distinct blocker that is explicitly out of
+  M46 scope and is recorded for the next milestone contract.
+
+### Milestone 47 — Full MAME HD64180 Core Import (Retire Per-Opcode CPU Milestones)
+
+Status note, 2026-04-26:
+- Milestone 46 closed cleanly and was accepted on 2026-04-24. No
+  new T021-driven CPU blocker is open.
+- A repository audit
+  (`docs/emulator/16-rom-readiness-audit.md`, 2026-04-26)
+  documented that the timed Z180 dispatch in
+  `third_party/z180/z180_core.{hpp,cpp}` and
+  `src/core/cpu/z180_adapter.cpp` is a milestone-2 boot stub that
+  has been extended one opcode per milestone since M19. The audit
+  enumerated concrete missing surfaces (all `IX` / `IY`
+  prefixes, all block transfers, all `RST n`, conditional `CALL`,
+  most conditional `JP cc,nn`, `JP (HL)`, indirect `LD A,(BC)` /
+  `(DE)` / mirrored, `EX (SP),HL` / `EX AF,AF'` / `EXX` / `LD
+  SP,HL`, accumulator rotates, `DAA` / `CCF` / `LD (HL),n`,
+  249 of 256 CB sub-opcodes, and most ED instructions) that no
+  agentically authored ROM and no standard Z80/HD64180 toolchain
+  output can avoid.
+- The user has decided on 2026-04-26 to retire the one-opcode-
+  per-milestone pattern. The Vanguard 8 *is* an HD64180 system,
+  so the natural posture is to import the **full** MAME z180
+  core in one pass and shrink `Z180Adapter` to bus glue. Milestone
+  47 supersedes the milestone-2 extraction scope contract recorded
+  in `third_party/z180/README.md`.
+
+Objective:
+- Replace the hand-written Vanguard 8 Z180 stub with the full MAME
+  HD64180 / Z180 CPU core (BSD-3, pinned upstream commit), and
+  remove the per-opcode timed dispatch tables in `Z180Adapter`
+  and every `"Unsupported timed Z180 opcode …"` throw site. After
+  M47, every published HD64180 instruction (full Z80 base set
+  plus `MLT`, `IN0`, `OUT0`, `TST`, `TSTIO`, `OTIM` / `OTDM` /
+  `OTIMR` / `OTDMR`, `SLP`) executes without dispatch
+  fallthrough, with cycle timing supplied by the imported core.
+
+Deliverables:
+- `third_party/z180/z180_core.{hpp,cpp}` replaced with the
+  imported MAME HD64180 / Z180 device sources at a single pinned
+  commit. License header carried verbatim. The MAME device-
+  framework dependencies stripped or replaced with a small
+  in-tree shim that preserves the existing
+  `vanguard8::core::cpu::Z180Adapter` public surface.
+- `src/core/cpu/z180_adapter.{hpp,cpp}` reduced to bus glue.
+  Specifically: `current_instruction_tstates()`,
+  `cb_instruction_tstates()`, `ed_instruction_tstates()`, and
+  every `throw std::runtime_error("Unsupported timed Z180
+  opcode …")` site no longer exist anywhere in `src/core/cpu/`.
+  The breakpoint, bank-switch logging, INT1 acknowledgement, and
+  observability surfaces remain intact.
+- `tests/test_cpu.cpp` rewritten: per-opcode T-state tests
+  removed; spec-pinned integration tests retained or restated;
+  new behavioral coverage for the previously unsupported
+  instruction classes (`LDIR`, `IX`-based prologue, CB-prefix bit
+  ops, `JP (HL)` table, `RST n` round-trip, `IM 2` + INT2 vector
+  fetch); negative guard asserting no primary opcode 0x00–0xFF
+  triggers a throw from the adapter timing API.
+- Replay fixture digests in `tests/replays/` re-pinned. A one-
+  time uniform delta is expected and acceptable; substantive
+  behavior divergence is a defect.
+- `third_party/z180/README.md` rewritten to describe the import,
+  pin the upstream commit, list the spec-anchored Vanguard 8
+  overrides preserved by the import (`CBAR` / `CBR` / `BBR` boot
+  defaults, the `IL & 0xE0` rule, PRT reset values, HALT-resume),
+  and remove the "full opcode coverage is a non-goal" line.
+- `docs/emulator/16-rom-readiness-audit.md` Section 1 status
+  updated to "Resolved" with a one-line pointer to M47.
+
+Closure rule:
+- Keep this milestone inside `third_party/z180/`,
+  `src/core/cpu/`, `tests/test_cpu.cpp`, `tests/replays/`
+  (digest re-pin only), and the listed doc/task files. Do not
+  bundle unrelated audit closures (Text 1 / Text 2 renderers,
+  Graphic 5 / 7, sprite overflow status fields, command-engine
+  packing). Do not vendor a Z80-only core and write a local
+  HD64180 extension layer — the only authorized path is the full
+  MAME HD64180 / Z180 import. After M47, any future ROM trap on
+  a CPU dispatch path is a bug in the adapter or in the imported
+  core's pin, not an invitation to open M48 for that single
+  opcode.
+
+Exit criteria:
+- The imported MAME HD64180 / Z180 core is in
+  `third_party/z180/`, with the upstream commit SHA and license
+  recorded in the README.
+- `Z180Adapter::*_instruction_tstates()` and every
+  `"Unsupported timed Z180 opcode"` throw site are gone from
+  `src/core/cpu/`.
+- `cmake --build cmake-build-debug` succeeds and
+  `ctest --test-dir cmake-build-debug --output-on-failure`
+  passes with the rewritten test surface.
+- Replay-fixture digests are byte-identical across three
+  post-import runs and recorded in M47-T01.
+- The PacManV8 T021 harness completes end-to-end or surfaces a
+  non-CPU blocker (recorded in M47-T01 for a follow-up
+  milestone).
 
 ## Suggested Release Gates
 

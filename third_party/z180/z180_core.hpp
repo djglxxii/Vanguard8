@@ -223,16 +223,36 @@ class Core {
     void op_ld_a_n();
     void op_add_a_r_main();
     void op_add_a_n();
+    void op_adc_a_r_main();
+    void op_adc_a_n();
     void op_sub_a_r_main();
+    void op_sub_a_n();
+    void op_sbc_a_r_main();
+    void op_sbc_a_n();
     void op_add_hl_ss_main();
     void op_and_r_main();
     void op_and_n();
+    void op_xor_r_main();
+    void op_xor_n();
     void op_or_n();
     void op_cp_n();
     void op_cp_r_main();
     void apply_add_flags(std::uint8_t old_a, std::uint8_t operand, std::uint16_t result);
+    void apply_adc_flags(
+        std::uint8_t old_a,
+        std::uint8_t operand,
+        std::uint8_t carry,
+        std::uint16_t result
+    );
     void apply_sub_flags(std::uint8_t old_a, std::uint8_t operand, std::uint8_t result);
+    void apply_sbc_flags(
+        std::uint8_t old_a,
+        std::uint8_t operand,
+        std::uint8_t borrow,
+        std::uint8_t result
+    );
     void apply_and_flags();
+    void apply_xor_flags();
     void apply_cp_flags(std::uint8_t a_value, std::uint8_t operand);
     void op_or_b();
     void op_or_c();

@@ -1,12 +1,101 @@
 # Current Milestone Lock
 
-- Active milestone: `45`
-- Title: `Timed HD64180 AND r / AND (HL) Coverage for PacManV8 T021`
-- Status: `blocked`
+- Active milestone: `47`
+- Title: `Full MAME HD64180 Core Import (Retire Per-Opcode CPU Milestones)`
+- Status: `active`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
-- Contract file: `docs/emulator/milestones/45.md`
+- Contract file: `docs/emulator/milestones/47.md`
 
 Execution rules:
+- Milestone `47` was activated on 2026-04-26 after a repository
+  audit (`docs/emulator/16-rom-readiness-audit.md`) confirmed
+  that the timed Z180 dispatch in
+  `third_party/z180/z180_core.{hpp,cpp}` and
+  `src/core/cpu/z180_adapter.cpp` is a milestone-2 boot stub with
+  hand-rolled per-opcode timing tables. The user has rejected
+  continuing the one-opcode-per-milestone pattern and authorized
+  importing the full MAME HD64180 / Z180 core in a single pass.
+  The Vanguard 8 *is* an HD64180 system; all HD64180
+  functionality must be available by default.
+- Authorized implementation scope is limited to:
+  `third_party/z180/`, `src/core/cpu/`, `tests/test_cpu.cpp`,
+  `tests/replays/` (digest re-pinning only — no fixture ROM or
+  replay byte-stream changes),
+  `docs/emulator/07-implementation-plan.md`,
+  `docs/emulator/current-milestone.md`,
+  `docs/emulator/milestones/47.md`,
+  `docs/emulator/16-rom-readiness-audit.md` (status update only),
+  and the `docs/tasks/` queues. No VDP, audio, scheduler,
+  debugger, save-state format, headless format, or desktop GUI
+  changes. No vendoring of a Z80-only core plus a local HD64180
+  extension layer. No PacManV8 source edits.
+- After M47 lands, "full opcode coverage" is the shipped state
+  of `third_party/z180/`, not a non-goal. Any future ROM trap on
+  a CPU dispatch path is a bug in the adapter or in the imported
+  core's pin, not an invitation to open a new per-opcode
+  milestone.
+- Matching task file:
+  `docs/tasks/active/M47-T01-mame-z180-core-import.md`.
+- Milestone `46` was accepted on 2026-04-24. Task `M46-T01` lives
+  in `docs/tasks/completed/`. The full ALU register/immediate
+  timed tail (`ADC A,r`, `SUB r`, `SBC A,r`, `XOR r`, plus the
+  matching immediates) is covered in the extracted core, and the
+  PacManV8 T021 harness passes both replay cases end-to-end
+  against the M46 tree. M47 supersedes the M46-era hand-rolled
+  dispatch entirely; once M47 lands, the M46 range-checks no
+  longer exist in the adapter (their semantics are subsumed by
+  the imported core).
+
+Pre-M47 execution rules (kept for traceability):
+- Milestone `46` was activated on 2026-04-24 after the user pointed
+  the Vanguard8 agent at the PacManV8 T021 blocked-task section
+  `### Recommended fix (Vanguard8 repo)` in
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T021-pattern-replay-and-fidelity-testing.md`
+  and asked for a milestone built from that recommendation. At
+  activation, the T021 replay harness aborted with `Unsupported timed
+  Z180 opcode 0xD6 at PC 0x3EA` (`SUB n` in PacManV8
+  `movement_distance_to_next_center_px:326`). The same blocked-task
+  log enumerates the confirmed sibling `SUB B` (`0x90`) sites in
+  the same function at `PC=0x3BE`/`0x3CA`/`0x3D2` and the strongly
+  suspected `XOR r` (`0xA8..0xAD`, `0xAE`) and immediate-arithmetic
+  peers (`ADC A,n` / `SBC A,n` / `XOR n`) that will surface along
+  the same active replay path.
+- Per the recommended fix and continuing the M44/M45 philosophy of
+  consolidating remaining T021 closure work, milestone `46` covers
+  the full register-form ALU tail (`ADC A,r` `0x88..0x8F`,
+  `SUB r` `0x90..0x97`, `SBC A,r` `0x98..0x9F`, `XOR r`
+  `0xA8..0xAF`) plus the matching immediate peers (`ADC A,n`
+  `0xCE`, `SUB n` `0xD6`, `SBC A,n` `0xDE`, `XOR n` `0xEE`) in a
+  single pass, so the T021 replay path cannot abort again on a
+  sister ALU opcode inside the same rebuild cycle. If a further
+  out-of-scope gap surfaces after M46, a new milestone contract is
+  opened — M46 is not broadened.
+- Authorized implementation scope is limited to timed extracted-
+  core coverage for the opcodes above (expressed as range-checks
+  alongside the existing `LD r,r'`, `ADD A,r`, and `AND r` range-
+  checks), removal of the now-redundant explicit dispatch entries
+  for `0x91`, `0x93`, and `0xAF`, focused CPU tests, non-
+  perturbation regressions, and the listed doc/task files inside
+  `third_party/z180/`, `src/core/cpu/`, `tests/`,
+  `docs/emulator/07-implementation-plan.md`,
+  `docs/emulator/current-milestone.md`,
+  `docs/emulator/milestones/46.md`, and the `docs/tasks/` queues.
+  No PacManV8 source edits from this repo, and no unrelated VDP,
+  audio, scheduler, debugger, save-state, headless format, or
+  desktop GUI work. No speculative broadening into rotate/shift,
+  index-register, or ED-prefix families without a fresh T021
+  repro. No edits to the existing explicit `OR r` (`0xB0..0xB7`) or
+  `CP r` (`0xB8..0xBF`) entries — the recommended fix explicitly
+  excludes those ranges.
+- Matching task file:
+  `docs/tasks/completed/M46-T01-timed-alu-register-immediate-opcode-coverage.md`.
+- Milestone `46` implementation completed on 2026-04-24. The full
+  ALU register/immediate timed tail (`ADC A,r`, `SUB r`, `SBC A,r`,
+  `XOR r`, plus `ADC A,n` / `SUB n` / `SBC A,n` / `XOR n`) is
+  covered in the extracted core and adapter timing path, focused CPU
+  and full `ctest` verification passed, and the canonical PacManV8
+  T021 harness passed both replay cases end-to-end. The milestone is
+  ready for human verification/acceptance.
 - Milestone `45` is blocked on 2026-04-23 after `M45-T01`
   completed the in-scope timed `AND r` / `AND (HL)` surface:
   `AND B` (`0xA0`), `AND C` (`0xA1`), `AND D` (`0xA2`),

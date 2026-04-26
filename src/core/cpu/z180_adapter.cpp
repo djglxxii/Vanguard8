@@ -346,6 +346,18 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     if (opcode >= 0xA0U && opcode <= 0xA7U) {
         return opcode == 0xA6U ? 7 : 4;
     }
+    if (opcode >= 0x88U && opcode <= 0x8FU) {
+        return opcode == 0x8EU ? 7 : 4;
+    }
+    if (opcode >= 0x90U && opcode <= 0x97U) {
+        return opcode == 0x96U ? 7 : 4;
+    }
+    if (opcode >= 0x98U && opcode <= 0x9FU) {
+        return opcode == 0x9EU ? 7 : 4;
+    }
+    if (opcode >= 0xA8U && opcode <= 0xAFU) {
+        return opcode == 0xAEU ? 7 : 4;
+    }
 
     switch (opcode) {
     case 0x00:
@@ -373,7 +385,6 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0x7C:
     case 0x7D:
     case 0x7F:
-    case 0xAF:
     case 0xB0:
     case 0xB1:
     case 0xB2:
@@ -381,8 +392,6 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0xB4:
     case 0xB5:
     case 0xB7:
-    case 0x91:
-    case 0x93:
     case 0xEB:
     case 0xF3:
     case 0xFB:
@@ -446,7 +455,11 @@ auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
     case 0x7E:
     case 0xB6:
     case 0xC6:
+    case 0xCE:
+    case 0xD6:
+    case 0xDE:
     case 0xE6:
+    case 0xEE:
     case 0xF6:
     case 0xFE:
         return 7;

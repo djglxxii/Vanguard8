@@ -123,6 +123,81 @@ void write_internal_20(
     cpu.out0(low_port + 2U, static_cast<std::uint8_t>((value >> 16U) & 0x00000FU));
 }
 
+auto test_even_parity(const std::uint8_t value) -> bool {
+    auto bits = value;
+    bool parity = true;
+    while (bits != 0U) {
+        parity = !parity;
+        bits = static_cast<std::uint8_t>(bits & static_cast<std::uint8_t>(bits - 1U));
+    }
+    return parity;
+}
+
+auto expected_adc_flags(
+    const std::uint8_t old_a,
+    const std::uint8_t operand,
+    const std::uint8_t carry
+) -> std::uint8_t {
+    const auto result = static_cast<std::uint16_t>(old_a) + operand + carry;
+    const auto result8 = static_cast<std::uint8_t>(result & 0x00FFU);
+    std::uint8_t flags = 0;
+    if ((result8 & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_sign);
+    }
+    if (result8 == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if (((old_a & 0x0FU) + (operand & 0x0FU) + carry) > 0x0FU) {
+        flags = static_cast<std::uint8_t>(flags | flag_half);
+    }
+    if (((~(old_a ^ operand)) & (old_a ^ result8) & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    if (result > 0x00FFU) {
+        flags = static_cast<std::uint8_t>(flags | flag_carry);
+    }
+    return flags;
+}
+
+auto expected_sub_flags(
+    const std::uint8_t old_a,
+    const std::uint8_t operand,
+    const std::uint8_t borrow
+) -> std::uint8_t {
+    const auto result = static_cast<std::uint8_t>(old_a - operand - borrow);
+    std::uint8_t flags = flag_subtract;
+    if ((result & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_sign);
+    }
+    if (result == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if ((old_a & 0x0FU) < ((operand & 0x0FU) + borrow)) {
+        flags = static_cast<std::uint8_t>(flags | flag_half);
+    }
+    if (((old_a ^ operand) & (old_a ^ result) & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    if (static_cast<std::uint16_t>(old_a) < static_cast<std::uint16_t>(operand) + borrow) {
+        flags = static_cast<std::uint8_t>(flags | flag_carry);
+    }
+    return flags;
+}
+
+auto expected_xor_flags(const std::uint8_t result) -> std::uint8_t {
+    std::uint8_t flags = 0;
+    if ((result & 0x80U) != 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_sign);
+    }
+    if (result == 0U) {
+        flags = static_cast<std::uint8_t>(flags | flag_zero);
+    }
+    if (test_even_parity(result)) {
+        flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
+    }
+    return flags;
+}
+
 }  // namespace
 
 TEST_CASE("z180 adapter reset matches documented HD64180 defaults", "[cpu]") {
@@ -2869,14 +2944,14 @@ TEST_CASE("scheduled CPU covers SUB C and SUB E used by the PacManV8 T021 ghost 
         REQUIRE(cpu.pc() == 0x0001);
     }
 
-    SECTION("SUB D (0x92) remains unsupported as an out-of-scope sister opcode") {
-        const auto rom = make_instruction_test_rom({0x92, 0x76});
+    SECTION("RLA (0x17) remains unsupported as an out-of-scope rotate opcode") {
+        const auto rom = make_instruction_test_rom({0x17, 0x76});
         vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
         vanguard8::core::cpu::Z180Adapter cpu{bus};
 
         require_runtime_error_contains(
             [&cpu]() { (void)cpu.next_scheduled_tstates(); },
-            "Unsupported timed Z180 opcode 0x92 at PC"
+            "Unsupported timed Z180 opcode 0x17 at PC"
         );
     }
 }
@@ -3023,14 +3098,434 @@ TEST_CASE("scheduled CPU covers AND r and AND (HL) used by PacManV8 T021 pellet 
         REQUIRE(cpu.pc() == 0x0001);
     }
 
-    SECTION("XOR E (0xAB) remains unsupported as an out-of-scope sister opcode") {
-        const auto rom = make_instruction_test_rom({0xAB, 0x76});
+    SECTION("RR B (CB 18) remains unsupported as an out-of-scope rotate/shift opcode") {
+        const auto rom = make_instruction_test_rom({0xCB, 0x18, 0x76});
         vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
         vanguard8::core::cpu::Z180Adapter cpu{bus};
 
         require_runtime_error_contains(
             [&cpu]() { (void)cpu.next_scheduled_tstates(); },
-            "Unsupported timed Z180 opcode 0xAB at PC"
+            "Unsupported timed Z180 opcode 0xCB 0x18 at PC"
+        );
+    }
+}
+
+TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU tail", "[cpu]") {
+    SECTION("adapter classifies every M46 opcode at documented 4/7 T-states") {
+        struct TimingCase {
+            const char* name;
+            std::uint8_t opcode;
+            std::uint64_t expected_tstates;
+            bool immediate = false;
+        };
+
+        const std::vector<TimingCase> cases{
+            {"ADC A,B (0x88)", 0x88, 4},
+            {"ADC A,C (0x89)", 0x89, 4},
+            {"ADC A,D (0x8A)", 0x8A, 4},
+            {"ADC A,E (0x8B)", 0x8B, 4},
+            {"ADC A,H (0x8C)", 0x8C, 4},
+            {"ADC A,L (0x8D)", 0x8D, 4},
+            {"ADC A,(HL) (0x8E)", 0x8E, 7},
+            {"ADC A,A (0x8F)", 0x8F, 4},
+            {"SUB B (0x90)", 0x90, 4},
+            {"SUB C (0x91)", 0x91, 4},
+            {"SUB D (0x92)", 0x92, 4},
+            {"SUB E (0x93)", 0x93, 4},
+            {"SUB H (0x94)", 0x94, 4},
+            {"SUB L (0x95)", 0x95, 4},
+            {"SUB (HL) (0x96)", 0x96, 7},
+            {"SUB A (0x97)", 0x97, 4},
+            {"SBC A,B (0x98)", 0x98, 4},
+            {"SBC A,C (0x99)", 0x99, 4},
+            {"SBC A,D (0x9A)", 0x9A, 4},
+            {"SBC A,E (0x9B)", 0x9B, 4},
+            {"SBC A,H (0x9C)", 0x9C, 4},
+            {"SBC A,L (0x9D)", 0x9D, 4},
+            {"SBC A,(HL) (0x9E)", 0x9E, 7},
+            {"SBC A,A (0x9F)", 0x9F, 4},
+            {"XOR B (0xA8)", 0xA8, 4},
+            {"XOR C (0xA9)", 0xA9, 4},
+            {"XOR D (0xAA)", 0xAA, 4},
+            {"XOR E (0xAB)", 0xAB, 4},
+            {"XOR H (0xAC)", 0xAC, 4},
+            {"XOR L (0xAD)", 0xAD, 4},
+            {"XOR (HL) (0xAE)", 0xAE, 7},
+            {"XOR A (0xAF)", 0xAF, 4},
+            {"ADC A,n (0xCE)", 0xCE, 7, true},
+            {"SUB n (0xD6)", 0xD6, 7, true},
+            {"SBC A,n (0xDE)", 0xDE, 7, true},
+            {"XOR n (0xEE)", 0xEE, 7, true},
+        };
+
+        for (const auto& c : cases) {
+            INFO(c.name);
+            const auto rom = c.immediate
+                ? make_instruction_test_rom({c.opcode, 0x01, 0x76})
+                : make_instruction_test_rom({c.opcode, 0x76});
+            vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+            vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+            REQUIRE(cpu.next_scheduled_tstates() == c.expected_tstates);
+        }
+    }
+
+    SECTION("ADC A,r register forms update A, flags, PC, and preserve source registers") {
+        struct RegisterCase {
+            const char* name;
+            std::uint8_t opcode;
+            std::uint8_t operand;
+        };
+        const std::vector<RegisterCase> cases{
+            {"ADC A,B (0x88)", 0x88, 0x01},
+            {"ADC A,C (0x89)", 0x89, 0x0F},
+            {"ADC A,D (0x8A)", 0x8A, 0x7F},
+            {"ADC A,E (0x8B)", 0x8B, 0x80},
+            {"ADC A,H (0x8C)", 0x8C, 0x12},
+            {"ADC A,L (0x8D)", 0x8D, 0x21},
+            {"ADC A,A (0x8F)", 0x8F, 0x7F},
+        };
+
+        for (const auto& c : cases) {
+            INFO(c.name);
+            const auto rom = make_instruction_test_rom({c.opcode, 0x76});
+            vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+            vanguard8::core::cpu::Z180Adapter cpu{bus};
+            auto state = cpu.state_snapshot();
+            state.registers.af = static_cast<std::uint16_t>(0x7F00U | flag_carry);
+            state.registers.bc = 0x010F;
+            state.registers.de = 0x7F80;
+            state.registers.hl = 0x1221;
+            cpu.load_state_snapshot(state);
+
+            REQUIRE(cpu.next_scheduled_tstates() == 4);
+            REQUIRE(cpu.step_scheduled_instruction() == 4);
+            const auto after = cpu.state_snapshot().registers;
+            const auto expected_a = static_cast<std::uint8_t>(0x7FU + c.operand + 1U);
+
+            REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == expected_a);
+            REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                    expected_adc_flags(0x7F, c.operand, 1));
+            REQUIRE(after.bc == 0x010F);
+            REQUIRE(after.de == 0x7F80);
+            REQUIRE(after.hl == 0x1221);
+            REQUIRE(cpu.pc() == 0x0001);
+        }
+    }
+
+    SECTION("ADC A,(HL) and ADC A,n use memory/immediate operands and advance PC correctly") {
+        const auto memory_rom = make_instruction_test_rom({0x8E, 0x76});
+        vanguard8::core::Bus memory_bus{vanguard8::core::memory::CartridgeSlot(memory_rom)};
+        vanguard8::core::cpu::Z180Adapter memory_cpu{memory_bus};
+        auto state = memory_cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.af = static_cast<std::uint16_t>(0xFE00U | flag_carry);
+        state.registers.hl = 0x8120;
+        memory_cpu.load_state_snapshot(state);
+        memory_bus.write_memory(0xF0120, 0x01);
+        (void)memory_cpu.add_breakpoint(vanguard8::core::cpu::Breakpoint{
+            .type = vanguard8::core::cpu::BreakpointType::memory_read,
+            .address = 0x8120,
+            .value = 0x01,
+        });
+
+        REQUIRE(memory_cpu.next_scheduled_tstates() == 7);
+        REQUIRE(memory_cpu.step_scheduled_instruction() == 7);
+        auto after = memory_cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x00);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                expected_adc_flags(0xFE, 0x01, 1));
+        REQUIRE(memory_cpu.breakpoint_hits().size() == 1);
+        REQUIRE(memory_cpu.breakpoint_hits().front().address == 0x8120);
+        REQUIRE(memory_cpu.pc() == 0x0001);
+
+        const auto immediate_rom = make_instruction_test_rom({0xCE, 0x01, 0x76});
+        vanguard8::core::Bus immediate_bus{vanguard8::core::memory::CartridgeSlot(immediate_rom)};
+        vanguard8::core::cpu::Z180Adapter immediate_cpu{immediate_bus};
+        state = immediate_cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x7F00U | flag_carry);
+        immediate_cpu.load_state_snapshot(state);
+
+        REQUIRE(immediate_cpu.next_scheduled_tstates() == 7);
+        REQUIRE(immediate_cpu.step_scheduled_instruction() == 7);
+        after = immediate_cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x81);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                expected_adc_flags(0x7F, 0x01, 1));
+        REQUIRE(immediate_cpu.pc() == 0x0002);
+    }
+
+    SECTION("SUB r register forms update A, flags, PC, and ignore incoming carry") {
+        struct RegisterCase {
+            const char* name;
+            std::uint8_t opcode;
+            std::uint8_t operand;
+        };
+        const std::vector<RegisterCase> cases{
+            {"SUB B (0x90)", 0x90, 0x01},
+            {"SUB C (0x91)", 0x91, 0x0F},
+            {"SUB D (0x92)", 0x92, 0x7F},
+            {"SUB E (0x93)", 0x93, 0x80},
+            {"SUB H (0x94)", 0x94, 0x12},
+            {"SUB L (0x95)", 0x95, 0x21},
+            {"SUB A (0x97)", 0x97, 0x10},
+        };
+
+        for (const auto& c : cases) {
+            INFO(c.name);
+            const auto rom = make_instruction_test_rom({c.opcode, 0x76});
+            vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+            vanguard8::core::cpu::Z180Adapter cpu{bus};
+            auto state = cpu.state_snapshot();
+            state.registers.af = static_cast<std::uint16_t>(0x1000U | flag_carry);
+            state.registers.bc = 0x010F;
+            state.registers.de = 0x7F80;
+            state.registers.hl = 0x1221;
+            cpu.load_state_snapshot(state);
+
+            REQUIRE(cpu.next_scheduled_tstates() == 4);
+            REQUIRE(cpu.step_scheduled_instruction() == 4);
+            const auto after = cpu.state_snapshot().registers;
+            const auto expected_a = static_cast<std::uint8_t>(0x10U - c.operand);
+
+            REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == expected_a);
+            REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                    expected_sub_flags(0x10, c.operand, 0));
+            REQUIRE(after.bc == 0x010F);
+            REQUIRE(after.de == 0x7F80);
+            REQUIRE(after.hl == 0x1221);
+            REQUIRE(cpu.pc() == 0x0001);
+        }
+    }
+
+    SECTION("SUB (HL) and SUB n use memory/immediate operands and advance PC correctly") {
+        const auto memory_rom = make_instruction_test_rom({0x96, 0x76});
+        vanguard8::core::Bus memory_bus{vanguard8::core::memory::CartridgeSlot(memory_rom)};
+        vanguard8::core::cpu::Z180Adapter memory_cpu{memory_bus};
+        auto state = memory_cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.af = 0x1000;
+        state.registers.hl = 0x8121;
+        memory_cpu.load_state_snapshot(state);
+        memory_bus.write_memory(0xF0121, 0x21);
+        (void)memory_cpu.add_breakpoint(vanguard8::core::cpu::Breakpoint{
+            .type = vanguard8::core::cpu::BreakpointType::memory_read,
+            .address = 0x8121,
+            .value = 0x21,
+        });
+
+        REQUIRE(memory_cpu.next_scheduled_tstates() == 7);
+        REQUIRE(memory_cpu.step_scheduled_instruction() == 7);
+        auto after = memory_cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xEF);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                expected_sub_flags(0x10, 0x21, 0));
+        REQUIRE(memory_cpu.breakpoint_hits().size() == 1);
+        REQUIRE(memory_cpu.breakpoint_hits().front().address == 0x8121);
+        REQUIRE(memory_cpu.pc() == 0x0001);
+
+        const auto immediate_rom = make_instruction_test_rom({0xD6, 0x21, 0x76});
+        vanguard8::core::Bus immediate_bus{vanguard8::core::memory::CartridgeSlot(immediate_rom)};
+        vanguard8::core::cpu::Z180Adapter immediate_cpu{immediate_bus};
+        state = immediate_cpu.state_snapshot();
+        state.registers.af = 0x1000;
+        immediate_cpu.load_state_snapshot(state);
+
+        REQUIRE(immediate_cpu.next_scheduled_tstates() == 7);
+        REQUIRE(immediate_cpu.step_scheduled_instruction() == 7);
+        after = immediate_cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xEF);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                expected_sub_flags(0x10, 0x21, 0));
+        REQUIRE(immediate_cpu.pc() == 0x0002);
+    }
+
+    SECTION("SBC A,r register forms include carry input in result and flags") {
+        struct RegisterCase {
+            const char* name;
+            std::uint8_t opcode;
+            std::uint8_t operand;
+        };
+        const std::vector<RegisterCase> cases{
+            {"SBC A,B (0x98)", 0x98, 0x01},
+            {"SBC A,C (0x99)", 0x99, 0x0F},
+            {"SBC A,D (0x9A)", 0x9A, 0x7F},
+            {"SBC A,E (0x9B)", 0x9B, 0x80},
+            {"SBC A,H (0x9C)", 0x9C, 0x12},
+            {"SBC A,L (0x9D)", 0x9D, 0x21},
+            {"SBC A,A (0x9F)", 0x9F, 0x10},
+        };
+
+        for (const auto& c : cases) {
+            INFO(c.name);
+            const auto rom = make_instruction_test_rom({c.opcode, 0x76});
+            vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+            vanguard8::core::cpu::Z180Adapter cpu{bus};
+            auto state = cpu.state_snapshot();
+            state.registers.af = static_cast<std::uint16_t>(0x1000U | flag_carry);
+            state.registers.bc = 0x010F;
+            state.registers.de = 0x7F80;
+            state.registers.hl = 0x1221;
+            cpu.load_state_snapshot(state);
+
+            REQUIRE(cpu.next_scheduled_tstates() == 4);
+            REQUIRE(cpu.step_scheduled_instruction() == 4);
+            const auto after = cpu.state_snapshot().registers;
+            const auto expected_a = static_cast<std::uint8_t>(0x10U - c.operand - 1U);
+
+            REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == expected_a);
+            REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                    expected_sub_flags(0x10, c.operand, 1));
+            REQUIRE(after.bc == 0x010F);
+            REQUIRE(after.de == 0x7F80);
+            REQUIRE(after.hl == 0x1221);
+            REQUIRE(cpu.pc() == 0x0001);
+        }
+    }
+
+    SECTION("SBC A,(HL) and SBC A,n use memory/immediate operands and advance PC correctly") {
+        const auto memory_rom = make_instruction_test_rom({0x9E, 0x76});
+        vanguard8::core::Bus memory_bus{vanguard8::core::memory::CartridgeSlot(memory_rom)};
+        vanguard8::core::cpu::Z180Adapter memory_cpu{memory_bus};
+        auto state = memory_cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.af = static_cast<std::uint16_t>(0x1000U | flag_carry);
+        state.registers.hl = 0x8122;
+        memory_cpu.load_state_snapshot(state);
+        memory_bus.write_memory(0xF0122, 0x0F);
+        (void)memory_cpu.add_breakpoint(vanguard8::core::cpu::Breakpoint{
+            .type = vanguard8::core::cpu::BreakpointType::memory_read,
+            .address = 0x8122,
+            .value = 0x0F,
+        });
+
+        REQUIRE(memory_cpu.next_scheduled_tstates() == 7);
+        REQUIRE(memory_cpu.step_scheduled_instruction() == 7);
+        auto after = memory_cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x00);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                expected_sub_flags(0x10, 0x0F, 1));
+        REQUIRE(memory_cpu.breakpoint_hits().size() == 1);
+        REQUIRE(memory_cpu.breakpoint_hits().front().address == 0x8122);
+        REQUIRE(memory_cpu.pc() == 0x0001);
+
+        const auto immediate_rom = make_instruction_test_rom({0xDE, 0x0F, 0x76});
+        vanguard8::core::Bus immediate_bus{vanguard8::core::memory::CartridgeSlot(immediate_rom)};
+        vanguard8::core::cpu::Z180Adapter immediate_cpu{immediate_bus};
+        state = immediate_cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x1000U | flag_carry);
+        immediate_cpu.load_state_snapshot(state);
+
+        REQUIRE(immediate_cpu.next_scheduled_tstates() == 7);
+        REQUIRE(immediate_cpu.step_scheduled_instruction() == 7);
+        after = immediate_cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x00);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
+                expected_sub_flags(0x10, 0x0F, 1));
+        REQUIRE(immediate_cpu.pc() == 0x0002);
+    }
+
+    SECTION("XOR r register forms update logical flags and clear H/N/C") {
+        struct RegisterCase {
+            const char* name;
+            std::uint8_t opcode;
+            std::uint8_t operand;
+        };
+        const std::vector<RegisterCase> cases{
+            {"XOR B (0xA8)", 0xA8, 0x01},
+            {"XOR C (0xA9)", 0xA9, 0x0F},
+            {"XOR D (0xAA)", 0xAA, 0x7F},
+            {"XOR E (0xAB)", 0xAB, 0x80},
+            {"XOR H (0xAC)", 0xAC, 0x12},
+            {"XOR L (0xAD)", 0xAD, 0x21},
+            {"XOR A (0xAF)", 0xAF, 0x5A},
+        };
+
+        for (const auto& c : cases) {
+            INFO(c.name);
+            const auto rom = make_instruction_test_rom({c.opcode, 0x76});
+            vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+            vanguard8::core::cpu::Z180Adapter cpu{bus};
+            auto state = cpu.state_snapshot();
+            state.registers.af = static_cast<std::uint16_t>(
+                0x5A00U | flag_sign | flag_zero | flag_half | flag_parity_overflow |
+                flag_subtract | flag_carry
+            );
+            state.registers.bc = 0x010F;
+            state.registers.de = 0x7F80;
+            state.registers.hl = 0x1221;
+            cpu.load_state_snapshot(state);
+
+            REQUIRE(cpu.next_scheduled_tstates() == 4);
+            REQUIRE(cpu.step_scheduled_instruction() == 4);
+            const auto after = cpu.state_snapshot().registers;
+            const auto expected_a = static_cast<std::uint8_t>(0x5AU ^ c.operand);
+
+            REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == expected_a);
+            REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == expected_xor_flags(expected_a));
+            REQUIRE(after.bc == 0x010F);
+            REQUIRE(after.de == 0x7F80);
+            REQUIRE(after.hl == 0x1221);
+            REQUIRE(cpu.pc() == 0x0001);
+        }
+    }
+
+    SECTION("XOR (HL) and XOR n use memory/immediate operands and advance PC correctly") {
+        const auto memory_rom = make_instruction_test_rom({0xAE, 0x76});
+        vanguard8::core::Bus memory_bus{vanguard8::core::memory::CartridgeSlot(memory_rom)};
+        vanguard8::core::cpu::Z180Adapter memory_cpu{memory_bus};
+        auto state = memory_cpu.state_snapshot();
+        state.registers.cbar = 0x48;
+        state.registers.cbr = 0xF0;
+        state.registers.bbr = 0x04;
+        state.registers.af = static_cast<std::uint16_t>(0x5A00U | flag_carry | flag_half | flag_subtract);
+        state.registers.hl = 0x8123;
+        memory_cpu.load_state_snapshot(state);
+        memory_bus.write_memory(0xF0123, 0xFF);
+        (void)memory_cpu.add_breakpoint(vanguard8::core::cpu::Breakpoint{
+            .type = vanguard8::core::cpu::BreakpointType::memory_read,
+            .address = 0x8123,
+            .value = 0xFF,
+        });
+
+        REQUIRE(memory_cpu.next_scheduled_tstates() == 7);
+        REQUIRE(memory_cpu.step_scheduled_instruction() == 7);
+        auto after = memory_cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xA5);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == expected_xor_flags(0xA5));
+        REQUIRE(memory_cpu.breakpoint_hits().size() == 1);
+        REQUIRE(memory_cpu.breakpoint_hits().front().address == 0x8123);
+        REQUIRE(memory_cpu.pc() == 0x0001);
+
+        const auto immediate_rom = make_instruction_test_rom({0xEE, 0xFF, 0x76});
+        vanguard8::core::Bus immediate_bus{vanguard8::core::memory::CartridgeSlot(immediate_rom)};
+        vanguard8::core::cpu::Z180Adapter immediate_cpu{immediate_bus};
+        state = immediate_cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(0x5A00U | flag_carry | flag_half | flag_subtract);
+        immediate_cpu.load_state_snapshot(state);
+
+        REQUIRE(immediate_cpu.next_scheduled_tstates() == 7);
+        REQUIRE(immediate_cpu.step_scheduled_instruction() == 7);
+        after = immediate_cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xA5);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == expected_xor_flags(0xA5));
+        REQUIRE(immediate_cpu.pc() == 0x0002);
+    }
+
+    SECTION("ED FF remains unsupported as an out-of-scope ED-prefix opcode") {
+        const auto rom = make_instruction_test_rom({0xED, 0xFF, 0x76});
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+
+        require_runtime_error_contains(
+            [&cpu]() { (void)cpu.next_scheduled_tstates(); },
+            "Unsupported timed Z180 ED opcode 0xFF at PC"
         );
     }
 }

@@ -1,15 +1,6 @@
 #include "core/cpu/z180_adapter.hpp"
 
-#include <sstream>
-
 namespace vanguard8::core::cpu {
-
-namespace {
-
-constexpr std::uint8_t flag_zero = 0x40;
-constexpr std::uint8_t flag_carry = 0x01;
-
-}
 
 Z180Adapter::Z180Adapter(core::Bus& bus)
     : bus_(bus),
@@ -18,9 +9,9 @@ Z180Adapter::Z180Adapter(core::Bus& bus)
           .write_memory = [this](const std::uint32_t address, const std::uint8_t value) {
               bus_.write_memory(address, value);
           },
-          .read_port = [this](const std::uint16_t port) { return bus_.read_port(port); },
+          .read_port = [this](const std::uint16_t port) { return bus_.read_port(port & 0x00FFU); },
           .write_port = [this](const std::uint16_t port, const std::uint8_t value) {
-              bus_.write_port(port, value);
+              bus_.write_port(port & 0x00FFU, value);
           },
           .observe_logical_memory_read =
               [this](const std::uint16_t address, const std::uint8_t value) {
@@ -179,7 +170,7 @@ auto Z180Adapter::next_scheduled_tstates() const -> std::uint64_t {
         return 0;
     }
 
-    return current_instruction_tstates();
+    return core_.next_instruction_tstates();
 }
 
 auto Z180Adapter::step_scheduled_instruction() -> std::uint64_t {
@@ -191,7 +182,7 @@ auto Z180Adapter::step_scheduled_instruction() -> std::uint64_t {
         return 0;
     }
 
-    const auto tstates = current_instruction_tstates();
+    const auto tstates = core_.next_instruction_tstates();
     step_instruction();
     return tstates;
 }
@@ -330,238 +321,6 @@ auto Z180Adapter::interrupt_service_tstates(const InterruptSource source) const 
         return 13;
     }
     return 13;
-}
-
-auto Z180Adapter::current_instruction_tstates() const -> std::uint64_t {
-    const auto opcode = peek_logical(pc());
-
-    if (opcode >= 0x40U && opcode <= 0x7FU && opcode != 0x76U) {
-        const auto dst = static_cast<std::uint8_t>((opcode >> 3U) & 0x07U);
-        const auto src = static_cast<std::uint8_t>(opcode & 0x07U);
-        return (dst == 0x06U || src == 0x06U) ? 7 : 4;
-    }
-    if (opcode >= 0x80U && opcode <= 0x87U) {
-        return opcode == 0x86U ? 7 : 4;
-    }
-    if (opcode >= 0xA0U && opcode <= 0xA7U) {
-        return opcode == 0xA6U ? 7 : 4;
-    }
-    if (opcode >= 0x88U && opcode <= 0x8FU) {
-        return opcode == 0x8EU ? 7 : 4;
-    }
-    if (opcode >= 0x90U && opcode <= 0x97U) {
-        return opcode == 0x96U ? 7 : 4;
-    }
-    if (opcode >= 0x98U && opcode <= 0x9FU) {
-        return opcode == 0x9EU ? 7 : 4;
-    }
-    if (opcode >= 0xA8U && opcode <= 0xAFU) {
-        return opcode == 0xAEU ? 7 : 4;
-    }
-
-    switch (opcode) {
-    case 0x00:
-    case 0x04:
-    case 0x05:
-    case 0x0C:
-    case 0x0D:
-    case 0x14:
-    case 0x15:
-    case 0x1C:
-    case 0x1D:
-    case 0x24:
-    case 0x25:
-    case 0x2C:
-    case 0x2D:
-    case 0x2F:
-    case 0x3C:
-    case 0x3D:
-    case 0x37:
-    case 0x0F:
-    case 0x78:
-    case 0x79:
-    case 0x7A:
-    case 0x7B:
-    case 0x7C:
-    case 0x7D:
-    case 0x7F:
-    case 0xB0:
-    case 0xB1:
-    case 0xB2:
-    case 0xB3:
-    case 0xB4:
-    case 0xB5:
-    case 0xB7:
-    case 0xEB:
-    case 0xF3:
-    case 0xFB:
-        return 4;
-    case 0x10:
-        return static_cast<std::uint8_t>(core_.register_snapshot().bc >> 8U) == 0x01U ? 8 : 13;
-    case 0x18:
-        return 12;
-    case 0x20:
-        return (core_.register_snapshot().af & flag_zero) == 0U ? 12 : 7;
-    case 0x28:
-        return (core_.register_snapshot().af & flag_zero) != 0U ? 12 : 7;
-    case 0x30:
-        return (core_.register_snapshot().af & flag_carry) == 0U ? 12 : 7;
-    case 0x38:
-        return (core_.register_snapshot().af & flag_carry) != 0U ? 12 : 7;
-    case 0x01:
-    case 0x11:
-    case 0x21:
-    case 0x2A:
-    case 0x31:
-    case 0xC2:
-    case 0xC3:
-    case 0xCA:
-        return 10;
-    case 0x09:
-    case 0x19:
-    case 0x29:
-    case 0x39:
-        return 11;
-    case 0x03:
-    case 0x0B:
-    case 0x13:
-    case 0x1B:
-    case 0x23:
-    case 0x2B:
-        return 6;
-    case 0x34:
-    case 0x35:
-        return 11;
-    case 0xC0:
-        return (core_.register_snapshot().af & flag_zero) == 0U ? 11 : 5;
-    case 0xC8:
-        return (core_.register_snapshot().af & flag_zero) != 0U ? 11 : 5;
-    case 0xD0:
-        return (core_.register_snapshot().af & flag_carry) == 0U ? 11 : 5;
-    case 0xD8:
-        return (core_.register_snapshot().af & flag_carry) != 0U ? 11 : 5;
-    case 0x22:
-        return 16;
-    case 0x32:
-    case 0x3A:
-        return 13;
-    case 0x3E:
-    case 0x06:
-    case 0x0E:
-    case 0x16:
-    case 0x1E:
-    case 0x26:
-    case 0x2E:
-    case 0x7E:
-    case 0xB6:
-    case 0xC6:
-    case 0xCE:
-    case 0xD6:
-    case 0xDE:
-    case 0xE6:
-    case 0xEE:
-    case 0xF6:
-    case 0xFE:
-        return 7;
-    case 0xB8:
-    case 0xB9:
-    case 0xBA:
-    case 0xBB:
-    case 0xBC:
-    case 0xBD:
-    case 0xBF:
-        return 4;
-    case 0xBE:
-        return 7;
-    case 0x76:
-        return 4;
-    case 0xC1:
-    case 0xC9:
-    case 0xD1:
-    case 0xE1:
-    case 0xF1:
-        return 10;
-    case 0xCD:
-        return 17;
-    case 0xD3:
-    case 0xDB:
-        return 11;
-    case 0xCB:
-        return cb_instruction_tstates(peek_logical(static_cast<std::uint16_t>(pc() + 1U)));
-    case 0xED:
-        return ed_instruction_tstates(peek_logical(static_cast<std::uint16_t>(pc() + 1U)));
-    case 0xC5:
-    case 0xD5:
-    case 0xE5:
-    case 0xF5:
-        return 11;
-    default:
-        {
-            std::ostringstream stream;
-            stream << "Unsupported timed Z180 opcode 0x" << std::uppercase << std::hex
-                   << static_cast<int>(opcode) << " at PC 0x" << pc();
-            throw std::runtime_error(stream.str());
-        }
-    }
-}
-
-auto Z180Adapter::cb_instruction_tstates(const std::uint8_t opcode) const -> std::uint64_t {
-    switch (opcode) {
-    case 0x1D:
-    case 0x3C:
-    case 0x3F:
-    case 0x67:
-    case 0x6F:
-    case 0x77:
-    case 0x7F:
-        return 8;
-    default:
-        {
-            std::ostringstream stream;
-            stream << "Unsupported timed Z180 opcode 0xCB 0x" << std::uppercase << std::hex
-                   << static_cast<int>(opcode) << " at PC 0x" << pc();
-            throw std::runtime_error(stream.str());
-        }
-    }
-}
-
-auto Z180Adapter::ed_instruction_tstates(const std::uint8_t opcode) const -> std::uint64_t {
-    switch (opcode) {
-    case 0x39:
-        return 12;
-    case 0x47:
-        return 9;
-    case 0x4D:
-        return 14;
-    case 0x56:
-        return 8;
-    case 0x64:
-        return 9;
-    case 0x42:
-    case 0x52:
-    case 0x62:
-    case 0x72:
-        return 15;
-    default:
-        if ((opcode & 0xC7U) == 0x00U && ((opcode >> 3U) & 0x07U) != 0x06U) {
-            return 12;
-        }
-        if ((opcode & 0xC7U) == 0x01U && ((opcode >> 3U) & 0x07U) != 0x06U) {
-            return 12;
-        }
-        if ((opcode & 0xC7U) == 0x04U && ((opcode >> 3U) & 0x07U) != 0x06U) {
-            return 8;
-        }
-        if ((opcode & 0xCFU) == 0x4CU) {
-            return 17;
-        }
-        {
-            std::ostringstream stream;
-            stream << "Unsupported timed Z180 ED opcode 0x" << std::uppercase << std::hex
-                   << static_cast<int>(opcode) << " at PC 0x" << pc();
-            throw std::runtime_error(stream.str());
-        }
-    }
 }
 
 auto Z180Adapter::read_dma_register(const std::uint8_t port) const -> std::optional<std::uint8_t> {

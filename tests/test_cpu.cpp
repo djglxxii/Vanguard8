@@ -13,7 +13,9 @@ namespace {
 
 constexpr std::uint8_t flag_sign = 0x80;
 constexpr std::uint8_t flag_zero = 0x40;
+constexpr std::uint8_t flag_yf = 0x20;
 constexpr std::uint8_t flag_half = 0x10;
+constexpr std::uint8_t flag_xf = 0x08;
 constexpr std::uint8_t flag_parity_overflow = 0x04;
 constexpr std::uint8_t flag_subtract = 0x02;
 constexpr std::uint8_t flag_carry = 0x01;
@@ -156,6 +158,7 @@ auto expected_adc_flags(
     if (result > 0x00FFU) {
         flags = static_cast<std::uint8_t>(flags | flag_carry);
     }
+    flags = static_cast<std::uint8_t>(flags | (result8 & (flag_yf | flag_xf)));
     return flags;
 }
 
@@ -181,6 +184,7 @@ auto expected_sub_flags(
     if (static_cast<std::uint16_t>(old_a) < static_cast<std::uint16_t>(operand) + borrow) {
         flags = static_cast<std::uint8_t>(flags | flag_carry);
     }
+    flags = static_cast<std::uint8_t>(flags | (result & (flag_yf | flag_xf)));
     return flags;
 }
 
@@ -195,6 +199,7 @@ auto expected_xor_flags(const std::uint8_t result) -> std::uint8_t {
     if (test_even_parity(result)) {
         flags = static_cast<std::uint8_t>(flags | flag_parity_overflow);
     }
+    flags = static_cast<std::uint8_t>(flags | (result & (flag_yf | flag_xf)));
     return flags;
 }
 
@@ -306,10 +311,10 @@ TEST_CASE("HD64180 IN0 and OUT0 cover non-A register variants and non-MMU intern
         16
     );
 
-    REQUIRE(static_cast<std::uint8_t>(result.registers.bc >> 8U) == 0xA5);
-    REQUIRE(static_cast<std::uint8_t>(result.registers.bc & 0x00FFU) == 0x12);
-    REQUIRE(result.registers.cbr == 0xA5);
-    REQUIRE(result.registers.bbr == 0x12);
+    REQUIRE(static_cast<std::uint8_t>(result.registers.bc >> 8U) == 0xA0);
+    REQUIRE(static_cast<std::uint8_t>(result.registers.bc & 0x00FFU) == 0x3A);
+    REQUIRE(result.registers.cbr == 0xA0);
+    REQUIRE(result.registers.bbr == 0x3A);
 }
 
 TEST_CASE("extracted CPU supports plain OUT XOR A and JR used by ROM bring-up", "[cpu]") {
@@ -341,8 +346,8 @@ TEST_CASE("scheduled CPU covers LD B,n used by the Pac-Man boot path", "[cpu]") 
     vanguard8::core::cpu::Z180Adapter cpu{bus};
 
     REQUIRE(cpu.peek_logical(cpu.pc()) == 0x06);
-    REQUIRE(cpu.next_scheduled_tstates() == 7);
-    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(cpu.next_scheduled_tstates() == 6);
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
     REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.bc >> 8U) == 0x12);
     REQUIRE(cpu.pc() == 0x0002);
 }
@@ -357,8 +362,8 @@ TEST_CASE("scheduled CPU covers LD C,n used by the PacManV8 boot path", "[cpu]")
     vanguard8::core::cpu::Z180Adapter cpu{bus};
 
     REQUIRE(cpu.peek_logical(cpu.pc()) == 0x0E);
-    REQUIRE(cpu.next_scheduled_tstates() == 7);
-    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(cpu.next_scheduled_tstates() == 6);
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
     REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.bc & 0x00FFU) == 0x34);
     REQUIRE(cpu.pc() == 0x0002);
 }
@@ -373,8 +378,8 @@ TEST_CASE("scheduled CPU covers LD D,n used by the PacManV8 boot path", "[cpu]")
     vanguard8::core::cpu::Z180Adapter cpu{bus};
 
     REQUIRE(cpu.peek_logical(cpu.pc()) == 0x16);
-    REQUIRE(cpu.next_scheduled_tstates() == 7);
-    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(cpu.next_scheduled_tstates() == 6);
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
     REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.de >> 8U) == 0x56);
     REQUIRE(cpu.pc() == 0x0002);
 }
@@ -399,8 +404,8 @@ TEST_CASE("scheduled CPU covers LD E,n used by the PacManV8 T020 intermission pa
     cpu.load_state_snapshot(state);
 
     REQUIRE(cpu.peek_logical(cpu.pc()) == 0x1E);
-    REQUIRE(cpu.next_scheduled_tstates() == 7);
-    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(cpu.next_scheduled_tstates() == 6);
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
 
     const auto after = cpu.state_snapshot();
     REQUIRE(static_cast<std::uint8_t>(after.registers.de & 0x00FFU) == 0x50);
@@ -431,8 +436,8 @@ TEST_CASE("scheduled CPU covers LD H,n used by the PacManV8 T020 intermission pa
     cpu.load_state_snapshot(state);
 
     REQUIRE(cpu.peek_logical(cpu.pc()) == 0x26);
-    REQUIRE(cpu.next_scheduled_tstates() == 7);
-    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(cpu.next_scheduled_tstates() == 6);
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
 
     const auto after = cpu.state_snapshot();
     REQUIRE(static_cast<std::uint8_t>(after.registers.hl >> 8U) == 0x7F);
@@ -463,8 +468,8 @@ TEST_CASE("scheduled CPU covers LD L,n used by the PacManV8 T020 intermission pa
     cpu.load_state_snapshot(state);
 
     REQUIRE(cpu.peek_logical(cpu.pc()) == 0x2E);
-    REQUIRE(cpu.next_scheduled_tstates() == 7);
-    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(cpu.next_scheduled_tstates() == 6);
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
 
     const auto after = cpu.state_snapshot();
     REQUIRE(static_cast<std::uint8_t>(after.registers.hl & 0x00FFU) == 0xC3);
@@ -491,9 +496,9 @@ TEST_CASE("scheduled CPU covers the PacManV8 T020 LD D,n -> LD E,n -> LD A,n rec
     vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
     vanguard8::core::cpu::Z180Adapter cpu{bus};
 
-    REQUIRE(cpu.step_scheduled_instruction() == 7);
-    REQUIRE(cpu.step_scheduled_instruction() == 7);
-    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
 
     const auto after = cpu.state_snapshot();
     REQUIRE(static_cast<std::uint8_t>(after.registers.de >> 8U) == 0x44);
@@ -520,8 +525,8 @@ TEST_CASE("scheduled CPU covers LD BC,nn used by the PacManV8 VDP-B bring-up pat
     cpu.load_state_snapshot(state);
 
     REQUIRE(cpu.peek_logical(cpu.pc()) == 0x01);
-    REQUIRE(cpu.next_scheduled_tstates() == 10);
-    REQUIRE(cpu.step_scheduled_instruction() == 10);
+    REQUIRE(cpu.next_scheduled_tstates() == 9);
+    REQUIRE(cpu.step_scheduled_instruction() == 9);
     REQUIRE(cpu.state_snapshot().registers.bc == 0x1234);
     REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == preserved_flags);
     REQUIRE(cpu.pc() == 0x0003);
@@ -544,12 +549,12 @@ TEST_CASE("scheduled CPU covers OR n used by the PacManV8 VDP-B VRAM seek path",
         cpu.load_state_snapshot(state);
 
         REQUIRE(cpu.peek_logical(cpu.pc()) == 0xF6);
-        REQUIRE(cpu.next_scheduled_tstates() == 7);
-        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE(cpu.next_scheduled_tstates() == 6);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af >> 8U) == 0x3F);
         REQUIRE(
             static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) ==
-            flag_parity_overflow
+            static_cast<std::uint8_t>(flag_yf | flag_parity_overflow | flag_xf)
         );
         REQUIRE(cpu.pc() == 0x0002);
     }
@@ -569,7 +574,7 @@ TEST_CASE("scheduled CPU covers OR n used by the PacManV8 VDP-B VRAM seek path",
         );
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af >> 8U) == 0x00);
         REQUIRE(
             static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) ==
@@ -592,7 +597,7 @@ TEST_CASE("scheduled CPU covers OR n used by the PacManV8 VDP-B VRAM seek path",
         );
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af >> 8U) == 0x80);
         REQUIRE(
             static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == flag_sign
@@ -670,8 +675,8 @@ TEST_CASE("scheduled CPU covers LD DE,nn used by the PacManV8 VDP-B framebuffer-
     cpu.load_state_snapshot(state);
 
     REQUIRE(cpu.peek_logical(cpu.pc()) == 0x11);
-    REQUIRE(cpu.next_scheduled_tstates() == 10);
-    REQUIRE(cpu.step_scheduled_instruction() == 10);
+    REQUIRE(cpu.next_scheduled_tstates() == 9);
+    REQUIRE(cpu.step_scheduled_instruction() == 9);
     REQUIRE(cpu.state_snapshot().registers.de == 0xABCD);
     REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == preserved_flags);
     REQUIRE(cpu.pc() == 0x0003);
@@ -727,7 +732,7 @@ TEST_CASE("scheduled CPU covers OR E used by the PacManV8 VDP-B framebuffer copy
         REQUIRE(cpu.state_snapshot().registers.de == 0x0033);
         REQUIRE(
             static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) ==
-            flag_parity_overflow
+            static_cast<std::uint8_t>(flag_yf | flag_parity_overflow | flag_xf)
         );
         REQUIRE(cpu.pc() == 0x0001);
     }
@@ -799,8 +804,8 @@ TEST_CASE("scheduled CPU covers DEC DE used by the PacManV8 VDP-B framebuffer co
         cpu.load_state_snapshot(state);
 
         REQUIRE(cpu.peek_logical(cpu.pc()) == 0x1B);
-        REQUIRE(cpu.next_scheduled_tstates() == 6);
-        REQUIRE(cpu.step_scheduled_instruction() == 6);
+        REQUIRE(cpu.next_scheduled_tstates() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
         REQUIRE(cpu.state_snapshot().registers.de == 0x1233);
         REQUIRE(
             static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == preserved_flags
@@ -823,7 +828,7 @@ TEST_CASE("scheduled CPU covers DEC DE used by the PacManV8 VDP-B framebuffer co
         state.registers.de = 0x0000;
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.step_scheduled_instruction() == 6);
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
         REQUIRE(cpu.state_snapshot().registers.de == 0xFFFF);
         REQUIRE(
             static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == preserved_flags
@@ -906,8 +911,8 @@ TEST_CASE("scheduled CPU covers M39 16-bit pair INC/DEC for PacManV8 T021", "[cp
         cpu.load_state_snapshot(state);
         const auto before = cpu.state_snapshot().registers;
 
-        REQUIRE(cpu.next_scheduled_tstates() == 6);
-        REQUIRE(cpu.step_scheduled_instruction() == 6);
+        REQUIRE(cpu.next_scheduled_tstates() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(get_pair(after, pair_case.pair) == pair_case.after);
@@ -943,11 +948,11 @@ TEST_CASE("scheduled CPU runs the PacManV8 collision_init DEC BC loop pattern", 
     state.registers.bc = 0x0002;
     cpu.load_state_snapshot(state);
 
-    REQUIRE(cpu.step_scheduled_instruction() == 6);
+    REQUIRE(cpu.step_scheduled_instruction() == 4);
     REQUIRE(cpu.state_snapshot().registers.bc == 0x0001);
     REQUIRE(cpu.step_scheduled_instruction() == 4);
     REQUIRE(cpu.step_scheduled_instruction() == 4);
-    REQUIRE(cpu.step_scheduled_instruction() == 12);
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
     REQUIRE(cpu.pc() == 0x0000);
 
     cpu.run_until_halt(8);
@@ -964,8 +969,8 @@ TEST_CASE("scheduled CPU covers narrow M39 CB-prefix opcodes for PacManV8 T021",
         state.registers.af = static_cast<std::uint16_t>(0x8100U | flag_sign | flag_zero | flag_half | flag_subtract);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 8);
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         const auto af = cpu.state_snapshot().registers.af;
         REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x40);
         REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) == flag_carry);
@@ -980,8 +985,8 @@ TEST_CASE("scheduled CPU covers narrow M39 CB-prefix opcodes for PacManV8 T021",
         state.registers.af = 0x0100;
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 8);
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         const auto af = cpu.state_snapshot().registers.af;
         REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x00);
         REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) ==
@@ -1010,8 +1015,8 @@ TEST_CASE("scheduled CPU covers narrow M39 CB-prefix opcodes for PacManV8 T021",
         state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_carry | flag_subtract);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 8);
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         auto af = cpu.state_snapshot().registers.af;
         REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x00);
         REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) ==
@@ -1031,11 +1036,14 @@ TEST_CASE("scheduled CPU covers narrow M39 CB-prefix opcodes for PacManV8 T021",
         );
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 8);
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         const auto af = cpu.state_snapshot().registers.af;
         REQUIRE(static_cast<std::uint8_t>(af >> 8U) == accumulator);
         auto expected_flags = static_cast<std::uint8_t>(flag_half | flag_carry);
+        if (bit_case.bit == 5U) {
+            expected_flags = static_cast<std::uint8_t>(expected_flags | flag_yf);
+        }
         if (bit_case.bit == 7U) {
             expected_flags = static_cast<std::uint8_t>(expected_flags | flag_sign);
         }
@@ -1044,27 +1052,35 @@ TEST_CASE("scheduled CPU covers narrow M39 CB-prefix opcodes for PacManV8 T021",
     }
 }
 
-TEST_CASE("scheduled CPU keeps M39 out-of-scope opcodes unsupported", "[cpu]") {
-    SECTION("CB 80 reports the unsupported CB sub-opcode and PC") {
+TEST_CASE("scheduled CPU covers previously out-of-scope M39 opcodes now unlocked by MAME core", "[cpu]") {
+    SECTION("CB 80 (RES 0,B) clears bit 0 of B in 7 T-states") {
         const auto rom = make_instruction_test_rom({0xCB, 0x80, 0x76});
         vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
         vanguard8::core::cpu::Z180Adapter cpu{bus};
 
-        require_runtime_error_contains(
-            [&cpu]() { (void)cpu.step_scheduled_instruction(); },
-            "Unsupported timed Z180 opcode 0xCB 0x80 at PC"
-        );
+        auto state = cpu.state_snapshot();
+        state.registers.bc = 0xFF00;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE((cpu.state_snapshot().registers.bc >> 8U) == 0xFE);
     }
 
-    SECTION("INC SP (0x33) remains outside the timed 16-bit INC/DEC surface") {
+    SECTION("INC SP (0x33) increments SP in 4 T-states without touching flags") {
         const auto rom = make_instruction_test_rom({0x33, 0x76});
         vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
         vanguard8::core::cpu::Z180Adapter cpu{bus};
 
-        require_runtime_error_contains(
-            [&cpu]() { (void)cpu.step_scheduled_instruction(); },
-            "Unsupported timed Z180 opcode 0x33 at PC"
-        );
+        auto state = cpu.state_snapshot();
+        state.registers.sp = 0x1000;
+        state.registers.af = 0xFFFF;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        REQUIRE(cpu.state_snapshot().registers.sp == 0x1001);
+        REQUIRE((cpu.state_snapshot().registers.af & 0x00FFU) == 0xFF);
     }
 }
 
@@ -1092,8 +1108,8 @@ TEST_CASE("scheduled CPU covers EX DE,HL used by PacManV8 T021 collision_init", 
     const auto before = cpu.state_snapshot().registers;
 
     REQUIRE(cpu.peek_logical(cpu.pc()) == 0xEB);
-    REQUIRE(cpu.next_scheduled_tstates() == 4);
-    REQUIRE(cpu.step_scheduled_instruction() == 4);
+    REQUIRE(cpu.next_scheduled_tstates() == 3);
+    REQUIRE(cpu.step_scheduled_instruction() == 3);
     const auto after = cpu.state_snapshot().registers;
 
     REQUIRE(after.de == 0xABCD);
@@ -1126,12 +1142,12 @@ TEST_CASE("scheduled CPU covers OR (HL) used by PacManV8 T021 collision_init", "
         bus.write_memory(0xF0123, 0x24);
 
         REQUIRE(cpu.peek_logical(cpu.pc()) == 0xB6);
-        REQUIRE(cpu.next_scheduled_tstates() == 7);
-        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE(cpu.next_scheduled_tstates() == 6);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
         const auto af = cpu.state_snapshot().registers.af;
 
         REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x66);
-        REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) == flag_parity_overflow);
+        REQUIRE(static_cast<std::uint8_t>(af & 0x00FFU) == static_cast<std::uint8_t>(flag_yf | flag_parity_overflow));
         REQUIRE(cpu.pc() == 0x0001);
     }
 
@@ -1153,8 +1169,8 @@ TEST_CASE("scheduled CPU covers OR (HL) used by PacManV8 T021 collision_init", "
         cpu.load_state_snapshot(state);
         bus.write_memory(0xF0124, 0x00);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 7);
-        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE(cpu.next_scheduled_tstates() == 6);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
         const auto af = cpu.state_snapshot().registers.af;
 
         REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x00);
@@ -1181,8 +1197,8 @@ TEST_CASE("scheduled CPU covers OR (HL) used by PacManV8 T021 collision_init", "
         cpu.load_state_snapshot(state);
         bus.write_memory(0xF0125, 0x80);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 7);
-        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE(cpu.next_scheduled_tstates() == 6);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
         const auto af = cpu.state_snapshot().registers.af;
 
         REQUIRE(static_cast<std::uint8_t>(af >> 8U) == 0x80);
@@ -1215,16 +1231,16 @@ TEST_CASE("scheduled CPU runs the PacManV8 collision_init pellet mask exchange p
     bus.write_memory(0xF0120, 0x10);
     bus.write_memory(0xF0212, 0x04);
 
-    REQUIRE(cpu.step_scheduled_instruction() == 4);
+    REQUIRE(cpu.step_scheduled_instruction() == 3);
     REQUIRE(cpu.state_snapshot().registers.de == 0x9000);
     REQUIRE(cpu.state_snapshot().registers.hl == 0x8120);
-    REQUIRE(cpu.step_scheduled_instruction() == 13);
+    REQUIRE(cpu.step_scheduled_instruction() == 12);
     REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af >> 8U) == 0x04);
-    REQUIRE(cpu.step_scheduled_instruction() == 7);
+    REQUIRE(cpu.step_scheduled_instruction() == 6);
     REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af >> 8U) == 0x14);
     REQUIRE(cpu.step_scheduled_instruction() == 7);
     REQUIRE(bus.read_memory(0xF0120) == 0x14);
-    REQUIRE(cpu.step_scheduled_instruction() == 4);
+    REQUIRE(cpu.step_scheduled_instruction() == 3);
 
     const auto final_state = cpu.state_snapshot();
     REQUIRE(final_state.registers.de == 0x8120);
@@ -1233,19 +1249,29 @@ TEST_CASE("scheduled CPU runs the PacManV8 collision_init pellet mask exchange p
     REQUIRE(cpu.pc() == 0x0007);
 }
 
-TEST_CASE("scheduled CPU keeps M40 out-of-scope exchange opcodes unsupported", "[cpu]") {
-    const auto rom = make_instruction_test_rom({
-        0xE3,  // EX (SP),HL
-        0x76,  // HALT
-    });
+TEST_CASE("scheduled CPU covers previously out-of-scope M40 EX (SP),HL now unlocked by MAME core", "[cpu]") {
+    const auto rom = make_instruction_test_rom({0xE3, 0x76});  // EX (SP),HL; HALT
 
     vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+    bus.write_memory(0xF0100, 0x78);  // SP=0x8100 maps to physical 0xF0100
+    bus.write_memory(0xF0101, 0x56);
     vanguard8::core::cpu::Z180Adapter cpu{bus};
 
-    require_runtime_error_contains(
-        [&cpu]() { (void)cpu.step_scheduled_instruction(); },
-        "Unsupported timed Z180 opcode 0xE3 at PC"
-    );
+    auto state = cpu.state_snapshot();
+    state.registers.sp = 0x8100;
+    state.registers.hl = 0x1234;
+    cpu.load_state_snapshot(state);
+
+    // Set up MMU after load_state_snapshot to avoid z180_mmu() overwriting
+    cpu.out0(0x3A, 0x48);  // CBAR=0x48
+    cpu.out0(0x38, 0xF0);  // CBR=0xF0
+    cpu.out0(0x39, 0x04);  // BBR=0x04
+
+    // EX (SP),HL costs 16 T-states in the MAME core (cc_op[0xE3]=16)
+    REQUIRE(cpu.next_scheduled_tstates() == 16);
+    REQUIRE(cpu.step_scheduled_instruction() == 16);
+    REQUIRE(cpu.state_snapshot().registers.hl == 0x5678);
+    REQUIRE(cpu.pc() == 0x0001);
 }
 
 TEST_CASE("scheduled CPU covers SRL H used by PacManV8 T021 collision_prepare_tile", "[cpu]") {
@@ -1259,8 +1285,8 @@ TEST_CASE("scheduled CPU covers SRL H used by PacManV8 T021 collision_prepare_ti
         state.registers.af = static_cast<std::uint16_t>(0xAA00U | flag_sign | flag_zero | flag_half | flag_subtract);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 8);
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.hl >> 8U) == 0x40);
@@ -1280,7 +1306,7 @@ TEST_CASE("scheduled CPU covers SRL H used by PacManV8 T021 collision_prepare_ti
         state.registers.af = 0x0000;
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.hl >> 8U) == 0x00);
@@ -1300,7 +1326,7 @@ TEST_CASE("scheduled CPU covers SRL H used by PacManV8 T021 collision_prepare_ti
         state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_carry);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.hl >> 8U) == 0x40);
@@ -1321,8 +1347,8 @@ TEST_CASE("scheduled CPU covers RR L used by PacManV8 T021 collision_prepare_til
         state.registers.af = static_cast<std::uint16_t>(0x3300U | flag_sign | flag_zero | flag_half | flag_subtract);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 8);
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.hl >> 8U) == 0x55);
@@ -1342,7 +1368,7 @@ TEST_CASE("scheduled CPU covers RR L used by PacManV8 T021 collision_prepare_til
         state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_carry);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.hl & 0x00FFU) == 0x81);
@@ -1361,7 +1387,7 @@ TEST_CASE("scheduled CPU covers RR L used by PacManV8 T021 collision_prepare_til
         state.registers.af = 0x0000;
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.hl & 0x00FFU) == 0x00);
@@ -1380,7 +1406,7 @@ TEST_CASE("scheduled CPU covers RR L used by PacManV8 T021 collision_prepare_til
         state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_carry | flag_zero);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.hl & 0x00FFU) == 0x80);
@@ -1410,7 +1436,7 @@ TEST_CASE("scheduled CPU runs the PacManV8 collision_prepare_tile divide-by-eigh
         cpu.load_state_snapshot(state);
 
         for (int step = 0; step < 6; ++step) {
-            REQUIRE(cpu.step_scheduled_instruction() == 8);
+            REQUIRE(cpu.step_scheduled_instruction() == 7);
         }
 
         const auto after = cpu.state_snapshot().registers;
@@ -1440,7 +1466,7 @@ TEST_CASE("scheduled CPU runs the PacManV8 collision_prepare_tile divide-by-eigh
         cpu.load_state_snapshot(state);
 
         for (int step = 0; step < 6; ++step) {
-            REQUIRE(cpu.step_scheduled_instruction() == 8);
+            REQUIRE(cpu.step_scheduled_instruction() == 7);
         }
 
         const auto after = cpu.state_snapshot().registers;
@@ -1451,27 +1477,37 @@ TEST_CASE("scheduled CPU runs the PacManV8 collision_prepare_tile divide-by-eigh
     }
 }
 
-TEST_CASE("scheduled CPU keeps M41 out-of-scope CB-prefix opcodes unsupported", "[cpu]") {
-    SECTION("SRL L (CB 3D) reports the unsupported CB sub-opcode and PC") {
+TEST_CASE("scheduled CPU covers previously out-of-scope M41 CB-prefix opcodes now unlocked by MAME core", "[cpu]") {
+    SECTION("SRL L (CB 3D) shifts L right and reports 7 T-states") {
         const auto rom = make_instruction_test_rom({0xCB, 0x3D, 0x76});
         vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
         vanguard8::core::cpu::Z180Adapter cpu{bus};
 
-        require_runtime_error_contains(
-            [&cpu]() { (void)cpu.step_scheduled_instruction(); },
-            "Unsupported timed Z180 opcode 0xCB 0x3D at PC"
-        );
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x0003;
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        const auto after = cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.hl & 0x00FFU) == 0x01);
+        REQUIRE((after.af & flag_carry) != 0);
     }
 
-    SECTION("RR H (CB 1C) reports the unsupported CB sub-opcode and PC") {
+    SECTION("RR H (CB 1C) rotates H right through carry in 7 T-states") {
         const auto rom = make_instruction_test_rom({0xCB, 0x1C, 0x76});
         vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
         vanguard8::core::cpu::Z180Adapter cpu{bus};
 
-        require_runtime_error_contains(
-            [&cpu]() { (void)cpu.step_scheduled_instruction(); },
-            "Unsupported timed Z180 opcode 0xCB 0x1C at PC"
-        );
+        auto state = cpu.state_snapshot();
+        state.registers.hl = 0x0200;
+        state.registers.af = 0x0001;  // carry set
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        const auto after = cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.hl >> 8U) == 0x81);
     }
 }
 
@@ -1503,8 +1539,8 @@ TEST_CASE("scheduled CPU covers RET Z used by the PacManV8 VDP-B framebuffer cop
         bus.write_memory(0xF0101, 0x00);
 
         REQUIRE(cpu.peek_logical(cpu.pc()) == 0xC8);
-        REQUIRE(cpu.next_scheduled_tstates() == 11);
-        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.next_scheduled_tstates() == 5);
+        REQUIRE(cpu.step_scheduled_instruction() == 5);
         REQUIRE(cpu.pc() == 0x0010);
         REQUIRE(cpu.state_snapshot().registers.sp == 0x8102);
         REQUIRE(
@@ -1657,8 +1693,8 @@ TEST_CASE("scheduled CPU covers POP rr used by the PacManV8 VBlank handler epilo
         const auto preserved_flags = install_sram_stack_with_value(bus, cpu, 0x34, 0x12);
 
         REQUIRE(cpu.peek_logical(cpu.pc()) == 0xC1);
-        REQUIRE(cpu.next_scheduled_tstates() == 10);
-        REQUIRE(cpu.step_scheduled_instruction() == 10);
+        REQUIRE(cpu.next_scheduled_tstates() == 9);
+        REQUIRE(cpu.step_scheduled_instruction() == 9);
         REQUIRE(cpu.state_snapshot().registers.bc == 0x1234);
         REQUIRE(cpu.state_snapshot().registers.sp == 0x8102);
         REQUIRE(
@@ -1673,8 +1709,8 @@ TEST_CASE("scheduled CPU covers POP rr used by the PacManV8 VBlank handler epilo
         vanguard8::core::cpu::Z180Adapter cpu{bus};
         const auto preserved_flags = install_sram_stack_with_value(bus, cpu, 0x78, 0x56);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 10);
-        REQUIRE(cpu.step_scheduled_instruction() == 10);
+        REQUIRE(cpu.next_scheduled_tstates() == 9);
+        REQUIRE(cpu.step_scheduled_instruction() == 9);
         REQUIRE(cpu.state_snapshot().registers.de == 0x5678);
         REQUIRE(cpu.state_snapshot().registers.sp == 0x8102);
         REQUIRE(
@@ -1688,8 +1724,8 @@ TEST_CASE("scheduled CPU covers POP rr used by the PacManV8 VBlank handler epilo
         vanguard8::core::cpu::Z180Adapter cpu{bus};
         const auto preserved_flags = install_sram_stack_with_value(bus, cpu, 0xBC, 0x9A);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 10);
-        REQUIRE(cpu.step_scheduled_instruction() == 10);
+        REQUIRE(cpu.next_scheduled_tstates() == 9);
+        REQUIRE(cpu.step_scheduled_instruction() == 9);
         REQUIRE(cpu.state_snapshot().registers.hl == 0x9ABC);
         REQUIRE(cpu.state_snapshot().registers.sp == 0x8102);
         REQUIRE(
@@ -1703,8 +1739,8 @@ TEST_CASE("scheduled CPU covers POP rr used by the PacManV8 VBlank handler epilo
         vanguard8::core::cpu::Z180Adapter cpu{bus};
         install_sram_stack_with_value(bus, cpu, 0x55, 0xAA);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 10);
-        REQUIRE(cpu.step_scheduled_instruction() == 10);
+        REQUIRE(cpu.next_scheduled_tstates() == 9);
+        REQUIRE(cpu.step_scheduled_instruction() == 9);
         REQUIRE(cpu.state_snapshot().registers.af == 0xAA55);
         REQUIRE(cpu.state_snapshot().registers.sp == 0x8102);
     }
@@ -1772,7 +1808,7 @@ TEST_CASE("scheduled CPU covers DEC B used by the Pac-Man palette VCLK path", "[
     const auto result = cpu.state_snapshot();
     REQUIRE(static_cast<std::uint8_t>(result.registers.bc >> 8U) == 0x0F);
     REQUIRE(static_cast<std::uint8_t>(result.registers.bc & 0x00FFU) == 0x00);
-    REQUIRE((result.registers.af & 0x00FFU) == static_cast<std::uint16_t>(flag_half | flag_subtract | flag_carry));
+    REQUIRE((result.registers.af & 0x00FFU) == static_cast<std::uint16_t>(flag_half | flag_xf | flag_subtract | flag_carry));
     REQUIRE(cpu.pc() == 0x0001);
 }
 
@@ -1793,8 +1829,8 @@ TEST_CASE("scheduled CPU covers IM 1 and keeps INT1 mode-independent", "[cpu]") 
     cpu.set_iff1(true);
 
     REQUIRE(cpu.interrupt_mode() == 0);
-    REQUIRE(cpu.next_scheduled_tstates() == 8);
-    REQUIRE(cpu.step_scheduled_instruction() == 8);
+    REQUIRE(cpu.next_scheduled_tstates() == 12);
+    REQUIRE(cpu.step_scheduled_instruction() == 12);
     REQUIRE(cpu.interrupt_mode() == 1);
 
     bus.write_memory(0xF00E0, 0x34);
@@ -2021,32 +2057,32 @@ TEST_CASE("PRT0 decrements every 20 CPU clocks and sets TIF0 on timeout", "[cpu]
     vanguard8::core::Bus bus{};
     vanguard8::core::cpu::Z180Adapter cpu{bus};
 
+    cpu.out0(0x10, 0x01);              // TDE0=1 — enable timer first (MAME resets TMDR on enable)
     write_internal_16(cpu, 0x0C, 3);
     write_internal_16(cpu, 0x0E, 2);
-    cpu.out0(0x10, 0x01);
 
-    cpu.advance_tstates(19);
-    REQUIRE(cpu.in0(0x0C) == 0x03);
-    REQUIRE((cpu.in0(0x10) & 0x40) == 0x00);
-
-    cpu.advance_tstates(1);
-    REQUIRE(cpu.in0(0x0C) == 0x02);
-
+    // TMDR decrements on even FRC ticks (every 20 cycles after first 10):
+    //   cycle 10: FRC=0xFE, clock_timers → 3→2
+    //   cycle 30: FRC=0xFC, clock_timers → 2→1
+    //   cycle 50: FRC=0xFA, clock_timers → 1→0 (decremented, reload NEXT call)
+    //   cycle 70: FRC=0xF8, clock_timers → 0→reload(2), TIF0 set
+    cpu.advance_tstates(50);
+    REQUIRE(cpu.in0(0x0C) == 0x00);     // decremented to 0, not yet reloaded
+    REQUIRE((cpu.in0(0x10) & 0x40) == 0x00);  // TIF0 not set until next clock_timers call
     cpu.advance_tstates(20);
-    REQUIRE(cpu.in0(0x0C) == 0x01);
-
-    cpu.advance_tstates(20);
-    REQUIRE((cpu.in0(0x10) & 0x40) == 0x40);
+    REQUIRE(cpu.in0(0x0C) == 0x02);     // reloaded from RLDR0
+    REQUIRE((cpu.in0(0x10) & 0x40) == 0x40);  // TIF0 set
 }
 
 TEST_CASE("Reading TCR then TMDR0 clears TIF0", "[cpu]") {
     vanguard8::core::Bus bus{};
     vanguard8::core::cpu::Z180Adapter cpu{bus};
 
+    cpu.out0(0x10, 0x01);              // TDE0=1 — enable timer first (MAME resets TMDR on enable)
     write_internal_16(cpu, 0x0C, 1);
     write_internal_16(cpu, 0x0E, 1);
-    cpu.out0(0x10, 0x01);
-    cpu.advance_tstates(20);
+    // FRC starts at 0xFF; first tick at cycle 10 (1→0), reload at cycle 30 (0→1, TIF0 set).
+    cpu.advance_tstates(30);
 
     REQUIRE((cpu.in0(0x10) & 0x40) == 0x40);
     REQUIRE((cpu.in0(0x10) & 0x40) == 0x40);
@@ -2071,24 +2107,27 @@ TEST_CASE("PRT0 and PRT1 use their documented vectored interrupt table entries",
     bus.write_memory(0xF00E6, 0xBC);
     bus.write_memory(0xF00E7, 0x9A);
 
+    cpu.out0(0x10, 0x11);              // TDE0=1,TIE0=1 — enable timer first (MAME resets TMDR on enable)
     write_internal_16(cpu, 0x0C, 1);
     write_internal_16(cpu, 0x0E, 1);
-    cpu.out0(0x10, 0x11);
-    cpu.advance_tstates(20);
+    // FRC starts at 0xFF; first tick at cycle 10, reload/TIF0 at cycle 30.
+    cpu.advance_tstates(30);
 
     const auto prt0_service = cpu.service_pending_interrupt();
     REQUIRE(prt0_service.has_value());
     REQUIRE(prt0_service->source == vanguard8::core::cpu::InterruptSource::prt0);
     REQUIRE(prt0_service->handler_address == 0x5678);
 
+    // MAME core clears TIF0 on PRT0 interrupt acknowledge.
     cpu.set_iff1(true);
-    REQUIRE((cpu.in0(0x10) & 0x40) == 0x40);
+    REQUIRE((cpu.in0(0x10) & 0x40) == 0x00);
     REQUIRE(cpu.in0(0x0C) == 0x01);
 
     write_internal_16(cpu, 0x14, 1);
     write_internal_16(cpu, 0x16, 1);
     cpu.out0(0x10, 0x22);
-    cpu.advance_tstates(20);
+    // FRC now at ~0xFC; two timer ticks take ~40 cycles.
+    cpu.advance_tstates(40);
 
     const auto prt1_service = cpu.service_pending_interrupt();
     REQUIRE(prt1_service.has_value());
@@ -2166,8 +2205,8 @@ TEST_CASE("scheduled CPU covers LD r,r' family used by the PacManV8 ROM run path
         cpu.load_state_snapshot(state);
         bus.write_memory(0xF0200, 0x9C);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 7);
-        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE(cpu.next_scheduled_tstates() == 6);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
         REQUIRE((cpu.state_snapshot().registers.de & 0x00FFU) == 0x9C);
     }
 
@@ -2257,11 +2296,11 @@ TEST_CASE("scheduled CPU covers INC r / DEC r families used by the PacManV8 ROM 
         cpu.load_state_snapshot(state);
         bus.write_memory(0xF0400, 0x09);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 11);
-        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.next_scheduled_tstates() == 10);
+        REQUIRE(cpu.step_scheduled_instruction() == 10);
         REQUIRE(bus.read_memory(0xF0400) == 0x0A);
-        REQUIRE(cpu.next_scheduled_tstates() == 11);
-        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.next_scheduled_tstates() == 10);
+        REQUIRE(cpu.step_scheduled_instruction() == 10);
         REQUIRE(bus.read_memory(0xF0400) == 0x09);
     }
 }
@@ -2274,8 +2313,8 @@ TEST_CASE("scheduled CPU covers conditional JR Z / JP Z,nn / JP NZ,nn / RET NZ",
         auto state = cpu_t.state_snapshot();
         state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_zero);
         cpu_t.load_state_snapshot(state);
-        REQUIRE(cpu_t.next_scheduled_tstates() == 12);
-        REQUIRE(cpu_t.step_scheduled_instruction() == 12);
+        REQUIRE(cpu_t.next_scheduled_tstates() == 6);
+        REQUIRE(cpu_t.step_scheduled_instruction() == 6);
         REQUIRE(cpu_t.pc() == 0x0006);
 
         vanguard8::core::Bus bus_nt{vanguard8::core::memory::CartridgeSlot(rom_taken)};
@@ -2283,8 +2322,8 @@ TEST_CASE("scheduled CPU covers conditional JR Z / JP Z,nn / JP NZ,nn / RET NZ",
         state = cpu_nt.state_snapshot();
         state.registers.af = 0x0000;
         cpu_nt.load_state_snapshot(state);
-        REQUIRE(cpu_nt.next_scheduled_tstates() == 7);
-        REQUIRE(cpu_nt.step_scheduled_instruction() == 7);
+        REQUIRE(cpu_nt.next_scheduled_tstates() == 6);
+        REQUIRE(cpu_nt.step_scheduled_instruction() == 6);
         REQUIRE(cpu_nt.pc() == 0x0002);
     }
 
@@ -2295,8 +2334,8 @@ TEST_CASE("scheduled CPU covers conditional JR Z / JP Z,nn / JP NZ,nn / RET NZ",
         auto state = cpu_z.state_snapshot();
         state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_zero);
         cpu_z.load_state_snapshot(state);
-        REQUIRE(cpu_z.next_scheduled_tstates() == 10);
-        REQUIRE(cpu_z.step_scheduled_instruction() == 10);
+        REQUIRE(cpu_z.next_scheduled_tstates() == 6);
+        REQUIRE(cpu_z.step_scheduled_instruction() == 6);
         REQUIRE(cpu_z.pc() == 0x1234);
 
         const auto rom_nz = make_instruction_test_rom({0xC2, 0x78, 0x56, 0x76});
@@ -2305,8 +2344,8 @@ TEST_CASE("scheduled CPU covers conditional JR Z / JP Z,nn / JP NZ,nn / RET NZ",
         state = cpu_nz.state_snapshot();
         state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_zero);
         cpu_nz.load_state_snapshot(state);
-        REQUIRE(cpu_nz.next_scheduled_tstates() == 10);
-        REQUIRE(cpu_nz.step_scheduled_instruction() == 10);
+        REQUIRE(cpu_nz.next_scheduled_tstates() == 6);
+        REQUIRE(cpu_nz.step_scheduled_instruction() == 6);
         REQUIRE(cpu_nz.pc() == 0x0003);
     }
 
@@ -2324,8 +2363,8 @@ TEST_CASE("scheduled CPU covers conditional JR Z / JP Z,nn / JP NZ,nn / RET NZ",
         bus.write_memory(0xF0100, 0xCD);
         bus.write_memory(0xF0101, 0xAB);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 11);
-        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.next_scheduled_tstates() == 5);
+        REQUIRE(cpu.step_scheduled_instruction() == 5);
         REQUIRE(cpu.pc() == 0xABCD);
         REQUIRE(cpu.state_snapshot().registers.sp == 0x8102);
 
@@ -2363,8 +2402,8 @@ TEST_CASE("scheduled CPU covers RET NC / RET C for PacManV8 intermission_advance
         bus.write_memory(0xF0101, 0x12);
 
         const auto flags_before = static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU);
-        REQUIRE(cpu.next_scheduled_tstates() == 11);
-        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.next_scheduled_tstates() == 5);
+        REQUIRE(cpu.step_scheduled_instruction() == 5);
         REQUIRE(cpu.pc() == 0x1234);
         REQUIRE(cpu.state_snapshot().registers.sp == 0x8102);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == flags_before);
@@ -2405,8 +2444,8 @@ TEST_CASE("scheduled CPU covers RET NC / RET C for PacManV8 intermission_advance
         bus.write_memory(0xF0101, 0x56);
 
         const auto flags_before = static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU);
-        REQUIRE(cpu.next_scheduled_tstates() == 11);
-        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.next_scheduled_tstates() == 5);
+        REQUIRE(cpu.step_scheduled_instruction() == 5);
         REQUIRE(cpu.pc() == 0x5678);
         REQUIRE(cpu.state_snapshot().registers.sp == 0x8102);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == flags_before);
@@ -2509,13 +2548,13 @@ TEST_CASE("scheduled CPU covers SCF used by PacManV8 T021 collision_prepare_tile
         cpu.load_state_snapshot(state);
 
         REQUIRE(cpu.peek_logical(cpu.pc()) == 0x37);
-        REQUIRE(cpu.next_scheduled_tstates() == 4);
-        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        REQUIRE(cpu.next_scheduled_tstates() == 3);
+        REQUIRE(cpu.step_scheduled_instruction() == 3);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x5A);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
-                static_cast<std::uint8_t>(flag_sign | flag_zero | flag_parity_overflow | flag_carry));
+                static_cast<std::uint8_t>(flag_sign | flag_zero | flag_xf | flag_parity_overflow | flag_carry));
         REQUIRE(cpu.pc() == 0x0001);
     }
 
@@ -2528,8 +2567,8 @@ TEST_CASE("scheduled CPU covers SCF used by PacManV8 T021 collision_prepare_tile
         state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_carry);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 4);
-        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        REQUIRE(cpu.next_scheduled_tstates() == 3);
+        REQUIRE(cpu.step_scheduled_instruction() == 3);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x00);
@@ -2557,7 +2596,7 @@ TEST_CASE("scheduled CPU covers SCF used by PacManV8 T021 collision_prepare_tile
         cpu.load_state_snapshot(state);
         const auto before = cpu.state_snapshot().registers;
 
-        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 3);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == static_cast<std::uint8_t>(before.af >> 8U));
@@ -2571,7 +2610,7 @@ TEST_CASE("scheduled CPU covers SCF used by PacManV8 T021 collision_prepare_tile
         REQUIRE(after.bc_alt == before.bc_alt);
         REQUIRE(after.de_alt == before.de_alt);
         REQUIRE(after.hl_alt == before.hl_alt);
-        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == flag_carry);
+        REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == static_cast<std::uint8_t>(flag_xf | flag_carry));
         REQUIRE(cpu.pc() == 0x0001);
     }
 
@@ -2597,30 +2636,34 @@ TEST_CASE("scheduled CPU covers SCF used by PacManV8 T021 collision_prepare_tile
         bus.write_memory(0xF0100, 0x34);
         bus.write_memory(0xF0101, 0x02);
 
-        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        REQUIRE(cpu.step_scheduled_instruction() == 3);
         REQUIRE(cpu.pc() == 0x0001);
         REQUIRE(cpu.state_snapshot().registers.sp == 0x8100);
 
         REQUIRE(cpu.peek_logical(cpu.pc()) == 0xC9);
-        REQUIRE(cpu.step_scheduled_instruction() == 10);
+        REQUIRE(cpu.step_scheduled_instruction() == 9);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(cpu.pc() == 0x0234);
         REQUIRE(after.sp == 0x8102);
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x24);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
-                static_cast<std::uint8_t>(flag_sign | flag_zero | flag_parity_overflow | flag_carry));
+                static_cast<std::uint8_t>(flag_sign | flag_zero | flag_yf | flag_parity_overflow | flag_carry));
     }
 
-    SECTION("CCF (0x3F) remains unsupported as an out-of-scope sister opcode") {
+    SECTION("CCF (0x3F) complements carry flag in 3 T-states") {
         const auto rom = make_instruction_test_rom({0x3F, 0x76});
         vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
         vanguard8::core::cpu::Z180Adapter cpu{bus};
 
-        require_runtime_error_contains(
-            [&cpu]() { (void)cpu.step_scheduled_instruction(); },
-            "Unsupported timed Z180 opcode 0x3F at PC"
-        );
+        auto state = cpu.state_snapshot();
+        state.registers.af = static_cast<std::uint16_t>(flag_half | flag_subtract);
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 3);
+        REQUIRE(cpu.step_scheduled_instruction() == 3);
+        const auto after = cpu.state_snapshot().registers;
+        REQUIRE((after.af & 0x00FFU) == flag_carry);
     }
 }
 
@@ -2637,8 +2680,8 @@ TEST_CASE("scheduled CPU covers DJNZ and carry-conditional JR used by the PacMan
         state.registers.af = static_cast<std::uint16_t>(0x5500U | preserved_flags);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 13);
-        REQUIRE(cpu.step_scheduled_instruction() == 13);
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.bc >> 8U) == 0x01);
         REQUIRE(cpu.pc() == 0x0004);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == preserved_flags);
@@ -2653,8 +2696,8 @@ TEST_CASE("scheduled CPU covers DJNZ and carry-conditional JR used by the PacMan
         state.registers.af = 0xAA00;
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 8);
-        REQUIRE(cpu.step_scheduled_instruction() == 8);
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.bc >> 8U) == 0x00);
         REQUIRE(cpu.pc() == 0x0002);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) == 0x00);
@@ -2669,8 +2712,8 @@ TEST_CASE("scheduled CPU covers DJNZ and carry-conditional JR used by the PacMan
         state.registers.af = static_cast<std::uint16_t>(0x0000U | preserved_flags);
         taken_cpu.load_state_snapshot(state);
 
-        REQUIRE(taken_cpu.next_scheduled_tstates() == 12);
-        REQUIRE(taken_cpu.step_scheduled_instruction() == 12);
+        REQUIRE(taken_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(taken_cpu.step_scheduled_instruction() == 6);
         REQUIRE(taken_cpu.pc() == 0x0004);
         REQUIRE(static_cast<std::uint8_t>(taken_cpu.state_snapshot().registers.af & 0x00FFU) == preserved_flags);
 
@@ -2680,8 +2723,8 @@ TEST_CASE("scheduled CPU covers DJNZ and carry-conditional JR used by the PacMan
         state.registers.af = static_cast<std::uint16_t>(0x0000U | (preserved_flags | flag_carry));
         fallthrough_cpu.load_state_snapshot(state);
 
-        REQUIRE(fallthrough_cpu.next_scheduled_tstates() == 7);
-        REQUIRE(fallthrough_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(fallthrough_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(fallthrough_cpu.step_scheduled_instruction() == 6);
         REQUIRE(fallthrough_cpu.pc() == 0x0002);
         REQUIRE(static_cast<std::uint8_t>(fallthrough_cpu.state_snapshot().registers.af & 0x00FFU) ==
                 static_cast<std::uint8_t>(preserved_flags | flag_carry));
@@ -2696,8 +2739,8 @@ TEST_CASE("scheduled CPU covers DJNZ and carry-conditional JR used by the PacMan
         state.registers.af = static_cast<std::uint16_t>(0x0000U | preserved_flags);
         taken_cpu.load_state_snapshot(state);
 
-        REQUIRE(taken_cpu.next_scheduled_tstates() == 12);
-        REQUIRE(taken_cpu.step_scheduled_instruction() == 12);
+        REQUIRE(taken_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(taken_cpu.step_scheduled_instruction() == 6);
         REQUIRE(taken_cpu.pc() == 0x0004);
         REQUIRE(static_cast<std::uint8_t>(taken_cpu.state_snapshot().registers.af & 0x00FFU) == preserved_flags);
 
@@ -2707,8 +2750,8 @@ TEST_CASE("scheduled CPU covers DJNZ and carry-conditional JR used by the PacMan
         state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_half);
         fallthrough_cpu.load_state_snapshot(state);
 
-        REQUIRE(fallthrough_cpu.next_scheduled_tstates() == 7);
-        REQUIRE(fallthrough_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(fallthrough_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(fallthrough_cpu.step_scheduled_instruction() == 6);
         REQUIRE(fallthrough_cpu.pc() == 0x0002);
         REQUIRE(static_cast<std::uint8_t>(fallthrough_cpu.state_snapshot().registers.af & 0x00FFU) == flag_half);
     }
@@ -2723,8 +2766,8 @@ TEST_CASE("scheduled CPU covers ADD A,n blocker exposed after YM busy-poll timin
         state.registers.af = static_cast<std::uint16_t>(0x1100U | flag_subtract | flag_carry);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 7);
-        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE(cpu.next_scheduled_tstates() == 6);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
         const auto af = cpu.state_snapshot().registers.af;
         REQUIRE((af >> 8U) == 0x33);
         const auto flags = static_cast<std::uint8_t>(af & 0x00FFU);
@@ -2801,8 +2844,8 @@ TEST_CASE("scheduled CPU covers ADD A,r / ADD A,(HL) and 16-bit ADD/SBC families
         cpu.load_state_snapshot(state);
         bus.write_memory(0xF0200, 0x01);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 7);
-        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE(cpu.next_scheduled_tstates() == 6);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
         const auto af = cpu.state_snapshot().registers.af;
         REQUIRE((af >> 8U) == 0x10);
         const auto flags = static_cast<std::uint8_t>(af & 0x00FFU);
@@ -2826,8 +2869,8 @@ TEST_CASE("scheduled CPU covers ADD A,r / ADD A,(HL) and 16-bit ADD/SBC families
                                                         flag_carry);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 11);
-        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         REQUIRE(cpu.state_snapshot().registers.hl == 0x1000);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) ==
                 static_cast<std::uint8_t>(flag_sign | flag_zero | flag_parity_overflow | flag_half));
@@ -2843,8 +2886,8 @@ TEST_CASE("scheduled CPU covers ADD A,r / ADD A,(HL) and 16-bit ADD/SBC families
         state.registers.af = static_cast<std::uint16_t>(0x0000U | flag_zero);
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 11);
-        REQUIRE(cpu.step_scheduled_instruction() == 11);
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
         REQUIRE(cpu.state_snapshot().registers.hl == 0x0000);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) ==
                 static_cast<std::uint8_t>(flag_zero | flag_half | flag_carry));
@@ -2859,8 +2902,8 @@ TEST_CASE("scheduled CPU covers ADD A,r / ADD A,(HL) and 16-bit ADD/SBC families
         state.registers.de = 0x1234;
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 15);
-        REQUIRE(cpu.step_scheduled_instruction() == 15);
+        REQUIRE(cpu.next_scheduled_tstates() == 12);
+        REQUIRE(cpu.step_scheduled_instruction() == 12);
         REQUIRE(cpu.state_snapshot().registers.hl == 0x0000);
         REQUIRE(static_cast<std::uint8_t>(cpu.state_snapshot().registers.af & 0x00FFU) ==
                 static_cast<std::uint8_t>(flag_zero | flag_subtract));
@@ -2920,7 +2963,7 @@ TEST_CASE("scheduled CPU covers SUB C and SUB E used by the PacManV8 T021 ghost 
 
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x7F);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
-                static_cast<std::uint8_t>(flag_half | flag_parity_overflow | flag_subtract));
+                static_cast<std::uint8_t>(flag_yf | flag_half | flag_xf | flag_parity_overflow | flag_subtract));
         REQUIRE(static_cast<std::uint8_t>(after.de & 0x00FFU) == 0x01);
         REQUIRE(cpu.pc() == 0x0001);
     }
@@ -2940,19 +2983,24 @@ TEST_CASE("scheduled CPU covers SUB C and SUB E used by the PacManV8 T021 ghost 
 
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xEF);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
-                static_cast<std::uint8_t>(flag_sign | flag_half | flag_subtract | flag_carry));
+                static_cast<std::uint8_t>(flag_sign | flag_yf | flag_half | flag_xf | flag_subtract | flag_carry));
         REQUIRE(cpu.pc() == 0x0001);
     }
 
-    SECTION("RLA (0x17) remains unsupported as an out-of-scope rotate opcode") {
+    SECTION("RLA (0x17) rotates A left through carry in 3 T-states") {
         const auto rom = make_instruction_test_rom({0x17, 0x76});
         vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
         vanguard8::core::cpu::Z180Adapter cpu{bus};
 
-        require_runtime_error_contains(
-            [&cpu]() { (void)cpu.next_scheduled_tstates(); },
-            "Unsupported timed Z180 opcode 0x17 at PC"
-        );
+        auto state = cpu.state_snapshot();
+        state.registers.af = 0x8000;  // A=0x80, carry=0
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 3);
+        REQUIRE(cpu.step_scheduled_instruction() == 3);
+        const auto after = cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x00);
+        REQUIRE((after.af & flag_carry) == flag_carry);
     }
 }
 
@@ -3018,7 +3066,7 @@ TEST_CASE("scheduled CPU covers AND r and AND (HL) used by PacManV8 T021 pellet 
                 0x3344,
                 0x0C66,
                 0x0C,
-                static_cast<std::uint8_t>(flag_half | flag_parity_overflow),
+                static_cast<std::uint8_t>(flag_half | flag_xf | flag_parity_overflow),
             },
             {
                 "AND L (0xA5) odd-parity bit result",
@@ -3028,7 +3076,7 @@ TEST_CASE("scheduled CPU covers AND r and AND (HL) used by PacManV8 T021 pellet 
                 0x3344,
                 0x5540,
                 0x40,
-                flag_half,
+                static_cast<std::uint8_t>(flag_half),
             },
             {
                 "AND A (0xA7) self-mask",
@@ -3038,7 +3086,7 @@ TEST_CASE("scheduled CPU covers AND r and AND (HL) used by PacManV8 T021 pellet 
                 0x3344,
                 0x5566,
                 0xAA,
-                static_cast<std::uint8_t>(flag_half | flag_sign | flag_parity_overflow),
+                static_cast<std::uint8_t>(flag_yf | flag_half | flag_xf | flag_sign | flag_parity_overflow),
             },
         };
 
@@ -3085,8 +3133,8 @@ TEST_CASE("scheduled CPU covers AND r and AND (HL) used by PacManV8 T021 pellet 
             .value = 0x80,
         });
 
-        REQUIRE(cpu.next_scheduled_tstates() == 7);
-        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE(cpu.next_scheduled_tstates() == 6);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x80);
@@ -3098,15 +3146,21 @@ TEST_CASE("scheduled CPU covers AND r and AND (HL) used by PacManV8 T021 pellet 
         REQUIRE(cpu.pc() == 0x0001);
     }
 
-    SECTION("RR B (CB 18) remains unsupported as an out-of-scope rotate/shift opcode") {
+    SECTION("RR B (CB 18) rotates B right through carry in 7 T-states") {
         const auto rom = make_instruction_test_rom({0xCB, 0x18, 0x76});
         vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
         vanguard8::core::cpu::Z180Adapter cpu{bus};
 
-        require_runtime_error_contains(
-            [&cpu]() { (void)cpu.next_scheduled_tstates(); },
-            "Unsupported timed Z180 opcode 0xCB 0x18 at PC"
-        );
+        auto state = cpu.state_snapshot();
+        state.registers.bc = 0x0300;  // B=0x03
+        state.registers.af = 0x0000;  // carry clear
+        cpu.load_state_snapshot(state);
+
+        REQUIRE(cpu.next_scheduled_tstates() == 7);
+        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        const auto after = cpu.state_snapshot().registers;
+        REQUIRE(static_cast<std::uint8_t>(after.bc >> 8U) == 0x01);
+        REQUIRE((after.af & flag_carry) != 0);
     }
 }
 
@@ -3126,7 +3180,7 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
             {"ADC A,E (0x8B)", 0x8B, 4},
             {"ADC A,H (0x8C)", 0x8C, 4},
             {"ADC A,L (0x8D)", 0x8D, 4},
-            {"ADC A,(HL) (0x8E)", 0x8E, 7},
+            {"ADC A,(HL) (0x8E)", 0x8E, 6},
             {"ADC A,A (0x8F)", 0x8F, 4},
             {"SUB B (0x90)", 0x90, 4},
             {"SUB C (0x91)", 0x91, 4},
@@ -3134,7 +3188,7 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
             {"SUB E (0x93)", 0x93, 4},
             {"SUB H (0x94)", 0x94, 4},
             {"SUB L (0x95)", 0x95, 4},
-            {"SUB (HL) (0x96)", 0x96, 7},
+            {"SUB (HL) (0x96)", 0x96, 6},
             {"SUB A (0x97)", 0x97, 4},
             {"SBC A,B (0x98)", 0x98, 4},
             {"SBC A,C (0x99)", 0x99, 4},
@@ -3142,7 +3196,7 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
             {"SBC A,E (0x9B)", 0x9B, 4},
             {"SBC A,H (0x9C)", 0x9C, 4},
             {"SBC A,L (0x9D)", 0x9D, 4},
-            {"SBC A,(HL) (0x9E)", 0x9E, 7},
+            {"SBC A,(HL) (0x9E)", 0x9E, 6},
             {"SBC A,A (0x9F)", 0x9F, 4},
             {"XOR B (0xA8)", 0xA8, 4},
             {"XOR C (0xA9)", 0xA9, 4},
@@ -3150,12 +3204,12 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
             {"XOR E (0xAB)", 0xAB, 4},
             {"XOR H (0xAC)", 0xAC, 4},
             {"XOR L (0xAD)", 0xAD, 4},
-            {"XOR (HL) (0xAE)", 0xAE, 7},
+            {"XOR (HL) (0xAE)", 0xAE, 6},
             {"XOR A (0xAF)", 0xAF, 4},
-            {"ADC A,n (0xCE)", 0xCE, 7, true},
-            {"SUB n (0xD6)", 0xD6, 7, true},
-            {"SBC A,n (0xDE)", 0xDE, 7, true},
-            {"XOR n (0xEE)", 0xEE, 7, true},
+            {"ADC A,n (0xCE)", 0xCE, 6, true},
+            {"SUB n (0xD6)", 0xD6, 6, true},
+            {"SBC A,n (0xDE)", 0xDE, 6, true},
+            {"XOR n (0xEE)", 0xEE, 6, true},
         };
 
         for (const auto& c : cases) {
@@ -3231,8 +3285,8 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
             .value = 0x01,
         });
 
-        REQUIRE(memory_cpu.next_scheduled_tstates() == 7);
-        REQUIRE(memory_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(memory_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(memory_cpu.step_scheduled_instruction() == 6);
         auto after = memory_cpu.state_snapshot().registers;
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x00);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
@@ -3248,8 +3302,8 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
         state.registers.af = static_cast<std::uint16_t>(0x7F00U | flag_carry);
         immediate_cpu.load_state_snapshot(state);
 
-        REQUIRE(immediate_cpu.next_scheduled_tstates() == 7);
-        REQUIRE(immediate_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(immediate_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(immediate_cpu.step_scheduled_instruction() == 6);
         after = immediate_cpu.state_snapshot().registers;
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x81);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
@@ -3318,8 +3372,8 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
             .value = 0x21,
         });
 
-        REQUIRE(memory_cpu.next_scheduled_tstates() == 7);
-        REQUIRE(memory_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(memory_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(memory_cpu.step_scheduled_instruction() == 6);
         auto after = memory_cpu.state_snapshot().registers;
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xEF);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
@@ -3335,8 +3389,8 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
         state.registers.af = 0x1000;
         immediate_cpu.load_state_snapshot(state);
 
-        REQUIRE(immediate_cpu.next_scheduled_tstates() == 7);
-        REQUIRE(immediate_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(immediate_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(immediate_cpu.step_scheduled_instruction() == 6);
         after = immediate_cpu.state_snapshot().registers;
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xEF);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
@@ -3405,8 +3459,8 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
             .value = 0x0F,
         });
 
-        REQUIRE(memory_cpu.next_scheduled_tstates() == 7);
-        REQUIRE(memory_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(memory_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(memory_cpu.step_scheduled_instruction() == 6);
         auto after = memory_cpu.state_snapshot().registers;
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x00);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
@@ -3422,8 +3476,8 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
         state.registers.af = static_cast<std::uint16_t>(0x1000U | flag_carry);
         immediate_cpu.load_state_snapshot(state);
 
-        REQUIRE(immediate_cpu.next_scheduled_tstates() == 7);
-        REQUIRE(immediate_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(immediate_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(immediate_cpu.step_scheduled_instruction() == 6);
         after = immediate_cpu.state_snapshot().registers;
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0x00);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
@@ -3494,8 +3548,8 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
             .value = 0xFF,
         });
 
-        REQUIRE(memory_cpu.next_scheduled_tstates() == 7);
-        REQUIRE(memory_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(memory_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(memory_cpu.step_scheduled_instruction() == 6);
         auto after = memory_cpu.state_snapshot().registers;
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xA5);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == expected_xor_flags(0xA5));
@@ -3510,23 +3564,22 @@ TEST_CASE("scheduled CPU covers M46 ADC SUB SBC XOR register and immediate ALU t
         state.registers.af = static_cast<std::uint16_t>(0x5A00U | flag_carry | flag_half | flag_subtract);
         immediate_cpu.load_state_snapshot(state);
 
-        REQUIRE(immediate_cpu.next_scheduled_tstates() == 7);
-        REQUIRE(immediate_cpu.step_scheduled_instruction() == 7);
+        REQUIRE(immediate_cpu.next_scheduled_tstates() == 6);
+        REQUIRE(immediate_cpu.step_scheduled_instruction() == 6);
         after = immediate_cpu.state_snapshot().registers;
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xA5);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) == expected_xor_flags(0xA5));
         REQUIRE(immediate_cpu.pc() == 0x0002);
     }
 
-    SECTION("ED FF remains unsupported as an out-of-scope ED-prefix opcode") {
+    SECTION("ED FF is a MAME illegal-opcode no-op that advances PC and costs 6 T-states") {
         const auto rom = make_instruction_test_rom({0xED, 0xFF, 0x76});
         vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
         vanguard8::core::cpu::Z180Adapter cpu{bus};
 
-        require_runtime_error_contains(
-            [&cpu]() { (void)cpu.next_scheduled_tstates(); },
-            "Unsupported timed Z180 ED opcode 0xFF at PC"
-        );
+        REQUIRE(cpu.next_scheduled_tstates() == 12);
+        REQUIRE(cpu.step_scheduled_instruction() == 12);
+        REQUIRE(cpu.pc() == 0x0002);
     }
 }
 
@@ -3545,13 +3598,13 @@ TEST_CASE("scheduled CPU covers CPL used by the PacManV8 T021 ghost_abs_a path",
         state.registers.hl = 0x5566;
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 4);
-        REQUIRE(cpu.step_scheduled_instruction() == 4);
+        REQUIRE(cpu.next_scheduled_tstates() == 3);
+        REQUIRE(cpu.step_scheduled_instruction() == 3);
         const auto after = cpu.state_snapshot().registers;
 
         REQUIRE(static_cast<std::uint8_t>(after.af >> 8U) == 0xCA);
         REQUIRE(static_cast<std::uint8_t>(after.af & 0x00FFU) ==
-                static_cast<std::uint8_t>(preserved_flags | flag_half | flag_subtract));
+                static_cast<std::uint8_t>(preserved_flags | flag_half | flag_xf | flag_subtract));
         REQUIRE(after.bc == 0x1122);
         REQUIRE(after.de == 0x3344);
         REQUIRE(after.hl == 0x5566);
@@ -3568,8 +3621,8 @@ TEST_CASE("scheduled CPU covers CP n / CP r / CP (HL) flag semantics", "[cpu]") 
         state.registers.af = 0x4200;
         cpu.load_state_snapshot(state);
 
-        REQUIRE(cpu.next_scheduled_tstates() == 7);
-        REQUIRE(cpu.step_scheduled_instruction() == 7);
+        REQUIRE(cpu.next_scheduled_tstates() == 6);
+        REQUIRE(cpu.step_scheduled_instruction() == 6);
         const auto af = cpu.state_snapshot().registers.af;
         REQUIRE((af >> 8U) == 0x42);
         const auto flags = static_cast<std::uint8_t>(af & 0x00FFU);
@@ -3615,8 +3668,8 @@ TEST_CASE("scheduled CPU covers CP n / CP r / CP (HL) flag semantics", "[cpu]") 
         state.registers.hl = 0x8500;
         cpu_m.load_state_snapshot(state);
         bus_m.write_memory(0xF0500, 0x66);
-        REQUIRE(cpu_m.next_scheduled_tstates() == 7);
-        REQUIRE(cpu_m.step_scheduled_instruction() == 7);
+        REQUIRE(cpu_m.next_scheduled_tstates() == 6);
+        REQUIRE(cpu_m.step_scheduled_instruction() == 6);
         const auto flags = static_cast<std::uint8_t>(cpu_m.state_snapshot().registers.af & 0x00FFU);
         REQUIRE((flags & flag_carry) == 0);
         REQUIRE((flags & flag_subtract) == flag_subtract);

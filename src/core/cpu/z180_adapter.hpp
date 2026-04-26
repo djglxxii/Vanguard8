@@ -176,9 +176,6 @@ class Z180Adapter {
     auto dma_mode_supported(DmaChannel channel) -> bool;
     [[nodiscard]] auto next_interrupt_service_source() const -> std::optional<InterruptSource>;
     [[nodiscard]] auto interrupt_service_tstates(InterruptSource source) const -> std::uint64_t;
-    [[nodiscard]] auto current_instruction_tstates() const -> std::uint64_t;
-    [[nodiscard]] auto cb_instruction_tstates(std::uint8_t opcode) const -> std::uint64_t;
-    [[nodiscard]] auto ed_instruction_tstates(std::uint8_t opcode) const -> std::uint64_t;
     void record_breakpoint_hit(
         BreakpointType type,
         std::uint16_t address,

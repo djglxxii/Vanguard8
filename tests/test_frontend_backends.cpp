@@ -384,7 +384,7 @@ TEST_CASE("PacManV8 T017 audio/video output is nonzero after instruction-granula
     REQUIRE(emulator.cpu().pc() != 0x2B8B);
     REQUIRE(audio_has_nonzero_byte);
     REQUIRE(frame_has_nonzero_byte);
-    REQUIRE(audio_hash == "24ce40791e466f9f686ee472b5798128065458e06a51f826666ae444ddfb5c75");
+    REQUIRE(audio_hash == "61ca417ef206a0762ea3691cb0e48f5bf567205beffed27877d27afca839e7cc");
 }
 
 TEST_CASE("Display accepts 512 wide RGB frames and emits the matching PPM header", "[frontend]") {

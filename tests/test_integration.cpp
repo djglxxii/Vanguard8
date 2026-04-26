@@ -923,18 +923,12 @@ TEST_CASE("PacManV8 T020 headless repro remains deterministic across repeat runs
     REQUIRE(first_frame_hash == second_frame_hash);
 }
 
-TEST_CASE("unsupported handler opcodes are reported at the handler PC after INT1 dispatch", "[integration]") {
+TEST_CASE("previously-unsupported opcodes in INT1 handler execute without error under MAME core", "[integration]") {
     Emulator emulator;
-    emulator.load_rom_image(make_int1_runtime_rom(0xDD));
+    emulator.load_rom_image(make_int1_runtime_rom(0xDD));  // IX prefix — valid in MAME core
     emulator.set_vclk_rate(VclkRate::hz_8000);
 
-    REQUIRE_THROWS_MATCHES(
-        emulator.run_frames(1),
-        std::runtime_error,
-        Catch::Matchers::MessageMatches(
-            Catch::Matchers::ContainsSubstring("PC 0x5a", Catch::CaseSensitive::No)
-        )
-    );
+    REQUIRE_NOTHROW(emulator.run_frames(1));
 }
 
 TEST_CASE("showcase milestone 7 late loop leaves VDP-A in Graphic 6 and produces a 512 wide frame", "[integration]") {

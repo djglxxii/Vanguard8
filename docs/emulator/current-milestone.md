@@ -2,7 +2,7 @@
 
 - Active milestone: `48`
 - Title: `Re-pin PacManV8 T017 300-Frame Audio Digest`
-- Status: `active`
+- Status: `ready_for_verification`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
 - Contract file: `docs/emulator/milestones/48.md`
 
@@ -28,7 +28,12 @@ Execution rules:
   queues. No other test, source, spec, or harness change is in
   scope. No re-running of the M47 import — the import is locked.
 - Matching task file:
-  `docs/tasks/active/M48-T01-pacmanv8-t017-audio-digest-repin.md`.
+  `docs/tasks/completed/M48-T01-pacmanv8-t017-audio-digest-repin.md`.
+- M48 implementation completed on 2026-04-27. The single-line digest
+  edit was applied at `tests/test_frontend_backends.cpp:387`; three-
+  run determinism confirmed (4 assertions each); `ctest` passed at
+  195/195; PacManV8 T021 harness passed at 2/2. The milestone is
+  ready for human verification/acceptance.
 
 Pre-M48 execution rules (kept for traceability):
 - Milestone `47` was accepted on 2026-04-26. Task `M47-T01` lives

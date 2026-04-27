@@ -1,6 +1,6 @@
 # M48-T01 — Re-pin PacManV8 T017 300-Frame Audio Digest
 
-Status: `active`
+Status: `completed`
 Milestone: `48`
 Depends on: `M47-T01`
 
@@ -113,17 +113,26 @@ across three repeat runs.
 
 ## Verification evidence
 
-_To be filled in during execution. At minimum:_
-
-- `cmake --build cmake-build-debug` succeeded at commit ____.
-- Three repeat runs of the T017 test produced the byte-identical
-  post-M48 hash.
-- `ctest --test-dir cmake-build-debug --output-on-failure` passed
-  at ___ / ___.
-- PacManV8 T021 harness passed `2/2`.
+- `cmake --build cmake-build-debug` succeeded at commit `9f5c69e` (pre-edit; the one-line digest edit was applied on top, was the only change, and will be committed as the M48 closure commit).
+- Three repeat runs of the T017 test produced the byte-identical post-M48 hash `a765959a62e9a5afe9d075206efb8943e3141ef4274844a07c35f21c20d1ab27`.
+- `ctest --test-dir cmake-build-debug --output-on-failure` passed at **195 / 195** (0 failures, 1 skipped: showcase milestone 7).
+- PacManV8 T021 harness passed `2/2` (`early-level-pattern`, `short-corner-route`).
 
 ## Progress log
 
 | Date | Entry |
 |------|-------|
 | 2026-04-26 | Created, state: active. Built from the M47 closure carryover: the imported MAME core's more accurate audio timing shifts the T017 300-frame audio digest from `61ca417e…839e7cc` to `a765959a…20d1ab27`, deterministic across three runs. M47's allowed paths did not include `tests/test_frontend_backends.cpp`, so the one-line re-pin moves to this milestone. |
+| 2026-04-27 | Completed. Single-line digest edit applied; three-run determinism confirmed (4 assertions each); `ctest` at 195/195; PacManV8 T021 harness at 2/2. |
+
+## Completion summary (2026-04-27)
+
+**What was done:** Single-line digest re-pin at `tests/test_frontend_backends.cpp:387`, replacing the pre-M47 audio SHA-256 `61ca417ef206a0762ea3691cb0e48f5bf567205beffed27877d27afca839e7cc` with the post-M47 value `a765959a62e9a5afe9d075206efb8943e3141ef4274844a07c35f21c20d1ab27`. No other source, test, or structural change was made.
+
+**Verification evidence:**
+- `cmake --build cmake-build-debug` succeeded.
+- Three repeat runs of the T017 test produced the byte-identical post-M48 hash (4 assertions per run: 3 structural + digest match).
+- `ctest --test-dir cmake-build-debug --output-on-failure`: **195 / 195 passed** (1 skipped: showcase milestone 7).
+- PacManV8 T021 harness: **2/2 passed** (`early-level-pattern`, `short-corner-route`).
+
+**Exit criteria:** All met. The milestone is ready for human verification/acceptance.

@@ -274,6 +274,5 @@ Derived from `docs/emulator/07-implementation-plan.md`.
   `a765959a…20d1ab27`. The shift reflects the imported MAME core's
   more accurate audio timing; the structural assertions in the
   same test (audio nonzero, frame nonzero, `pc() != 0x2B8B`)
-  still pass post-import. Single-line digest re-pin plus its
-  evidence and doc closure — no other test, source, or spec change
-  is in scope. Status: active.
+  still pass post-import. Status: completed; ctest at 195/195,
+  T017 three-run determinism confirmed, PacManV8 T021 at 2/2.

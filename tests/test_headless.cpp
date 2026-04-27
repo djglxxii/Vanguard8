@@ -534,6 +534,55 @@ TEST_CASE("headless observability flags do not perturb frame audio or event dige
     std::filesystem::remove_all(temp_dir);
 }
 
+// M49-T01: pinned regression for the PacManV8 T025 minimal repro. The pinned
+// ROM (m49-t025-controller-replay.rom) does the standard Vanguard 8 MMU boot
+// (CBAR=0x48, CBR=0xF0, BBR=0x04) and then loops
+// `IN A,(0x00) / LD (0x80F0),A`. The pinned replay sets Controller 1 = 0xEF
+// (RIGHT pressed, active low) on frame 0. Without the M49 carve-out the
+// imported MAME HD64180 core's internal-I/O comparator (ICR reset = 0x00)
+// shadows ports 0x00-0x3F and `IN A,(0x00)` returns 0xFF; with the carve-out
+// the controller state reaches the accumulator and 0x80F0 stores 0xEF.
+// See docs/spec/04-io.md "Coexistence with HD64180 Internal I/O".
+TEST_CASE("T025 replay controller delivery", "[frontend][m49]") {
+    const auto temp_dir = make_temp_dir();
+    const auto config_home = temp_dir / "xdg-config";
+    const auto rom_path =
+        std::filesystem::path(VANGUARD8_SOURCE_DIR) / "tests/replays/m49-t025-controller-replay.rom";
+    const auto replay_path =
+        std::filesystem::path(VANGUARD8_SOURCE_DIR) / "tests/replays/m49-t025-controller-replay.v8r";
+
+    ScopedEnvVar scoped_xdg("XDG_CONFIG_HOME", config_home.string());
+
+    auto run_once = [&]() -> std::string {
+        const auto [code, output] = run_headless_capture({
+            "vanguard8_headless",
+            "--rom",
+            rom_path.string(),
+            "--replay",
+            replay_path.string(),
+            "--frames",
+            "1",
+            "--peek-logical",
+            "0x80F0:1",
+        });
+        REQUIRE(code == 0);
+        return output;
+    };
+
+    const auto first = run_once();
+    REQUIRE(first.find("Controller 1 port: 0xEF") != std::string::npos);
+    REQUIRE(first.find("  0x80f0: ef") != std::string::npos);
+
+    // Determinism: three repeat runs of the peek line must be byte-identical.
+    const auto first_peek = output_line(first, "  0x80f0: ");
+    for (int run = 0; run < 2; ++run) {
+        const auto next = run_once();
+        REQUIRE(output_line(next, "  0x80f0: ") == first_peek);
+    }
+
+    std::filesystem::remove_all(temp_dir);
+}
+
 TEST_CASE("headless --run-until-pc reports hit and not-hit frame outcomes", "[frontend]") {
     const auto temp_dir = make_temp_dir();
     const auto config_home = temp_dir / "xdg-config";

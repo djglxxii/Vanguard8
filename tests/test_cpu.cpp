@@ -3898,3 +3898,155 @@ TEST_CASE("Test ROM can boot switch banks and read write SRAM correctly", "[cpu]
     REQUIRE(bus.read_memory(0xF0000) == 0x42);
     REQUIRE(bus.read_memory(0xF0001) == 0xB1);
 }
+
+// docs/spec/04-io.md "Coexistence with HD64180 Internal I/O" and
+// docs/spec/01-cpu.md "Internal I/O Address Comparator" require external-bus
+// precedence at controller ports 0x00 / 0x01. The HD64180 internal-I/O
+// comparator (ICR reset = 0x00) nominally covers 0x00-0x3F, but the
+// Vanguard 8 board carve-out routes 0x00 / 0x01 to the external bus glue
+// regardless of ICR. Every other port in 0x00-0x3F continues to follow the
+// HD64180 datasheet (internal-I/O response).
+TEST_CASE("IN A,(0x00) and IN A,(0x01) reach the external read_port callback", "[cpu][m49]") {
+    using namespace vanguard8::third_party::z180;
+
+    struct PortLog {
+        std::vector<std::uint16_t> reads;
+        std::uint8_t value_for_00 = 0xEF;  // RIGHT pressed, active low
+        std::uint8_t value_for_01 = 0xFE;  // START pressed, active low
+        std::uint8_t value_other = 0x5A;
+    };
+
+    auto run_in = [](std::uint8_t port_lo, PortLog& log) -> std::uint8_t {
+        // ROM image (4 KB, fits in physical 0x00000-0x00FFF after MMU reset).
+        // 0x0000: IN A,(port_lo)
+        // 0x0002: HALT
+        std::vector<std::uint8_t> memory(0x10000, 0x00);
+        memory[0x0000] = 0xDB;
+        memory[0x0001] = port_lo;
+        memory[0x0002] = 0x76;
+
+        Callbacks callbacks{};
+        callbacks.read_memory = [&](std::uint32_t addr) -> std::uint8_t {
+            return memory[addr & 0xFFFF];
+        };
+        callbacks.write_memory = [&](std::uint32_t addr, std::uint8_t v) {
+            memory[addr & 0xFFFF] = v;
+        };
+        callbacks.read_port = [&](std::uint16_t port) -> std::uint8_t {
+            log.reads.push_back(port);
+            switch (port & 0xFF) {
+            case 0x00:
+                return log.value_for_00;
+            case 0x01:
+                return log.value_for_01;
+            default:
+                return log.value_other;
+            }
+        };
+        callbacks.write_port = [&](std::uint16_t, std::uint8_t) {};
+        callbacks.external_port_override = [](std::uint16_t port) {
+            const auto low = static_cast<std::uint8_t>(port & 0xFF);
+            return low == 0x00 || low == 0x01;
+        };
+
+        Core core(callbacks);
+        core.reset();
+        core.run_until_halt(8);
+        return core.accumulator();
+    };
+
+    SECTION("IN A,(0x00) routes to read_port and returns the controller-1 byte") {
+        PortLog log;
+        const auto a = run_in(0x00, log);
+        REQUIRE(log.reads.size() == 1);
+        REQUIRE((log.reads[0] & 0xFF) == 0x00);
+        REQUIRE(a == 0xEF);
+    }
+
+    SECTION("IN A,(0x01) routes to read_port and returns the controller-2 byte") {
+        PortLog log;
+        const auto a = run_in(0x01, log);
+        REQUIRE(log.reads.size() == 1);
+        REQUIRE((log.reads[0] & 0xFF) == 0x01);
+        REQUIRE(a == 0xFE);
+    }
+
+    SECTION("IN A,(0x10) stays on the HD64180 internal-I/O path (TCR reset = 0x00)") {
+        PortLog log;
+        const auto a = run_in(0x10, log);
+        // Port 0x10 is TCR; with the carve-out scoped to 0x00 / 0x01 only,
+        // the read must not reach the external callback. TCR reset = 0x00.
+        REQUIRE(log.reads.empty());
+        REQUIRE(a == 0x00);
+    }
+
+    SECTION("IN A,(0x80) also reaches read_port (well outside the internal-I/O window)") {
+        PortLog log;
+        const auto a = run_in(0x80, log);
+        REQUIRE(log.reads.size() == 1);
+        REQUIRE((log.reads[0] & 0xFF) == 0x80);
+        REQUIRE(a == log.value_other);
+    }
+}
+
+// Bus-level integration: verifies that ControllerPorts::set_button drives the
+// active-low encoded byte all the way through Z180Adapter::IN to the
+// accumulator. See docs/spec/04-io.md "Button Bit Map" for the encoding.
+TEST_CASE("ControllerPorts state reaches IN A,(0x00) and IN A,(0x01) on the timed core",
+          "[cpu][m49][input]") {
+    using vanguard8::core::io::Button;
+    using vanguard8::core::io::ControllerPorts;
+    using vanguard8::core::io::Player;
+
+    auto run_with = [](Player player_for_set,
+                       Button button,
+                       std::uint8_t in_port_lo) -> std::uint8_t {
+        // 16 KB fixed-region ROM. IN A,(port) ; HALT.
+        std::vector<std::uint8_t> rom(
+            vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+        rom[0x0000] = 0xDB;
+        rom[0x0001] = in_port_lo;
+        rom[0x0002] = 0x76;
+
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        bus.mutable_controller_ports().set_button(player_for_set, button, true);
+
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        cpu.run_until_halt(8);
+        return cpu.accumulator();
+    };
+
+    auto active_low = [](Button button) -> std::uint8_t {
+        return static_cast<std::uint8_t>(0xFFU & ~(1U << static_cast<std::uint8_t>(button)));
+    };
+
+    SECTION("Player 1 RIGHT lands on IN A,(0x00)") {
+        REQUIRE(run_with(Player::one, Button::right, 0x00) == active_low(Button::right));
+    }
+    SECTION("Player 1 UP lands on IN A,(0x00)") {
+        REQUIRE(run_with(Player::one, Button::up, 0x00) == active_low(Button::up));
+    }
+    SECTION("Player 1 START lands on IN A,(0x00)") {
+        REQUIRE(run_with(Player::one, Button::start, 0x00) == active_low(Button::start));
+    }
+    SECTION("Player 2 RIGHT lands on IN A,(0x01)") {
+        REQUIRE(run_with(Player::two, Button::right, 0x01) == active_low(Button::right));
+    }
+    SECTION("Player 2 UP lands on IN A,(0x01)") {
+        REQUIRE(run_with(Player::two, Button::up, 0x01) == active_low(Button::up));
+    }
+    SECTION("Player 2 START lands on IN A,(0x01)") {
+        REQUIRE(run_with(Player::two, Button::start, 0x01) == active_low(Button::start));
+    }
+    SECTION("Player 1 state does not bleed into IN A,(0x01)") {
+        // Setting P1 RIGHT must leave the P2 read at 0xFF (all released).
+        std::vector<std::uint8_t> rom(
+            vanguard8::core::memory::CartridgeSlot::fixed_region_size, 0x00);
+        rom[0x0000] = 0xDB; rom[0x0001] = 0x01; rom[0x0002] = 0x76;
+        vanguard8::core::Bus bus{vanguard8::core::memory::CartridgeSlot(rom)};
+        bus.mutable_controller_ports().set_button(Player::one, Button::right, true);
+        vanguard8::core::cpu::Z180Adapter cpu{bus};
+        cpu.run_until_halt(8);
+        REQUIRE(cpu.accumulator() == 0xFF);
+    }
+}

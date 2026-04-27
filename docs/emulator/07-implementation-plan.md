@@ -2176,6 +2176,150 @@ Exit criteria:
 - `M48-T01` is moved to `docs/tasks/completed/` with the
   required completion summary.
 
+### Milestone 49 — Resolve HD64180 Internal I/O / Controller Port Collision
+
+Status note, 2026-04-27 (active; activated immediately after M48 acceptance):
+- The PacManV8 team's blocked task
+  `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T025-per-frame-playing-tick.md`
+  reports that the headless emulator's replay mechanism does not
+  deliver controller state to the CPU's `IN A,(0x00)` instruction:
+  the replay file specifies per-frame controller masks, the
+  inspection report shows the masked state correctly, but the CPU
+  read returns `0xFF` (all buttons released) regardless.
+- Root cause is in the M47-imported MAME HD64180 core: by default
+  `m_iocr = 0x00`, so the comparator in
+  `Core::is_internal_io_address` (`third_party/z180/z180_core.cpp:
+  321-325`) treats ports `0x00-0x3F` as internal HD64180 I/O and
+  routes `IN A,(0x00)` to `z180_readcontrol(port)` rather than
+  `callbacks_.read_port`. The Vanguard 8 spec
+  (`docs/spec/04-io.md:11-14`) places Controller 1 / 2 at ports
+  `0x00` / `0x01`, so the two collide.
+- The collision was masked before M47 because the milestone-2-era
+  hand-rolled timed dispatch always called `read_port`. The M47
+  full-MAME-core import faithfully implements the HD64180
+  internal-I/O carve-out, exposing a real spec gap.
+
+Objective:
+- Resolve the spec-level conflict between the controller port
+  addresses and the HD64180 default internal-I/O range, then
+  patch the imported core (or its Vanguard 8 adapter glue) so
+  that `IN A,(0x00)` and `IN A,(0x01)` deterministically deliver
+  the bus-side controller state — including the replay-driven
+  state applied via `Replayer::apply_frame` — for every CPU read
+  along the timed dispatch path.
+
+Spec resolution (must land in the same change as the code):
+- Pick exactly one of the following and document it in
+  `docs/spec/01-cpu.md` and `docs/spec/04-io.md` before locking
+  the code:
+  1. **Reset-state ICR programming.** Document that the
+     Vanguard 8 reset wiring programs the HD64180 ICR/IOCR so
+     that the internal-I/O comparator window does not cover
+     `0x00-0x3F` (e.g. `ICR = 0xC0` relocates internal I/O to
+     `0xC0-0xFF`), pinned to the same authority style the spec
+     uses for `CBAR=0x48`, `CBR=0xF0`, `BBR=0x04`.
+  2. **External-bus precedence at the controller ports.**
+     Document that the Vanguard 8 external bus glue takes
+     precedence at ports `0x00` and `0x01` over the HD64180
+     internal-I/O response, with no other port in the internal-
+     I/O range overlaid.
+
+Deliverables:
+- Spec edits (`docs/spec/00-overview.md`, `docs/spec/01-cpu.md`,
+  `docs/spec/04-io.md`) locking the chosen resolution.
+- A narrow patch to the imported MAME core or its Vanguard 8
+  adapter glue so that ports `0x00` and `0x01` reach
+  `bus_.read_port` and ultimately `ControllerPorts::read_port`,
+  matching the chosen spec resolution. No upstream re-pin.
+- Focused CPU tests, a bus-level integration test, and a
+  pinned headless replay regression reproducing the PacManV8
+  T025 minimal repro (a tiny ROM that loops
+  `IN A,(0x00) / LD (0x80F0),A`, paired with a one-frame replay
+  that sets Controller 1 to `0xEF`; expected post-fix:
+  `0x80F0 = 0xEF`).
+- Three-run determinism evidence for the new replay regression,
+  recorded in `M49-T01`.
+- Non-perturbation evidence: the M47 replay-fixture frame-4
+  digest and the M48 T017 audio digest both remain byte-
+  identical across three repeat runs.
+- Doc/task updates required to lock the milestone closure.
+
+Closure rule:
+- Keep this milestone inside the spec docs, the imported
+  core's narrow read-path, the adapter glue, the controller
+  test seam, and the new pinned regression fixture. Do not
+  bundle other audit follow-ups, opcode work, replay-format
+  changes, 4-player work, or PacManV8 source edits.
+
+Exit criteria:
+- The chosen spec resolution is documented in
+  `docs/spec/01-cpu.md`, `docs/spec/04-io.md`, and (where the
+  port map is summarized) `docs/spec/00-overview.md`.
+- `ctest --test-dir cmake-build-debug --output-on-failure`
+  passes with the new tests included and the usual showcase
+  milestone-7 skip.
+- The PacManV8 T025 minimal repro passes: peeking
+  `0x80F0:1` after the pinned test ROM runs with a
+  `Controller 1 = 0xEF` replay frame returns `0xEF`,
+  byte-identical across three repeat runs.
+- The M47 replay-fixture frame-4 digest is unchanged.
+- The M48-pinned T017 audio digest is unchanged.
+- `M49-T01` is moved to `docs/tasks/completed/` with the
+  required completion summary recording: chosen spec
+  resolution, exact code change site(s), three-run determinism
+  for the new replay regression, and pre/post values of the
+  T025 minimal repro peek.
+
+Closure (2026-04-27, ready for acceptance):
+- **Spec resolution chosen: Option 2 — external-bus precedence at
+  ports `0x00` / `0x01`.** Locked in `docs/spec/04-io.md`
+  ("Coexistence with HD64180 Internal I/O"), `docs/spec/01-cpu.md`
+  ("Internal I/O Address Comparator"), and
+  `docs/spec/00-overview.md` (port-map preamble). The HD64180
+  `ICR` register stays at the datasheet-default reset value
+  (`0x00`); the carve-out is a board-level decision and only
+  ports `0x00` / `0x01` are overlaid — every other port in
+  `0x00–0x3F` follows the HD64180 datasheet exactly.
+- **Code patch:** added an `external_port_override` callback to
+  `third_party::z180::Callbacks`; `Core::IN` / `Core::OUT`
+  consult it before `is_internal_io_address`. The Vanguard 8
+  adapter sets the hook to claim ports `0x00` and `0x01` only.
+  M47 upstream pin
+  (`c331217dffc1f8efde2e5f0e162049e39dd8717d`) is unchanged.
+- **New tests:** `tests/test_cpu.cpp` gains two `[m49]`-tagged
+  cases (CPU-level routing for `IN A,(0x00)` / `IN A,(0x01)`
+  with a stub callback set, plus a bus-level integration test
+  covering `ControllerPorts::set_button` → `IN A,(0x00 / 0x01)`).
+  `tests/test_headless.cpp` gains a pinned headless replay
+  regression `T025 replay controller delivery` backed by the
+  new fixtures `tests/replays/m49-t025-controller-replay.rom`
+  and `tests/replays/m49-t025-controller-replay.v8r`.
+- **T025 minimal repro:** pre-fix peek `0xFF` (per PacManV8
+  blocker, reconfirmed locally before patching) → post-fix peek
+  `0xEF`, byte-identical across three repeat runs.
+- **Non-perturbation:** M47 replay-fixture frame-4 digest
+  unchanged (`e46b5246…ccb838c`); M48 T017 audio digest
+  unchanged (`a765959a…20d1ab27`); both verified across three
+  runs.
+- **Full ctest:** `198 / 198 passed` (1 skipped: showcase
+  milestone-7) at the M49 closure tree.
+- **PacManV8 T021 sanity (informational):** T021 fails
+  identically pre-patch and post-patch on the current PacManV8
+  working tree (`0/2 passed`, identical expected/observed
+  positions). The failure is therefore independent of M49 and
+  is caused by uncommitted in-progress PacManV8 T024/T025
+  changes (modifications to `src/{game_flow,game_state,ghost_ai,
+  input,movement}.asm` and to the T021 evidence files in the
+  PacManV8 working tree). M49 does not perturb T021. The
+  PacManV8 team will re-record T021 evidence as part of their
+  T024/T025 closure; that is PacManV8 work, not M49 work.
+- **Downstream notification:** a closure note has been appended
+  to `/home/djglxxii/src/PacManV8/docs/tasks/blocked/T025-per-frame-playing-tick.md`
+  pointing the PacManV8 team at the M49-T01 completion summary
+  so they can move T025 out of `blocked/` and resume.
+- All hard exit criteria are met. Milestone is ready for human
+  acceptance per `docs/process/milestone-acceptance-checklist.md`.
+
 ## Suggested Release Gates
 
 Use these as project-wide checkpoints rather than individual milestone tasks:

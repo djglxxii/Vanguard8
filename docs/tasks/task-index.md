@@ -276,3 +276,38 @@ Derived from `docs/emulator/07-implementation-plan.md`.
   same test (audio nonzero, frame nonzero, `pc() != 0x2B8B`)
   still pass post-import. Status: completed; ctest at 195/195,
   T017 three-run determinism confirmed, PacManV8 T021 at 2/2.
+
+## Milestone 49
+
+- `M49-T01` Resolve the HD64180 internal-I/O / controller-port
+  collision exposed by the PacManV8 T025 blocker (the M47-imported
+  MAME core's `Core::IN` short-circuits ports `0x00-0x3F` to
+  `z180_readcontrol`, so `IN A,(0x00)` never reaches
+  `ControllerPorts::read_port` and the replay-driven controller
+  state is invisible to the CPU). Pick one of two documented spec
+  resolutions — reset-state ICR/IOCR programming, or Vanguard 8
+  external-bus precedence at ports `0x00` / `0x01` — lock it in
+  `docs/spec/01-cpu.md` and `docs/spec/04-io.md`, apply the
+  matching narrow patch to the imported core or its adapter glue,
+  and pin a headless replay regression that reproduces the
+  PacManV8 T025 minimal repro (peek `0x80F0:1 == 0xEF` after a
+  `Controller 1 = 0xEF` replay frame). Non-perturbation: the M47
+  replay-fixture frame-4 digest and the M48-pinned T017 audio
+  digest must remain byte-identical. Status: completed and ready
+  for acceptance (2026-04-27). Spec resolution: **Option 2 —
+  external-bus precedence at ports `0x00` / `0x01`**, locked in
+  `docs/spec/{04-io,01-cpu,00-overview}.md`. Code patch threads
+  an `external_port_override` callback through
+  `third_party::z180::Callbacks` (consulted by `Core::IN` /
+  `Core::OUT` before the HD64180 internal-I/O comparator); the
+  Vanguard 8 adapter claims ports `0x00` / `0x01` only. T025
+  minimal repro: pre-fix peek `0xFF` → post-fix peek `0xEF`,
+  byte-identical across three runs. M47 frame-4 digest unchanged
+  (`e46b5246…ccb838c`); M48 T017 audio digest unchanged
+  (`a765959a…20d1ab27`); both confirmed across three runs.
+  `ctest` at **198 / 198** (1 skipped: showcase milestone-7).
+  PacManV8 T021 fails identically pre-patch and post-patch on
+  the current PacManV8 working tree — the failure is independent
+  of M49 (in-progress T024/T025 development) and is documented
+  in the M49-T01 completion summary. Matching task file:
+  `docs/tasks/completed/M49-T01-resolve-hd64180-internal-io-controller-port-collision.md`.

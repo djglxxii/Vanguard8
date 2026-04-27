@@ -77,6 +77,10 @@ struct Callbacks {
     std::function<void(std::uint16_t, std::uint8_t)> observe_internal_io_write;
     std::function<void(std::string)> record_warning;
     std::function<void()> acknowledge_int1;
+    // Vanguard 8 carve-out: when this returns true, Core::IN / Core::OUT skip
+    // the HD64180 internal-I/O comparator and route to read_port / write_port.
+    // See docs/spec/04-io.md "Coexistence with HD64180 Internal I/O".
+    std::function<bool(std::uint16_t)> external_port_override;
 };
 
 // Register snapshot — kept from the existing API

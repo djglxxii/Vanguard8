@@ -90,11 +90,20 @@ All peripheral access is via Z80-style I/O instructions (`IN`/`OUT`). The
 HD64180's extended I/O space (accessed via `IN0`/`OUT0`) is reserved for internal
 CPU registers.
 
+The HD64180 internal-I/O comparator covers ports `0x00–0x3F` at reset (see
+`docs/spec/01-cpu.md`, "Internal I/O Address Comparator"). The Vanguard 8
+board reserves an **external-bus precedence carve-out at ports `0x00` and
+`0x01`** so that controller reads (and writes) reach the cartridge-side
+controller-port latch instead of the HD64180 internal-I/O register file.
+Every other port in `0x00–0x3F` follows the HD64180 datasheet (DMA, MMU,
+timer, ITC/IL, etc.) — see `docs/spec/01-cpu.md` for the per-register
+addresses and `docs/spec/04-io.md` for the controller-port specification.
+
 ```
 Port    Dir     Device          Function
 ────────────────────────────────────────────────────────
-0x00    R       Controller 1    Button state (active low)
-0x01    R       Controller 2    Button state (active low)
+0x00    R       Controller 1    Button state (active low) — external-bus precedence
+0x01    R       Controller 2    Button state (active low) — external-bus precedence
 
 0x40    W       YM2151          Address register
 0x40    R       YM2151          Status register (busy/IRQ flags)

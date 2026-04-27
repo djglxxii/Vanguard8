@@ -68,3 +68,4 @@ set_tests_properties(
     vanguard8_headless_replay_regression
     PROPERTIES ENVIRONMENT "XDG_CONFIG_HOME=${CMAKE_CURRENT_BINARY_DIR}/xdg-config"
 )
+

@@ -129,6 +129,50 @@ Maximum ROM: 59 switchable banks × 16 KB + 16 KB fixed = **960 KB**
 
 ---
 
+## Internal I/O Address Comparator
+
+The HD64180 routes I/O cycles whose port address falls inside the on-chip
+internal-I/O window to its own register file (DMA, ASCI, CSI/O, timer, ITC,
+MMU, etc.) instead of asserting `/IORQ` to the external bus. The window is
+defined by an on-chip comparator parameterised by the `ICR` / `IOCR` register
+(internal addr `0x3F`):
+
+```
+internal-I/O when (port ^ ICR) & 0xFFC0 == 0
+```
+
+`ICR` resets to `0x00`, so on power-on the internal-I/O window covers ports
+`0x00–0x3F`.
+
+### Vanguard 8 Reset State
+
+Vanguard 8 leaves the HD64180 `ICR` register at its datasheet-default
+reset value (`0x00`). The internal-I/O comparator therefore covers
+`0x00–0x3F` after `/RESET`. Pre-existing Vanguard 8 / showcase ROMs do
+not reprogram `ICR` before issuing controller reads.
+
+### Controller Port Carve-out
+
+The Vanguard 8 board takes external-bus precedence at ports `0x00`
+(Controller 1) and `0x01` (Controller 2) — see `docs/spec/04-io.md`,
+"Coexistence with HD64180 Internal I/O", and `docs/spec/00-overview.md`,
+"I/O Port Map", for the authoritative statement. The HD64180
+internal-I/O response is suppressed for those two addresses; for every
+other port in `0x00–0x3F` the on-chip comparator behaves per datasheet
+(DMA registers at `0x20–0x32`, MMU registers `CBR`/`BBR`/`CBAR` at
+`0x38`–`0x3A`, ITC/IL/TCR/PRT registers at `0x33`/`0x34`/`0x10`/`0x0C`–
+`0x17`, etc.).
+
+The carve-out is a Vanguard 8-specific board decision; the HD64180 itself
+is unmodified, and the imported MAME core's internal-I/O comparator
+remains exactly as the datasheet documents. The carve-out applies
+symmetrically to writes — a Vanguard 8 ROM cannot reach the HD64180
+internal `CNTLA0` / `CNTLA1` (ASCI control) registers at their
+datasheet-default addresses, because the external bus claims those two
+cycles. The Vanguard 8 spec does not use ASCI.
+
+---
+
 ## DMA Controller
 
 The HD64180 includes two independent DMA channels. Each channel can transfer

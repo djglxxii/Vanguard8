@@ -34,6 +34,13 @@ Z180Adapter::Z180Adapter(core::Bus& bus)
               },
           .record_warning = [this](std::string message) { bus_.record_warning(std::move(message)); },
           .acknowledge_int1 = [this]() { bus_.set_int1(false); },
+          // Vanguard 8 external-bus precedence at controller ports 0x00 / 0x01.
+          // Authoritative spec: docs/spec/04-io.md "Coexistence with HD64180
+          // Internal I/O" and docs/spec/00-overview.md I/O Port Map.
+          .external_port_override = [](const std::uint16_t port) {
+              const auto low = static_cast<std::uint8_t>(port & 0x00FFU);
+              return low == 0x00U || low == 0x01U;
+          },
       }) {
     reset();
 }

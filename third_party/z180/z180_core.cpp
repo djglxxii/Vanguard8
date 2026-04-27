@@ -380,6 +380,16 @@ u32 Core::ARG16() {
 }
 
 u8 Core::IN(u16 port) {
+    // Vanguard 8 external-bus precedence carve-out: when the host provides
+    // an `external_port_override` hook that claims this port, the cycle is
+    // serviced by the external bus glue regardless of the HD64180
+    // internal-I/O comparator. See docs/spec/04-io.md "Coexistence with
+    // HD64180 Internal I/O" and docs/spec/01-cpu.md "Internal I/O Address
+    // Comparator".
+    if (callbacks_.external_port_override && callbacks_.external_port_override(port)) {
+        m_extra_cycles += io_wait_states();
+        return callbacks_.read_port(port);
+    }
     if (is_internal_io_address(port))
         return z180_readcontrol(port);
     m_extra_cycles += io_wait_states();
@@ -387,6 +397,11 @@ u8 Core::IN(u16 port) {
 }
 
 void Core::OUT(u16 port, u8 value) {
+    if (callbacks_.external_port_override && callbacks_.external_port_override(port)) {
+        m_extra_cycles += io_wait_states();
+        callbacks_.write_port(port, value);
+        return;
+    }
     if (is_internal_io_address(port))
         z180_writecontrol(port, value);
     else {

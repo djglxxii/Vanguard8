@@ -113,6 +113,8 @@ Workflow:
 | 44 | Finish the remaining Vanguard8-side PacManV8 T021 blockers in one milestone |
 | 45 | Cover timed HD64180 `AND r` / `AND (HL)` gaps exposed by PacManV8 T021 |
 | 46 | Cover timed HD64180 ALU register/immediate tail (`ADC`/`SUB`/`SBC`/`XOR`) gaps exposed by PacManV8 T021 |
+| 47 | Import the full MAME HD64180 / Z180 core and retire the per-opcode CPU milestones |
+| 48 | Re-pin the PacManV8 T017 300-frame audio digest after the M47 timing shift |
 
 ## Milestones
 
@@ -2096,6 +2098,83 @@ Exit criteria:
 - The PacManV8 T021 harness completes end-to-end or surfaces a
   non-CPU blocker (recorded in M47-T01 for a follow-up
   milestone).
+
+Closure note, 2026-04-26:
+- M47 was accepted on 2026-04-26. The full MAME HD64180 / Z180
+  core is imported at pinned upstream commit
+  `c331217dffc1f8efde2e5f0e162049e39dd8717d`, the per-opcode
+  timing tables and `"Unsupported timed Z180 opcode …"` throw
+  sites are gone from `src/core/cpu/`, the spec-pinned CPU
+  integration tests pass alongside new behavioral coverage for
+  `LDIR`, `IX`-based prologues, CB-prefix bit ops, `JP (HL)`
+  jump tables, `RST n` round-trips, and `IM 2` + INT2 vector
+  fetch, the replay fixture's frame-4 digest is byte-identical
+  to the M46 pin across three repeat runs, and the canonical
+  PacManV8 T021 harness passes both replay cases end-to-end.
+  `third_party/z180/README.md` and Section 1 of
+  `docs/emulator/16-rom-readiness-audit.md` have been updated to
+  reflect the new shipped state.
+- Per-opcode milestones M19 through M46 are superseded in spirit
+  by M47. Their history is kept intact for traceability; the
+  closure annotation lives here, not in the older milestone
+  bodies. Any future ROM trap on a CPU dispatch path is a defect
+  in the adapter shim or in the imported core's pin, not an
+  invitation to open a new per-opcode milestone.
+- One narrow digest re-pin was deferred to M48 because
+  `tests/test_frontend_backends.cpp` was not in M47's allowed
+  paths.
+
+### Milestone 48 — Re-pin PacManV8 T017 300-Frame Audio Digest
+
+Status note, 2026-04-26:
+- During M47 verification the imported core's more accurate audio
+  timing produced a uniform digest shift in exactly one ctest
+  entry outside M47's allowed paths: the test
+  `PacManV8 T017 audio/video output is nonzero after instruction-
+  granular audio timing` at `tests/test_frontend_backends.cpp:
+  387`. The pinned hash is the M33-era pre-import value
+  `61ca417e…839e7cc`; the post-import value is
+  `a765959a…20d1ab27`, deterministic across three repeat runs.
+- The structural assertions in the same test still pass post-
+  import (audio nonzero, frame nonzero, `pc() != 0x2B8B`). Only
+  the pinned digest needs updating; this is the exact "more
+  accurate timing → digest shift" outcome M47 anticipated.
+
+Objective:
+- Update the pinned 300-frame PacManV8 audio SHA-256 in
+  `tests/test_frontend_backends.cpp` to the deterministic
+  post-M47 value, restore `ctest` to a clean pass, and record the
+  pre/post pair as the M47 timing-shift evidence.
+
+Deliverables:
+- A single string-literal edit at
+  `tests/test_frontend_backends.cpp:387`, replacing the pre-M47
+  hash with the post-M47 hash. No other change to the test body
+  and no change to the surrounding structural assertions.
+- Three-run reproducibility evidence for the post-M48 hash,
+  recorded in `M48-T01`.
+- Doc/task updates required to lock the new digest.
+
+Closure rule:
+- Keep this milestone inside `tests/test_frontend_backends.cpp`
+  (digest re-pin only) and the listed doc/task files. Do not
+  bundle other digest re-pins, test refactors, or any source
+  changes. Do not re-run M47's import; the import is locked.
+
+Exit criteria:
+- The string literal at
+  `tests/test_frontend_backends.cpp:387` reads
+  `"a765959a62e9a5afe9d075206efb8943e3141ef4274844a07c35f21c20d1ab27"`.
+- `ctest --test-dir cmake-build-debug --output-on-failure`
+  passes with the usual showcase milestone-7 skip and no other
+  failures.
+- Three repeat runs of the T017 test produce byte-identical
+  post-M48 hashes.
+- The canonical PacManV8 T021 harness still passes
+  end-to-end (sanity check; the digest re-pin cannot affect T021
+  by construction).
+- `M48-T01` is moved to `docs/tasks/completed/` with the
+  required completion summary.
 
 ## Suggested Release Gates
 

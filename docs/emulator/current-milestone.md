@@ -1,12 +1,57 @@
 # Current Milestone Lock
 
-- Active milestone: `47`
-- Title: `Full MAME HD64180 Core Import (Retire Per-Opcode CPU Milestones)`
+- Active milestone: `48`
+- Title: `Re-pin PacManV8 T017 300-Frame Audio Digest`
 - Status: `active`
 - Locked on plan: `docs/emulator/07-implementation-plan.md`
-- Contract file: `docs/emulator/milestones/47.md`
+- Contract file: `docs/emulator/milestones/48.md`
 
 Execution rules:
+- Milestone `48` was activated on 2026-04-26 immediately after the
+  M47 closure, to absorb the one narrow digest re-pin that fell
+  outside M47's allowed paths. During M47 verification the imported
+  MAME core's more accurate audio timing shifted the
+  `PacManV8 T017 audio/video output is nonzero after instruction-
+  granular audio timing` 300-frame audio SHA-256 from
+  `61ca417ef206a0762ea3691cb0e48f5bf567205beffed27877d27afca839e7cc`
+  to `a765959a62e9a5afe9d075206efb8943e3141ef4274844a07c35f21c20d1ab27`,
+  byte-identical across three repeat runs. The structural
+  assertions in the same test still pass post-import (audio
+  nonzero, frame nonzero, `pc() != 0x2B8B`); only the pinned
+  digest needs updating.
+- Authorized implementation scope is limited to a single
+  string-literal edit at `tests/test_frontend_backends.cpp:387`,
+  the matching doc/task files
+  (`docs/emulator/07-implementation-plan.md`,
+  `docs/emulator/current-milestone.md`,
+  `docs/emulator/milestones/48.md`), and the `docs/tasks/`
+  queues. No other test, source, spec, or harness change is in
+  scope. No re-running of the M47 import — the import is locked.
+- Matching task file:
+  `docs/tasks/active/M48-T01-pacmanv8-t017-audio-digest-repin.md`.
+
+Pre-M48 execution rules (kept for traceability):
+- Milestone `47` was accepted on 2026-04-26. Task `M47-T01` lives
+  in `docs/tasks/completed/`. The full MAME HD64180 / Z180 core
+  is imported at pinned upstream commit
+  `c331217dffc1f8efde2e5f0e162049e39dd8717d`,
+  `Z180Adapter::current_instruction_tstates()`,
+  `Z180Adapter::cb_instruction_tstates()`,
+  `Z180Adapter::ed_instruction_tstates()`, and every
+  `"Unsupported timed Z180 opcode …"` throw site have been
+  removed from `src/core/cpu/`. The replay fixture's frame-4
+  digest
+  (`e46b5246bda293e09e199967b99ac352f931c04e2ad88e775b06a3b93ccb838c`)
+  is byte-identical across three repeat runs and matches the
+  M46 pin in `tests/CMakeLists.txt`. The canonical PacManV8 T021
+  harness passes both replay cases end-to-end. Per-opcode
+  milestones M19–M46 are superseded in spirit by M47;
+  `third_party/z180/README.md` and Section 1 of
+  `docs/emulator/16-rom-readiness-audit.md` have been updated.
+  Full `ctest` ran at `194 / 195` (one pre-existing showcase
+  skip, one out-of-scope T017 audio digest mismatch routed to
+  M48). After M48, full `ctest` is expected to return to a
+  clean pass.
 - Milestone `47` was activated on 2026-04-26 after a repository
   audit (`docs/emulator/16-rom-readiness-audit.md`) confirmed
   that the timed Z180 dispatch in

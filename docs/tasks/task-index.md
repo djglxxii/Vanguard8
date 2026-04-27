@@ -256,4 +256,24 @@ Derived from `docs/emulator/07-implementation-plan.md`.
   fetch), re-pin replay-fixture digests, and update
   `third_party/z180/README.md` and the ROM-readiness audit to
   reflect the new shipped state. Retires the one-opcode-per-
-  milestone pattern. Status: active.
+  milestone pattern. Status: completed; the imported MAME core is
+  pinned at upstream commit
+  `c331217dffc1f8efde2e5f0e162049e39dd8717d`, the per-opcode
+  timing tables and `"Unsupported timed Z180 opcode …"` throw
+  sites are gone, the canonical PacManV8 T021 harness passes both
+  replay cases end-to-end, and the replay-fixture frame-4 digest
+  is unchanged from M46. One narrow digest re-pin was deferred to
+  M48 because `tests/test_frontend_backends.cpp` was outside M47's
+  allowed paths.
+
+## Milestone 48
+
+- `M48-T01` Re-pin the PacManV8 T017 300-frame audio SHA-256 at
+  `tests/test_frontend_backends.cpp:387` from the pre-M47 value
+  `61ca417e…839e7cc` to the deterministic post-M47 value
+  `a765959a…20d1ab27`. The shift reflects the imported MAME core's
+  more accurate audio timing; the structural assertions in the
+  same test (audio nonzero, frame nonzero, `pc() != 0x2B8B`)
+  still pass post-import. Single-line digest re-pin plus its
+  evidence and doc closure — no other test, source, or spec change
+  is in scope. Status: active.

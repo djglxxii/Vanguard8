@@ -59,9 +59,19 @@ specified surface. ROM banking via `OUT0 (0x39),A` is correct.
 
 ---
 
-## 1. CPU / HD64180 Instruction Coverage — **Blocker**
+## 1. CPU / HD64180 Instruction Coverage — **Resolved**
 
-### Where the gap lives
+Resolved by milestone 47 (2026-04-26): `third_party/z180/` is now a
+faithful import of the full MAME HD64180 / Z180 core at pinned upstream
+commit `c331217dffc1f8efde2e5f0e162049e39dd8717d`, and every
+`current_instruction_tstates()` / `cb_instruction_tstates()` /
+`ed_instruction_tstates()` table — together with every
+`"Unsupported timed Z180 opcode …"` throw site — has been removed from
+`src/core/cpu/z180_adapter.{hpp,cpp}`. Full Z80 + HD64180 opcode
+coverage is the shipped state. The historical analysis below is
+retained for traceability but is no longer load-bearing.
+
+### Where the gap lived
 
 The timed CPU path lives in two places:
 
